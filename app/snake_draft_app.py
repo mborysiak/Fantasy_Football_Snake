@@ -149,14 +149,11 @@ def run_simulation(sim, selected_data, num_iters, upside_frac, next_frac):
     return results
 
 def create_my_team_display(selected_data, pos_require):
-    """Create display of current team"""
+    """Create display of current team with position requirements"""
     my_team = selected_data[selected_data['MyTeam'] == True]
     
-    if len(my_team) == 0:
-        return pd.DataFrame(columns=['Position', 'Player'])
-    
     # Count positions
-    pos_counts = my_team['Pos'].value_counts()
+    pos_counts = my_team['Pos'].value_counts() if len(my_team) > 0 else {}
     
     team_display = []
     for pos, required in pos_require.items():
@@ -164,14 +161,17 @@ def create_my_team_display(selected_data, pos_require):
             continue  # Skip FLEX for now
         current_count = pos_counts.get(pos, 0)
         
+        # Add header row for each position
+        team_display.append([f"{pos} ({current_count}/{required})", ""])
+        
         # Add filled positions
         pos_players = my_team[my_team['Pos'] == pos]['Player'].tolist()
         for i, player in enumerate(pos_players):
-            team_display.append([pos, player])
+            team_display.append(["", player])
         
         # Add empty slots
-        for i in range(required - current_count):
-            team_display.append([pos, ""])
+        for i in range(max(0, required - current_count)):
+            team_display.append(["", "-- Empty --"])
     
     return pd.DataFrame(team_display, columns=['Position', 'Player'])
 
@@ -192,14 +192,6 @@ def sidebar_controls():
         step=1
     )
     
-    num_rounds = st.sidebar.number_input(
-        'Number of Rounds', 
-        min_value=10, 
-        max_value=25, 
-        value=20, 
-        step=1
-    )
-    
     my_pick_position = st.sidebar.number_input(
         'My Pick Position', 
         min_value=1, 
@@ -217,6 +209,10 @@ def sidebar_controls():
     pos_require['WR'] = st.sidebar.number_input('WR', min_value=1, max_value=8, value=3, step=1)
     pos_require['TE'] = st.sidebar.number_input('TE', min_value=1, max_value=5, value=1, step=1)
     # pos_require['FLEX'] = st.sidebar.number_input('FLEX', min_value=0, max_value=3, value=1, step=1)
+    
+    # Calculate total rounds from position requirements
+    num_rounds = sum(pos_require.values())
+    st.sidebar.write(f"**Total Rounds:** {num_rounds}")
     
     st.sidebar.header("Simulation Settings")
     
@@ -299,24 +295,65 @@ def main():
         player_data = get_player_data(sim)
         
         # Main content
-        col1, col2 = st.columns([3, 1])
+        col1, col2 = st.columns([2, 1])
         
         with col1:
             st.header("1. Select Players")
-            st.write("Check **My Team** for players you want to draft, **Other Team** for players drafted by others")
             
             # Player selection grid
             selected_data = create_interactive_grid(player_data)
             
-            # Validation
-            my_team_players = selected_data[selected_data['MyTeam'] == True]
-            other_team_players = selected_data[selected_data['OtherTeam'] == True]
+            # Get current selections for validation
+            current_my_team = selected_data[selected_data['MyTeam'] == True]
+            current_other_team = selected_data[selected_data['OtherTeam'] == True]
             
             # Check for conflicts
-            conflicts = set(my_team_players['Player']) & set(other_team_players['Player'])
+            conflicts = set(current_my_team['Player']) & set(current_other_team['Player'])
             if conflicts:
                 st.error(f"Players cannot be on both your team and other teams: {', '.join(conflicts)}")
                 return
+            
+            # Calculate draft status for simulation button
+            my_team_players = selected_data[selected_data['MyTeam'] == True]
+            num_selected = len(my_team_players)
+            adjusted_picks = sim.calculate_adjusted_picks(num_selected)
+            
+            # Run simulation section
+            st.header("2. Optimal Recommendations")
+            
+            if st.button("🚀 Run Simulation", type="primary"):
+                if len(adjusted_picks) == 0:
+                    st.info("All picks completed! No more recommendations needed.")
+                else:
+                    with st.spinner("Running simulation..."):
+                        results = run_simulation(
+                            sim, 
+                            selected_data, 
+                            settings['num_iters'], 
+                            settings['upside_frac'], 
+                            settings['next_frac']
+                        )
+                    
+                    st.write("Players ranked by selection frequency in optimal lineups")
+                    
+                    # Display simplified results - just Player and Pct Selected
+                    display_results = results[['Player', 'Pct Selected']].copy()
+                    
+                    st.dataframe(
+                        display_results,
+                        column_config={
+                            "Pct Selected": st.column_config.ProgressColumn(
+                                "Pct Selected",
+                                help="Percentage of optimal lineups",
+                                format="%.1f%%",
+                                min_value=0,
+                                max_value=100,
+                            ),
+                        },
+                        use_container_width=True,
+                        hide_index=True,
+                        height=400
+                    )
         
         with col2:
             st.header("📋 My Team")
@@ -325,7 +362,8 @@ def main():
             team_display = create_my_team_display(selected_data, settings['pos_require'])
             st.dataframe(team_display, use_container_width=True, hide_index=True)
             
-            # Display remaining picks
+            # Calculate draft status based on current selections
+            my_team_players = selected_data[selected_data['MyTeam'] == True]
             num_selected = len(my_team_players)
             adjusted_picks = sim.calculate_adjusted_picks(num_selected)
             
@@ -337,49 +375,32 @@ def main():
                 st.write(f"**Next Pick:** {adjusted_picks[0]}")
                 if len(adjusted_picks) > 1:
                     st.write(f"**Future Picks:** {adjusted_picks[1:3]}..." if len(adjusted_picks) > 3 else f"**Future Picks:** {adjusted_picks[1:]}")
-        
-        # Run simulation section
-        st.header("2. Optimal Recommendations")
-        
-        if st.button("🚀 Run Simulation", type="primary"):
-            if len(adjusted_picks) == 0:
-                st.info("All picks completed! No more recommendations needed.")
+                
+                # Show pick timing info
+                total_picks = settings['num_teams'] * settings['num_rounds']
+                pick_progress = adjusted_picks[0] / total_picks * 100
+                st.progress(pick_progress / 100, text=f"Draft Progress: {pick_progress:.1f}%")
+                
             else:
-                with st.spinner("Running simulation..."):
-                    results = run_simulation(
-                        sim, 
-                        selected_data, 
-                        settings['num_iters'], 
-                        settings['upside_frac'], 
-                        settings['next_frac']
-                    )
+                st.success("All picks completed!")
                 
-                st.subheader("📈 Recommended Players")
-                st.write("Players ranked by selection frequency in optimal lineups")
+            # Position requirements status
+            if len(my_team_players) > 0:
+                st.subheader("📋 Position Status")
+                pos_status = {}
+                for pos, required in settings['pos_require'].items():
+                    if pos != 'FLEX':
+                        current = len(my_team_players[my_team_players['Pos'] == pos])
+                        pos_status[pos] = f"{current}/{required}"
                 
-                # Display results
-                st.dataframe(
-                    results,
-                    column_config={
-                        "Selections": st.column_config.ProgressColumn(
-                            "Selections",
-                            help="Number of times selected in optimal lineups",
-                            format="%d",
-                            min_value=0,
-                            max_value=settings['num_iters'],
-                        ),
-                        "Pct Selected": st.column_config.ProgressColumn(
-                            "Pct Selected",
-                            help="Percentage of optimal lineups",
-                            format="%.1f%%",
-                            min_value=0,
-                            max_value=100,
-                        ),
-                    },
-                    use_container_width=True,
-                    hide_index=True,
-                    height=400
-                )
+                for pos, status in pos_status.items():
+                    current, required = map(int, status.split('/'))
+                    if current >= required:
+                        st.success(f"{pos}: {status} ✓")
+                    elif current > 0:
+                        st.warning(f"{pos}: {status}")
+                    else:
+                        st.error(f"{pos}: {status}")
                 
     except Exception as e:
         st.error(f"Error initializing simulation: {str(e)}")
