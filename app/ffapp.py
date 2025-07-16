@@ -10,71 +10,8 @@ from zSim_Helper import FootballSimulation
 
 db_name = 'Simulation.sqlite3'
 year = 2025
-league='dk'
+league='nffc'
 pred_vers = 'final_ensemble'
-sal_vers = 'pred'
-
-keepers = {
-    # 'Bucky Irving': [12],
-    # # 'Malik Nabers': [50],
-
-    # 'Brock Bowers': [19],
-    # 'Kyren Williams': [26],
-
-    # # 'James Cook': [54],
-    # # 'Jayden Daniels': [13],
-
-    # 'Nico Collins': [27],
-    # 'Puka Nacua': [67],
-
-    # 'Ladd Mcconkey': [19],
-
-    # 'Josh Jacobs': [57],
-
-    # 'Jalen Hurts': [37],
-
-    # 'Jaxon Smith-Njigba': [27],
-    # 'Rashee Rice': [11],
-
-    # 'Brian Thomas': [13],
-
-    # 'Jerry Jeudy': [11],   
-}
-
-
-
-# keepers = {
-#     'Breece Hall': [35],
-#     'Devon Achane': [12],
-
-#     'Garrett Wilson': [31],
-#     'Kyler Murray': [12],
-
-#     'Tyreek Hill': [79],
-#     "D'Andre Swift": [14],
-
-#     'Josh Allen': [76],
-#     'Jordan Love': [20],
-
-#     'Ceedee Lamb': [79],
-#     'Anthony Richardson': [40],
-
-#     'Kyren Williams': [28],
-#     'Joe Burrow': [14],
-
-#     'Patrick Mahomes': [83],
-#     'Christian Mccaffrey': [80],
-
-#     'Aj Brown': [67],
-#     "Ja'Marr Chase": [51],
-
-#     'Isiah Pacheco': [31],
-#     'Jonathan Taylor': [38],
-
-#     'Terry Mclaurin': [19],
-#     'Trevor Lawrence': [34],
-
-# }
 
 #-----------------
 # Pull Data In

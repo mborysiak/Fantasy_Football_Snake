@@ -252,7 +252,7 @@ class FootballSimulation:
         
         return A_position
     
-    def create_availability_vector(self, adp_sample, predictions, adp_samples):
+    def create_availability_vector(self, adp_sample, predictions, adp_samples, adjusted_picks):
         """Create availability constraint vector based on ADP vs picks"""
         num_players = len(predictions)
         h_availability = np.zeros((num_players, 1))
@@ -261,12 +261,21 @@ class FootballSimulation:
             player_name = player_row.player
             player_adp = adp_sample[i]  # ADP sample is aligned with predictions after filtering
             
-            # Player is available if their ADP >= any of our picks
-            available = False
-            for pick_num in self.my_picks:
-                if player_adp >= pick_num:
-                    available = True
-                    break
+            # For the next pick (first pick in adjusted_picks), all players are available
+            # For future picks, use ADP constraints
+            if len(adjusted_picks) > 0:
+                next_pick = adjusted_picks[0]  # Our very next pick
+                future_picks = adjusted_picks[1:]  # All subsequent picks
+                
+                # Always available for the next pick, or available based on ADP for future picks
+                available_for_next = True  # Always available for immediate next pick
+                available_for_future = len(future_picks) == 0 or any(player_adp >= pick_num for pick_num in future_picks)
+                
+                # Player is available if they can be selected in next pick OR future picks
+                available = available_for_next or available_for_future
+            else:
+                # No picks left, no one is available
+                available = False
             
             h_availability[i, 0] = 1 if available else 0
         
@@ -365,6 +374,9 @@ class FootballSimulation:
             # Account for already owned players
             already_selected = set(to_add)
             
+            # Calculate adjusted picks - remove first N picks if N players already selected
+            adjusted_picks = self.calculate_adjusted_picks(len(to_add))
+            
             # Adjust position requirements based on already owned players (no FLEX for now)
             pos_require_adjusted = copy.deepcopy(self.pos_require_start)
             
@@ -385,8 +397,8 @@ class FootballSimulation:
             if len(available_predictions) == 0:
                 continue
             
-            # Recalculate number of picks needed
-            remaining_picks = num_picks - len(to_add)
+            # Recalculate number of picks needed based on adjusted picks
+            remaining_picks = len(adjusted_picks)
             if remaining_picks <= 0:
                 success_trials += 1
                 continue
@@ -418,7 +430,7 @@ class FootballSimulation:
             
             # 3. Availability Constraints (players unavailable based on ADP - use G matrix)
             G_availability = np.eye(num_players)  # Player selection <= availability
-            h_availability = self.create_availability_vector(adp_sample, available_predictions, available_adp_samples)
+            h_availability = self.create_availability_vector(adp_sample, available_predictions, available_adp_samples, adjusted_picks)
             
             # 4. Total Selection Constraint (select exactly remaining_picks players - use A matrix)
             A_total = np.ones((1, num_players))
@@ -451,14 +463,22 @@ class FootballSimulation:
                     x_selected = np.array(x)[:, 0] == 1
                     selected_players = available_predictions.player.values[x_selected]
                     
-                    # Track availability for all players across all picks
+                    # Track availability for all players across adjusted picks
                     for j, player in enumerate(available_predictions.player):
                         player_available = False
                         player_adp = adp_sample[j]
-                        for pick_num in self.my_picks:
-                            if player_adp >= pick_num:
-                                player_available = True
-                                break
+                        
+                        # Same logic as create_availability_vector
+                        if len(adjusted_picks) > 0:
+                            next_pick = adjusted_picks[0]  # Our very next pick
+                            future_picks = adjusted_picks[1:]  # All subsequent picks
+                            
+                            # Always available for the next pick, or available based on ADP for future picks
+                            available_for_next = True  # Always available for immediate next pick
+                            available_for_future = len(future_picks) == 0 or any(player_adp >= pick_num for pick_num in future_picks)
+                            
+                            # Player is available if they can be selected in next pick OR future picks
+                            player_available = available_for_next or available_for_future
                         
                         if player_available:
                             player_selections[player]['available_count'] += 1
@@ -478,6 +498,12 @@ class FootballSimulation:
 
         return results
 
+    def calculate_adjusted_picks(self, num_already_selected):
+        """Calculate adjusted picks by removing the first N picks if N players are already selected"""
+        if num_already_selected >= len(self.my_picks):
+            return []  # All picks have been used
+        return self.my_picks[num_already_selected:]
+
     def calculate_snake_picks(self):
         """Calculate the pick numbers for snake draft based on position and rounds"""
         picks = []
@@ -496,7 +522,7 @@ year = 2025
 league = 'nffc'
 num_teams = 12
 num_rounds = 20  # Small test - just 3 rounds
-my_pick_position = 7
+my_pick_position = 1
 num_iters = 25  # Small number for testing
 pos_require_start = {'QB': 3, 'RB': 6, 'WR': 8, 'TE': 3}  # No FLEX for now
 
@@ -508,8 +534,8 @@ try:
     print(f"Player data shape: {sim.player_data.shape}")
     
     # Test run
-    to_add = ['Ceedee Lamb']  # No pre-selected players
-    to_drop = []  # No excluded players
+    to_add = ['Ceedee Lamb', 'Brock Bowers', 'Jaxon Smith Njigba']  # No pre-selected players
+    to_drop = ["Ja'Marr Chase", 'Ashton Jeanty']  # No excluded players
     
     results = sim.run_sim(to_add, to_drop, num_iters, num_avg_pts=3, upside_frac=0, next_year_frac=0)
     print("Top 10 results:")
@@ -519,8 +545,4 @@ except Exception as e:
     print(f"Error: {e}")
     import traceback
     traceback.print_exc()
-
-# %%
-
-sim.player_data.sample(frac=0.1)
 # %%
