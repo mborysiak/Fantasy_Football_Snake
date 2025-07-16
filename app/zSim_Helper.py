@@ -72,6 +72,7 @@ class FootballSimulation:
 
         # add ADP data to the dataframe 
         adp_data = pd.read_sql_query(f'''SELECT player, 
+                                                Years_of_Experience as years_of_experience,
                                                 avg_pick,
                                                 std_dev adp_std_dev,
                                                 min_pick adp_min_pick,

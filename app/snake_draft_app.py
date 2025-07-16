@@ -41,13 +41,7 @@ def get_player_data(sim):
     player_data = sim.player_data.reset_index()
     
     # Select and rename relevant columns
-    player_data = player_data[['player', 'pos', 'pred_fp_per_game', 'pred_fp_per_game_ny', 'prob_top', 'prob_upside', 'avg_pick']]
-    
-    # Calculate combined upside probability
-    player_data['prob_upside'] = player_data['prob_top'] + player_data['prob_upside']
-    
-    # Calculate next year difference
-    player_data['pred_fp_per_game_ny'] = player_data['pred_fp_per_game_ny'] - player_data['pred_fp_per_game']
+    player_data = player_data[['player', 'pos', 'years_of_experience', 'pred_fp_per_game', 'pred_fp_per_game_ny', 'prob_top', 'prob_upside', 'avg_pick']]
     
     # Rename columns for display
     player_data = player_data.rename(columns={
@@ -55,14 +49,11 @@ def get_player_data(sim):
         'pos': 'Pos', 
         'avg_pick': 'ADP',
         'pred_fp_per_game': 'PredPPG',
-        'prob_upside': 'Upside',
-        'pred_fp_per_game_ny': 'NextYearDiff'
+        'years_of_experience': 'Years_Exp',
     })
     
     # Round values for display
     player_data['PredPPG'] = player_data['PredPPG'].round(1)
-    player_data['Upside'] = player_data['Upside'].round(3)
-    player_data['NextYearDiff'] = player_data['NextYearDiff'].round(1)
     player_data['ADP'] = player_data['ADP'].round(1)
     
     # Add selection columns
@@ -73,7 +64,7 @@ def get_player_data(sim):
     player_data = player_data.sort_values(by='ADP')
     
     # Reorder columns
-    player_data = player_data[['Player', 'Pos', 'MyTeam', 'OtherTeam', 'ADP', 'PredPPG', 'Upside', 'NextYearDiff']]
+    player_data = player_data[['Player', 'Pos', 'Years_Exp', 'MyTeam', 'OtherTeam', 'ADP', 'PredPPG']]
     
     return player_data
 
@@ -102,25 +93,16 @@ def create_interactive_grid(data):
                 help="Predicted Points Per Game",
                 format="%.1f"
             ),
-            "Upside": st.column_config.NumberColumn(
-                "Upside",
-                help="Probability of upside performance",
-                format="%.3f"
-            ),
-            "NextYearDiff": st.column_config.NumberColumn(
-                "Next Year Diff",
-                help="Next year performance difference",
-                format="%.1f"
-            )
+
         },
         use_container_width=True,
-        disabled=["Player", "Pos", "ADP", "PredPPG", "Upside", "NextYearDiff"],
+        disabled=["Player", "Pos", "ADP", "PredPPG"],
         hide_index=True,
         height=500
     )
     return selected
 
-def run_simulation(sim, selected_data, num_iters, upside_frac, next_frac):
+def run_simulation(sim, selected_data, num_iters):
     """Run the snake draft simulation"""
     
     # Get selected players
@@ -133,8 +115,7 @@ def run_simulation(sim, selected_data, num_iters, upside_frac, next_frac):
         to_drop=other_teams, 
         num_iters=num_iters, 
         num_avg_pts=3, 
-        upside_frac=upside_frac, 
-        next_year_frac=next_frac
+
     )
     
     # Format results
@@ -204,10 +185,10 @@ def sidebar_controls():
     
     # Position requirements
     pos_require = {}
-    pos_require['QB'] = st.sidebar.number_input('QB', min_value=1, max_value=5, value=1, step=1)
-    pos_require['RB'] = st.sidebar.number_input('RB', min_value=1, max_value=8, value=2, step=1)
-    pos_require['WR'] = st.sidebar.number_input('WR', min_value=1, max_value=8, value=3, step=1)
-    pos_require['TE'] = st.sidebar.number_input('TE', min_value=1, max_value=5, value=1, step=1)
+    pos_require['QB'] = st.sidebar.number_input('QB', min_value=1, max_value=5, value=3, step=1)
+    pos_require['RB'] = st.sidebar.number_input('RB', min_value=2, max_value=15, value=6, step=1)
+    pos_require['WR'] = st.sidebar.number_input('WR', min_value=3, max_value=15, value=9, step=1)
+    pos_require['TE'] = st.sidebar.number_input('TE', min_value=1, max_value=5, value=3, step=1)
     # pos_require['FLEX'] = st.sidebar.number_input('FLEX', min_value=0, max_value=3, value=1, step=1)
     
     # Calculate total rounds from position requirements
@@ -224,30 +205,12 @@ def sidebar_controls():
         step=10
     )
     
-    upside_frac = st.sidebar.slider(
-        'Upside Fraction', 
-        min_value=0.0, 
-        max_value=0.5, 
-        value=0.0, 
-        step=0.05
-    )
-    
-    next_frac = st.sidebar.slider(
-        'Next Year Fraction', 
-        min_value=0.0, 
-        max_value=0.5, 
-        value=0.0, 
-        step=0.05
-    )
-    
     return {
         'num_teams': num_teams,
         'num_rounds': num_rounds,
         'my_pick_position': my_pick_position,
         'pos_require': pos_require,
         'num_iters': num_iters,
-        'upside_frac': upside_frac,
-        'next_frac': next_frac
     }
 
 #======================
@@ -330,8 +293,6 @@ def main():
                             sim, 
                             selected_data, 
                             settings['num_iters'], 
-                            settings['upside_frac'], 
-                            settings['next_frac']
                         )
                     
                     st.write("Players ranked by selection frequency in optimal lineups")
