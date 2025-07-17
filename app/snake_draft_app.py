@@ -331,6 +331,39 @@ def sidebar_controls():
             
             st.sidebar.write(f"**Players loaded:** {len(loaded_data) if loaded_data is not None else 0}")
     
+    # Save draft state section
+    st.sidebar.subheader("Save Current Draft")
+    
+    # File name input
+    file_name = st.sidebar.text_input(
+        "Draft Name (optional)",
+        placeholder="e.g., my_draft, league_name",
+        help="Enter a custom name for your draft file"
+    )
+    
+    # Store the file name and save trigger in session state for use in main
+    if 'save_file_name' not in st.session_state:
+        st.session_state.save_file_name = ""
+    
+    st.session_state.save_file_name = file_name
+    
+    # Save button - now saves and downloads in one click
+    if st.sidebar.button("💾 Save & Download Draft", help="Save and download current draft selections as CSV"):
+        st.session_state.save_and_download = True
+        st.session_state.save_file_name = file_name  # Store the current file name
+    
+    # Clear all selections button
+    if st.sidebar.button("🗑️ Clear All Selections", help="Remove all player selections"):
+        st.session_state.clear_selections = True
+        # Also clear any loaded data to ensure it doesn't get reapplied
+        st.session_state.loaded_draft_data = None
+        st.session_state.loaded_settings_data = None
+    
+    # Handle save request and show download button in sidebar
+    if 'save_and_download' in st.session_state and st.session_state.save_and_download:
+        st.session_state.save_and_download = False
+        st.session_state.show_download = True
+    
     return {
         'league': league,
         'num_teams': num_teams,
@@ -385,11 +418,6 @@ def main():
         if st.session_state.league_changed:
             st.session_state.league_changed = False
         
-        # Display draft information
-        st.sidebar.header("Draft Info")
-        st.sidebar.write(f"**Current League:** {settings['league'].upper()}")
-        st.sidebar.write(f"**My Picks:** {sim.my_picks[:5]}..." if len(sim.my_picks) > 5 else f"**My Picks:** {sim.my_picks}")
-        
         # Get player data
         player_data = get_player_data(sim)
         
@@ -416,41 +444,44 @@ def main():
             # Player selection grid
             selected_data = create_interactive_grid(player_data, key_suffix="main")
             
-            # Save/Load buttons
-            col1a, col1b = st.columns([1, 1])
-            
-            with col1a:
-                # Save current draft state
-                if st.button("💾 Save Draft State", help="Download current draft selections as CSV"):
-                    draft_data, settings_data = save_draft_state(selected_data, settings)
+            # Handle save and download in one click
+            if 'show_download' in st.session_state and st.session_state.show_download:
+                draft_data, settings_data = save_draft_state(selected_data, settings)
+                
+                if len(draft_data) > 0:
+                    # Combine draft data and settings
+                    combined_data = pd.concat([draft_data, settings_data], ignore_index=True)
                     
-                    if len(draft_data) > 0:
-                        # Combine draft data and settings
-                        combined_data = pd.concat([draft_data, settings_data], ignore_index=True)
-                        
-                        # Create download
-                        csv_buffer = io.StringIO()
-                        combined_data.to_csv(csv_buffer, index=False)
-                        csv_string = csv_buffer.getvalue()
-                        
-                        # Generate filename with timestamp
-                        filename = f"draft_state_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-                        
-                        st.download_button(
-                            label="⬇️ Download Draft State",
-                            data=csv_string,
-                            file_name=filename,
-                            mime="text/csv",
-                            help="Click to download your draft state CSV file"
-                        )
+                    # Create download
+                    csv_buffer = io.StringIO()
+                    combined_data.to_csv(csv_buffer, index=False)
+                    csv_string = csv_buffer.getvalue()
+                    
+                    # Generate filename with custom name and timestamp
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    file_name = st.session_state.save_file_name
+                    if file_name.strip():
+                        # Clean the filename (remove invalid characters)
+                        clean_name = "".join(c for c in file_name.strip() if c.isalnum() or c in (' ', '-', '_')).strip()
+                        clean_name = clean_name.replace(' ', '_')
+                        filename = f"{clean_name}_{timestamp}.csv"
                     else:
-                        st.warning("No players selected to save!")
-            
-            with col1b:
-                # Clear all selections
-                if st.button("🗑️ Clear All Selections", help="Remove all player selections"):
-                    st.session_state.clear_selections = True
-                    st.rerun() if hasattr(st, 'rerun') else st.experimental_rerun()
+                        filename = f"draft_state_{timestamp}.csv"
+                    
+                    # Auto-trigger download
+                    st.sidebar.download_button(
+                        label="⬇️ Click to Download",
+                        data=csv_string,
+                        file_name=filename,
+                        mime="text/csv",
+                        help="Your draft state is ready - click to download!"
+                    )
+                    
+                    # Clear the flag after showing download button
+                    st.session_state.show_download = False
+                else:
+                    st.sidebar.warning("No players selected to save!")
+                    st.session_state.show_download = False
             
             # Get current selections for validation
             current_my_team = selected_data[selected_data['MyTeam'] == True]
