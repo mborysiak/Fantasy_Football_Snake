@@ -247,6 +247,41 @@ def apply_loaded_state(player_data, loaded_data):
 # App Components
 #------------------
 
+def render_save_button(selected_data, settings):
+    """Render the Save & Download button in the sidebar"""
+    draft_data, settings_data = save_draft_state(selected_data, settings)
+    
+    if len(draft_data) > 0:
+        # Combine draft data and settings
+        combined_data = pd.concat([draft_data, settings_data], ignore_index=True)
+        
+        # Create CSV data
+        csv_buffer = io.StringIO()
+        combined_data.to_csv(csv_buffer, index=False)
+        csv_string = csv_buffer.getvalue()
+        
+        # Generate filename with custom name and timestamp
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        file_name = st.session_state.save_file_name
+        if file_name.strip():
+            # Clean the filename (remove invalid characters)
+            clean_name = "".join(c for c in file_name.strip() if c.isalnum() or c in (' ', '-', '_')).strip()
+            clean_name = clean_name.replace(' ', '_')
+            filename = f"{clean_name}_{timestamp}.csv"
+        else:
+            filename = f"draft_state_{timestamp}.csv"
+        
+        # Direct download button
+        st.sidebar.download_button(
+            label="💾 Save & Download Draft",
+            data=csv_string,
+            file_name=filename,
+            mime="text/csv",
+            help="Save and download current draft selections as CSV"
+        )
+    else:
+        st.sidebar.button("💾 Save & Download Draft", disabled=True, help="No players selected to save")
+
 def sidebar_controls():
     """Create sidebar controls"""
     st.sidebar.header("Draft Settings")
@@ -307,12 +342,17 @@ def sidebar_controls():
         st.session_state.loaded_draft_data = None
     if 'loaded_settings_data' not in st.session_state:
         st.session_state.loaded_settings_data = None
+    if 'confirm_clear' not in st.session_state:
+        st.session_state.confirm_clear = False
+    if 'file_uploader_key' not in st.session_state:
+        st.session_state.file_uploader_key = 0
     
     # File upload for loading draft state
     uploaded_file = st.sidebar.file_uploader(
         "Load Draft State",
         type=['csv'],
-        help="Upload a previously saved draft state CSV file"
+        help="Upload a previously saved draft state CSV file",
+        key=f"file_uploader_{st.session_state.file_uploader_key}"
     )
     
     if uploaded_file is not None:
@@ -347,22 +387,37 @@ def sidebar_controls():
     
     st.session_state.save_file_name = file_name
     
-    # Save button - now saves and downloads in one click
-    if st.sidebar.button("💾 Save & Download Draft", help="Save and download current draft selections as CSV"):
-        st.session_state.save_and_download = True
-        st.session_state.save_file_name = file_name  # Store the current file name
+    # Save button placeholder - we'll handle this in the main function
+    # where we have access to the selected_data
+    st.session_state.save_file_name = file_name
     
-    # Clear all selections button
+    # Save button will be rendered after selected_data is available
+    # This is just a placeholder comment
+    
+    # Clear selections section
+    st.sidebar.subheader("Clear Draft")
+    
+    # Clear all selections button with confirmation
     if st.sidebar.button("🗑️ Clear All Selections", help="Remove all player selections"):
-        st.session_state.clear_selections = True
-        # Also clear any loaded data to ensure it doesn't get reapplied
-        st.session_state.loaded_draft_data = None
-        st.session_state.loaded_settings_data = None
+        st.session_state.confirm_clear = True
     
-    # Handle save request and show download button in sidebar
-    if 'save_and_download' in st.session_state and st.session_state.save_and_download:
-        st.session_state.save_and_download = False
-        st.session_state.show_download = True
+    # Handle confirmation dialog
+    if 'confirm_clear' in st.session_state and st.session_state.confirm_clear:
+        with st.sidebar:
+            st.warning("⚠️ Are you sure you want to clear all selections?")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("✅ Yes, Clear All", key="confirm_clear_yes"):
+                    st.session_state.clear_selections = True
+                    st.session_state.confirm_clear = False
+                    # Clear any loaded data to ensure it doesn't interfere
+                    st.session_state.loaded_draft_data = None
+                    st.session_state.loaded_settings_data = None
+                    # Reset file uploader by changing its key
+                    st.session_state.file_uploader_key += 1
+            with col2:
+                if st.button("❌ Cancel", key="confirm_clear_no"):
+                    st.session_state.confirm_clear = False
     
     return {
         'league': league,
@@ -427,22 +482,32 @@ def main():
             # Clear the loaded data after applying to prevent reapplying
             st.session_state.loaded_draft_data = None
         
+        # Handle clear selections if requested (before creating the grid)
+        if 'clear_selections' in st.session_state and st.session_state.clear_selections:
+            # Reset player data by clearing selections
+            player_data['MyTeam'] = False
+            player_data['OtherTeam'] = False
+            st.session_state.clear_selections = False
+            # Force grid to reset by changing the key
+            if 'grid_key_counter' not in st.session_state:
+                st.session_state.grid_key_counter = 0
+            st.session_state.grid_key_counter += 1
+            st.success("All selections cleared!")
+        
+        # Get grid key for forcing reset when needed
+        grid_key = f"main_{st.session_state.get('grid_key_counter', 0)}"
+        
         # Main content
         col1, col2 = st.columns([2, 1])
         
         with col1:
             st.header("1. Select Players")
             
-            # Handle clear selections if requested
-            if 'clear_selections' in st.session_state and st.session_state.clear_selections:
-                # Reset player data by clearing selections
-                player_data['MyTeam'] = False
-                player_data['OtherTeam'] = False
-                st.session_state.clear_selections = False
-                st.success("All selections cleared!")
-            
             # Player selection grid
-            selected_data = create_interactive_grid(player_data, key_suffix="main")
+            selected_data = create_interactive_grid(player_data, key_suffix=grid_key)
+            
+            # Render the Save & Download button in the sidebar
+            render_save_button(selected_data, settings)
             
             # Handle save and download in one click
             if 'show_download' in st.session_state and st.session_state.show_download:
