@@ -4,11 +4,12 @@ import pandas as pd
 import numpy as np
 import sqlite3
 from zSim_Helper import FootballSimulation
+import io
+from datetime import datetime
 
 # Configuration
 db_name = 'Simulation.sqlite3'
 year = 2025
-league = 'nffc'
 pred_vers = 'final_ensemble'
 
 #-----------------
@@ -41,7 +42,7 @@ def get_player_data(sim):
     player_data = sim.player_data.reset_index()
     
     # Select and rename relevant columns
-    player_data = player_data[['player', 'pos', 'years_of_experience', 'pred_fp_per_game', 'pred_fp_per_game_ny', 'prob_top', 'prob_upside', 'avg_pick']]
+    player_data = player_data[['player', 'pos', 'years_of_experience', 'pred_fp_per_game', 'avg_pick', 'adp_std_dev', 'adp_min_pick', 'adp_max_pick']]
     
     # Rename columns for display
     player_data = player_data.rename(columns={
@@ -50,12 +51,18 @@ def get_player_data(sim):
         'avg_pick': 'ADP',
         'pred_fp_per_game': 'PredPPG',
         'years_of_experience': 'Years_Exp',
+        'adp_std_dev': 'ADP_StdDev',
+        'adp_min_pick': 'ADP_Min',
+        'adp_max_pick': 'ADP_Max',
     })
     
     # Round values for display
     player_data['PredPPG'] = player_data['PredPPG'].round(1)
     player_data['ADP'] = player_data['ADP'].round(1)
-    
+    player_data['ADP_StdDev'] = player_data['ADP_StdDev'].round(1)
+    player_data['ADP_Min'] = player_data['ADP_Min'].round(1)
+    player_data['ADP_Max'] = player_data['ADP_Max'].round(1)
+
     # Add selection columns
     player_data['MyTeam'] = False
     player_data['OtherTeam'] = False
@@ -64,14 +71,15 @@ def get_player_data(sim):
     player_data = player_data.sort_values(by='ADP')
     
     # Reorder columns
-    player_data = player_data[['Player', 'Pos', 'Years_Exp', 'MyTeam', 'OtherTeam', 'ADP', 'PredPPG']]
+    player_data = player_data[['Player', 'Pos', 'Years_Exp', 'MyTeam', 'OtherTeam', 'ADP', 'PredPPG', 'ADP_StdDev', 'ADP_Min', 'ADP_Max']]
     
     return player_data
 
-def create_interactive_grid(data):
+def create_interactive_grid(data, key_suffix=""):
     """Create the interactive data editor for player selection"""
     selected = st.data_editor(
         data,
+        key=f"player_grid_{key_suffix}",
         column_config={
             "MyTeam": st.column_config.CheckboxColumn(
                 "My Team",
@@ -156,6 +164,85 @@ def create_my_team_display(selected_data, pos_require):
     
     return pd.DataFrame(team_display, columns=['Position', 'Player'])
 
+def save_draft_state(selected_data, settings):
+    """Save current draft state to CSV format"""
+    # Get only the players that have selections
+    my_team = selected_data[selected_data['MyTeam'] == True][['Player', 'Pos', 'ADP', 'PredPPG']].copy()
+    other_team = selected_data[selected_data['OtherTeam'] == True][['Player', 'Pos', 'ADP', 'PredPPG']].copy()
+    
+    # Add team designation
+    my_team['Team'] = 'MyTeam'
+    other_team['Team'] = 'OtherTeam'
+    
+    # Combine the data
+    draft_data = pd.concat([my_team, other_team], ignore_index=True)
+    
+    # Add settings as metadata (we'll store this in the CSV as well)
+    settings_data = pd.DataFrame([{
+        'Type': 'Settings',
+        'League': settings['league'],
+        'NumTeams': settings['num_teams'],
+        'MyPickPosition': settings['my_pick_position'],
+        'NumRounds': settings['num_rounds'],
+        'QB': settings['pos_require']['QB'],
+        'RB': settings['pos_require']['RB'],
+        'WR': settings['pos_require']['WR'],
+        'TE': settings['pos_require']['TE'],
+        'NumIters': settings['num_iters'],
+        'SavedDate': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    }])
+    
+    return draft_data, settings_data
+
+def load_draft_state(uploaded_file):
+    """Load draft state from uploaded CSV file"""
+    try:
+        # Read the CSV
+        df = pd.read_csv(uploaded_file)
+        
+        # Check if this is a valid draft state file
+        if 'Team' not in df.columns:
+            return None, None, "Invalid file format. Please upload a valid draft state CSV."
+        
+        # Extract settings if they exist (for backward compatibility)
+        settings_data = None
+        if 'Type' in df.columns:
+            settings_rows = df[df['Type'] == 'Settings']
+            if len(settings_rows) > 0:
+                settings_data = settings_rows.iloc[0]
+                # Remove settings rows from main data
+                df = df[df['Type'] != 'Settings']
+        
+        return df, settings_data, None
+        
+    except Exception as e:
+        return None, None, f"Error loading file: {str(e)}"
+
+def apply_loaded_state(player_data, loaded_data):
+    """Apply loaded draft state to current player data"""
+    if loaded_data is None or len(loaded_data) == 0:
+        return player_data
+    
+    # Reset all selections
+    player_data['MyTeam'] = False
+    player_data['OtherTeam'] = False
+    
+    # Apply loaded selections
+    for _, row in loaded_data.iterrows():
+        player_name = row['Player']
+        team = row['Team']
+        
+        # Find the player in current data
+        player_idx = player_data[player_data['Player'] == player_name].index
+        
+        if len(player_idx) > 0:
+            if team == 'MyTeam':
+                player_data.loc[player_idx, 'MyTeam'] = True
+            elif team == 'OtherTeam':
+                player_data.loc[player_idx, 'OtherTeam'] = True
+    
+    return player_data
+
 #------------------
 # App Components
 #------------------
@@ -163,6 +250,14 @@ def create_my_team_display(selected_data, pos_require):
 def sidebar_controls():
     """Create sidebar controls"""
     st.sidebar.header("Draft Settings")
+    
+    # League selection
+    league = st.sidebar.selectbox(
+        'League Type',
+        options=['nffc', 'dk'],
+        index=0,  # Default to 'nffc'
+        help="Select the league type for predictions and ADP data"
+    )
     
     # League settings
     num_teams = st.sidebar.number_input(
@@ -205,7 +300,39 @@ def sidebar_controls():
         step=10
     )
     
+    st.sidebar.header("Save/Load Draft")
+    
+    # Initialize session state for loaded data
+    if 'loaded_draft_data' not in st.session_state:
+        st.session_state.loaded_draft_data = None
+    if 'loaded_settings_data' not in st.session_state:
+        st.session_state.loaded_settings_data = None
+    
+    # File upload for loading draft state
+    uploaded_file = st.sidebar.file_uploader(
+        "Load Draft State",
+        type=['csv'],
+        help="Upload a previously saved draft state CSV file"
+    )
+    
+    if uploaded_file is not None:
+        loaded_data, loaded_settings, error = load_draft_state(uploaded_file)
+        if error:
+            st.sidebar.error(error)
+        else:
+            st.session_state.loaded_draft_data = loaded_data
+            st.session_state.loaded_settings_data = loaded_settings
+            st.sidebar.success("Draft state loaded successfully!")
+            
+            # Show loaded info
+            if loaded_settings is not None:
+                st.sidebar.write(f"**Loaded:** {loaded_settings.get('SavedDate', 'Unknown date')}")
+                st.sidebar.write(f"**League:** {loaded_settings.get('League', 'Unknown').upper()}")
+            
+            st.sidebar.write(f"**Players loaded:** {len(loaded_data) if loaded_data is not None else 0}")
+    
     return {
+        'league': league,
         'num_teams': num_teams,
         'num_rounds': num_rounds,
         'my_pick_position': my_pick_position,
@@ -237,25 +364,40 @@ def main():
     # Get settings from sidebar
     settings = sidebar_controls()
     
+    # Initialize league_changed flag if it doesn't exist
+    if 'league_changed' not in st.session_state:
+        st.session_state.league_changed = False
+    
     try:
-        # Initialize simulation
+        # Initialize simulation (will be fresh if refresh button was clicked)
         sim = init_sim(
             db_name, 
             pred_vers, 
             year, 
-            league,
+            settings['league'],
             settings['num_teams'],
             settings['num_rounds'],
             settings['my_pick_position'],
             settings['pos_require']
         )
         
+        # Reset the flag after initialization
+        if st.session_state.league_changed:
+            st.session_state.league_changed = False
+        
         # Display draft information
         st.sidebar.header("Draft Info")
+        st.sidebar.write(f"**Current League:** {settings['league'].upper()}")
         st.sidebar.write(f"**My Picks:** {sim.my_picks[:5]}..." if len(sim.my_picks) > 5 else f"**My Picks:** {sim.my_picks}")
         
         # Get player data
         player_data = get_player_data(sim)
+        
+        # Apply loaded draft state if available
+        if st.session_state.loaded_draft_data is not None:
+            player_data = apply_loaded_state(player_data, st.session_state.loaded_draft_data)
+            # Clear the loaded data after applying to prevent reapplying
+            st.session_state.loaded_draft_data = None
         
         # Main content
         col1, col2 = st.columns([2, 1])
@@ -263,8 +405,52 @@ def main():
         with col1:
             st.header("1. Select Players")
             
+            # Handle clear selections if requested
+            if 'clear_selections' in st.session_state and st.session_state.clear_selections:
+                # Reset player data by clearing selections
+                player_data['MyTeam'] = False
+                player_data['OtherTeam'] = False
+                st.session_state.clear_selections = False
+                st.success("All selections cleared!")
+            
             # Player selection grid
-            selected_data = create_interactive_grid(player_data)
+            selected_data = create_interactive_grid(player_data, key_suffix="main")
+            
+            # Save/Load buttons
+            col1a, col1b = st.columns([1, 1])
+            
+            with col1a:
+                # Save current draft state
+                if st.button("💾 Save Draft State", help="Download current draft selections as CSV"):
+                    draft_data, settings_data = save_draft_state(selected_data, settings)
+                    
+                    if len(draft_data) > 0:
+                        # Combine draft data and settings
+                        combined_data = pd.concat([draft_data, settings_data], ignore_index=True)
+                        
+                        # Create download
+                        csv_buffer = io.StringIO()
+                        combined_data.to_csv(csv_buffer, index=False)
+                        csv_string = csv_buffer.getvalue()
+                        
+                        # Generate filename with timestamp
+                        filename = f"draft_state_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+                        
+                        st.download_button(
+                            label="⬇️ Download Draft State",
+                            data=csv_string,
+                            file_name=filename,
+                            mime="text/csv",
+                            help="Click to download your draft state CSV file"
+                        )
+                    else:
+                        st.warning("No players selected to save!")
+            
+            with col1b:
+                # Clear all selections
+                if st.button("🗑️ Clear All Selections", help="Remove all player selections"):
+                    st.session_state.clear_selections = True
+                    st.rerun() if hasattr(st, 'rerun') else st.experimental_rerun()
             
             # Get current selections for validation
             current_my_team = selected_data[selected_data['MyTeam'] == True]

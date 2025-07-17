@@ -78,7 +78,9 @@ class FootballSimulation:
                                                 min_pick adp_min_pick,
                                                 max_pick adp_max_pick
                                          FROM Avg_ADPs
-                                         WHERE year={self.set_year}''', 
+                                         WHERE year={self.set_year}
+                                               AND league='{self.league}'
+                                               ''', 
                                         self.conn)
 
         df = pd.merge(df, adp_data, how='left', left_on='player', right_on='player')
