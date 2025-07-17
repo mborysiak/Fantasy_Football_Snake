@@ -247,8 +247,8 @@ def apply_loaded_state(player_data, loaded_data):
 # App Components
 #------------------
 
-def render_save_button(selected_data, settings):
-    """Render the Save & Download button in the sidebar"""
+def render_save_button(selected_data, settings, placeholder):
+    """Render the Save & Download button in the sidebar placeholder"""
     draft_data, settings_data = save_draft_state(selected_data, settings)
     
     if len(draft_data) > 0:
@@ -271,8 +271,8 @@ def render_save_button(selected_data, settings):
         else:
             filename = f"draft_state_{timestamp}.csv"
         
-        # Direct download button
-        st.sidebar.download_button(
+        # Direct download button in the placeholder
+        placeholder.download_button(
             label="💾 Save & Download Draft",
             data=csv_string,
             file_name=filename,
@@ -280,7 +280,7 @@ def render_save_button(selected_data, settings):
             help="Save and download current draft selections as CSV"
         )
     else:
-        st.sidebar.button("💾 Save & Download Draft", disabled=True, help="No players selected to save")
+        placeholder.button("💾 Save & Download Draft", disabled=True, help="No players selected to save")
 
 def sidebar_controls():
     """Create sidebar controls"""
@@ -381,20 +381,16 @@ def sidebar_controls():
         help="Enter a custom name for your draft file"
     )
     
-    # Store the file name and save trigger in session state for use in main
+    # Store the file name in session state
     if 'save_file_name' not in st.session_state:
         st.session_state.save_file_name = ""
     
     st.session_state.save_file_name = file_name
     
-    # Save button placeholder - we'll handle this in the main function
-    # where we have access to the selected_data
-    st.session_state.save_file_name = file_name
+    # Create a placeholder for the save button that will be populated later
+    save_button_placeholder = st.sidebar.empty()
     
-    # Save button will be rendered after selected_data is available
-    # This is just a placeholder comment
-    
-    # Clear selections section
+    # Clear selections section  
     st.sidebar.subheader("Clear Draft")
     
     # Clear all selections button with confirmation
@@ -426,6 +422,7 @@ def sidebar_controls():
         'my_pick_position': my_pick_position,
         'pos_require': pos_require,
         'num_iters': num_iters,
+        'save_button_placeholder': save_button_placeholder
     }
 
 #======================
@@ -506,8 +503,8 @@ def main():
             # Player selection grid
             selected_data = create_interactive_grid(player_data, key_suffix=grid_key)
             
-            # Render the Save & Download button in the sidebar
-            render_save_button(selected_data, settings)
+            # Render the Save & Download button in the sidebar placeholder
+            render_save_button(selected_data, settings, settings['save_button_placeholder'])
             
             # Handle save and download in one click
             if 'show_download' in st.session_state and st.session_state.show_download:
