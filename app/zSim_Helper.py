@@ -160,7 +160,15 @@ class FootballSimulation:
         
         player_selections = {}
         for p in self.player_data.player:
-            player_selections[p] = {'counts': 0, 'available_count': 0}
+            # Initialize counts and availability for each round
+            round_counts = {f'round_{i+1}_count': 0 for i in range(self.num_rounds)}
+            round_availability = {f'round_{i+1}_available': 0 for i in range(self.num_rounds)}
+            player_selections[p] = {
+                'total_counts': 0, 
+                'total_available_count': 0,
+                **round_counts,
+                **round_availability
+            }
         return player_selections
 
 
@@ -376,19 +384,42 @@ class FootballSimulation:
 
     
     def final_results(self, player_selections, success_trials):
+        # Calculate percentages for total and by round
         for k, _ in player_selections.items():
-            available_count = player_selections[k]['available_count']
-            if available_count > 0:
-                player_selections[k]['pct_selected_when_available'] = 100 * player_selections[k]['counts'] / available_count
+            total_available = player_selections[k]['total_available_count']
+            if total_available > 0:
+                player_selections[k]['pct_selected_when_available'] = 100 * player_selections[k]['total_counts'] / total_available
             else:
                 player_selections[k]['pct_selected_when_available'] = 0
+            
+            # Calculate round-specific percentages
+            for i in range(self.num_rounds):
+                round_available = player_selections[k][f'round_{i+1}_available']
+                round_count = player_selections[k][f'round_{i+1}_count']
+                if round_available > 0:
+                    player_selections[k][f'round_{i+1}_pct'] = 100 * round_count / round_available
+                else:
+                    player_selections[k][f'round_{i+1}_pct'] = 0
                 
         results = pd.DataFrame(player_selections).T
-        results.columns = ['SelectionCounts', 'AvailableCount', 'PctSelectedWhenAvailable']
-
-        results = results.sort_values(by='SelectionCounts', ascending=False).iloc[:59]
+        
+        # Rename columns for clarity
+        column_renames = {
+            'total_counts': 'TotalSelectionCounts',
+            'total_available_count': 'TotalAvailableCount', 
+            'pct_selected_when_available': 'PctSelectedWhenAvailable'
+        }
+        
+        # Add round-specific column renames
+        for i in range(self.num_rounds):
+            column_renames[f'round_{i+1}_count'] = f'Round{i+1}Count'
+            column_renames[f'round_{i+1}_available'] = f'Round{i+1}Available'
+            column_renames[f'round_{i+1}_pct'] = f'Round{i+1}Pct'
+        
+        results = results.rename(columns=column_renames)
+        results = results.sort_values(by='TotalSelectionCounts', ascending=False).iloc[:59]
         results = results.reset_index().rename(columns={'index': 'player'})
-        results['PctSelected'] = 100*np.round(results.SelectionCounts / success_trials, 3)
+        results['PctSelected'] = 100*np.round(results.TotalSelectionCounts / success_trials, 3)
         return results
 
 
@@ -537,31 +568,30 @@ class FootballSimulation:
                     x_solution = np.array(x)[:, 0]
                     
                     # Convert 1D solution back to 2D player-round structure
-                    selected_players = []
+                    selected_players_by_round = {}
                     for player_idx in range(num_players):
                         for round_idx in range(num_rounds):
                             var_idx = player_idx * num_rounds + round_idx
                             if x_solution[var_idx] == 1:
                                 player_name = available_predictions.iloc[player_idx].player
-                                selected_players.append(player_name)
+                                adjusted_round_idx = round_idx + len(to_add)  # Adjust for already selected players
+                                selected_players_by_round[adjusted_round_idx + 1] = player_name
                     
-                    # Track availability for all players across adjusted picks
+                    # Track availability for all players by round
                     for j, player in enumerate(available_predictions.player):
-                        player_available = False
                         player_adp = adp_sample[j]
                         
-                        # Player is available if they can be selected in any round
-                        for pick_num in adjusted_picks:
-                            if player_adp >= pick_num:
-                                player_available = True
-                                break
-                        
-                        if player_available:
-                            player_selections[player]['available_count'] += 1
+                        # Track availability for each round
+                        for round_idx, pick_num in enumerate(adjusted_picks):
+                            adjusted_round_num = round_idx + len(to_add) + 1  # Convert to 1-based round number
+                            if player_adp >= pick_num:  # Player is available for this pick
+                                player_selections[player][f'round_{adjusted_round_num}_available'] += 1
+                                player_selections[player]['total_available_count'] += 1
                     
-                    # Track selections
-                    for player in selected_players:
-                        player_selections[player]['counts'] += 1
+                    # Track selections by round
+                    for round_num, player in selected_players_by_round.items():
+                        player_selections[player][f'round_{round_num}_count'] += 1
+                        player_selections[player]['total_counts'] += 1
                     
                     success_trials += 1
                     
@@ -595,11 +625,11 @@ class FootballSimulation:
     
 conn = sqlite3.connect("C:/Users/borys/OneDrive/Documents/Github/Fantasy_Football_Snake/app/Simulation.sqlite3")
 year = 2025
-league = 'nffc'
+league = 'dk'
 num_teams = 12
 num_rounds = 12  # Small test - just 3 rounds
 my_pick_position = 7
-num_iters = 25  # Small number for testing
+num_iters = 250  # Small number for testing
 pos_require_start = {'QB': 2, 'RB': 3, 'WR': 5, 'TE': 2}  # No FLEX for now
 
 try:
@@ -616,6 +646,25 @@ try:
     results = sim.run_sim(to_add, to_drop, num_iters, num_avg_pts=3, upside_frac=0, next_year_frac=0)
     print("Top 10 results:")
     print(results.head(10))
+    
+    # Show round-by-round breakdown for top players
+    print("\nRound-by-round breakdown for top 3 players:")
+    for i in range(min(3, len(results))):
+        player = results.iloc[i]
+        print(f"\n{player['player']}:")
+        print(f"  Total: {player['TotalSelectionCounts']}/{player['TotalAvailableCount']} ({player['PctSelectedWhenAvailable']:.1f}%)")
+        
+        # Show round data
+        for round_num in range(1, num_rounds + 1):
+            count_col = f'Round{round_num}Count'
+            avail_col = f'Round{round_num}Available'
+            pct_col = f'Round{round_num}Pct'
+            
+            if count_col in player.index and avail_col in player.index:
+                count = player[count_col]
+                available = player[avail_col]
+                pct = player[pct_col] if pct_col in player.index else 0
+                print(f"  Round {round_num}: {count}/{available} ({pct:.1f}%)")
     
 except Exception as e:
     print(f"Error: {e}")
