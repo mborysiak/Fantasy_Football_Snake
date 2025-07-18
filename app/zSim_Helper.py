@@ -231,7 +231,7 @@ class FootballSimulation:
         # Convert to minimum constraints (>= instead of ==)
         return np.array(list(pos_require.values())).reshape(-1,1)
 
-    def create_position_constraint_matrix(self, predictions, pos_require):
+    def create_position_constraint_matrix(self, predictions, pos_require, num_rounds):
         """Create position constraint matrix where each position has minimum requirements"""
         num_players = len(predictions)
         
@@ -239,60 +239,130 @@ class FootballSimulation:
         positions = [pos for pos in pos_require.keys() if pos != 'FLEX']
         num_positions = len(positions)
         
-        if num_positions == 0:
+        if num_positions == 0 or num_rounds == 0:
             # If no position constraints, return empty matrix
-            return np.zeros((0, num_players))
+            return np.zeros((0, num_players * num_rounds))
         
-        A_position = np.zeros((num_positions, num_players))
+        A_position = np.zeros((num_positions, num_players * num_rounds))
         
         for i, (pred_idx, player_row) in enumerate(predictions.iterrows()):
             player_pos = player_row.pos
             
-            # Add to specific position constraint only
+            # Add to specific position constraint for all rounds this player could be selected
             if player_pos in positions:
                 pos_idx = positions.index(player_pos)
-                A_position[pos_idx, i] = 1
+                
+                # Sum across all rounds for this player
+                for round_idx in range(num_rounds):
+                    var_idx = i * num_rounds + round_idx
+                    A_position[pos_idx, var_idx] = 1
         
         return A_position
     
-    def create_availability_vector(self, adp_sample, predictions, adp_samples, adjusted_picks):
-        """Create availability constraint vector based on ADP vs picks"""
+    def create_availability_constraints(self, adp_sample, predictions, adjusted_picks):
+        """Create availability constraints for player-round combinations"""
         num_players = len(predictions)
-        h_availability = np.zeros((num_players, 1))
+        num_rounds = len(adjusted_picks)
         
-        for i, (pred_idx, player_row) in enumerate(predictions.iterrows()):
-            player_name = player_row.player
-            player_adp = adp_sample[i]  # ADP sample is aligned with predictions after filtering
-            
-            # For the next pick (first pick in adjusted_picks), all players are available
-            # For future picks, use ADP constraints
-            if len(adjusted_picks) > 0:
-                next_pick = adjusted_picks[0]  # Our very next pick
-                future_picks = adjusted_picks[1:]  # All subsequent picks
-                
-                # Always available for the next pick, or available based on ADP for future picks
-                available_for_next = True  # Always available for immediate next pick
-                available_for_future = len(future_picks) == 0 or any(player_adp >= pick_num for pick_num in future_picks)
-                
-                # Player is available if they can be selected in next pick OR future picks
-                available = available_for_next or available_for_future
-            else:
-                # No picks left, no one is available
-                available = False
-            
-            h_availability[i, 0] = 1 if available else 0
+        if num_rounds == 0:
+            return np.zeros((0, num_players * num_rounds)), np.zeros((0, 1))
         
-        return h_availability
+        # Decision variables are structured as: [p1_r1, p1_r2, ..., p1_rN, p2_r1, p2_r2, ..., p2_rN, ...]
+        # Total variables: num_players * num_rounds
+        
+        # Create availability constraints (G matrix format: Gx <= h)
+        # Each player can only be selected in rounds where their ADP >= pick number
+        G_availability_list = []
+        h_availability_list = []
+        
+        for player_idx in range(num_players):
+            player_adp = adp_sample[player_idx]
+            
+            for round_idx, pick_num in enumerate(adjusted_picks):
+                # Variable index for this player-round combination
+                var_idx = player_idx * num_rounds + round_idx
+                
+                # Create constraint: x[player_idx, round_idx] <= availability
+                constraint_row = np.zeros(num_players * num_rounds)
+                constraint_row[var_idx] = 1
+                
+                # Player is available if your pick number <= their ADP (you pick before they're typically drafted)
+                available = 1 if pick_num <= player_adp else 0
+                
+                G_availability_list.append(constraint_row)
+                h_availability_list.append(available)
+        
+        G_availability = np.array(G_availability_list)
+        h_availability = np.array(h_availability_list).reshape(-1, 1)
+        
+        return G_availability, h_availability
+    
+    def create_round_selection_constraints(self, num_players, num_rounds):
+        """Create constraints to ensure exactly 1 player is selected per round"""
+        if num_rounds == 0:
+            return np.zeros((0, num_players * num_rounds)), np.zeros((0, 1))
+        
+        # For each round, sum across all players should equal 1
+        A_rounds = []
+        b_rounds = []
+        
+        for round_idx in range(num_rounds):
+            constraint_row = np.zeros(num_players * num_rounds)
+            
+            # For this round, set coefficient to 1 for all players
+            for player_idx in range(num_players):
+                var_idx = player_idx * num_rounds + round_idx
+                constraint_row[var_idx] = 1
+            
+            A_rounds.append(constraint_row)
+            b_rounds.append(1)  # Exactly 1 player per round
+        
+        A_rounds = np.array(A_rounds)
+        b_rounds = np.array(b_rounds).reshape(-1, 1)
+        
+        return A_rounds, b_rounds
+    
+    def create_player_uniqueness_constraints(self, num_players, num_rounds):
+        """Create constraints to ensure each player is selected at most once across all rounds"""
+        if num_rounds == 0:
+            return np.zeros((0, num_players * num_rounds)), np.zeros((0, 1))
+        
+        # For each player, sum across all rounds should be <= 1
+        G_players = []
+        h_players = []
+        
+        for player_idx in range(num_players):
+            constraint_row = np.zeros(num_players * num_rounds)
+            
+            # For this player, set coefficient to 1 for all rounds
+            for round_idx in range(num_rounds):
+                var_idx = player_idx * num_rounds + round_idx
+                constraint_row[var_idx] = 1
+            
+            G_players.append(constraint_row)
+            h_players.append(1)  # At most 1 selection per player
+        
+        G_players = np.array(G_players)
+        h_players = np.array(h_players).reshape(-1, 1)
+        
+        return G_players, h_players
 
     # Removed old constraint methods - using new matrix-based approach
 
     @staticmethod
-    def sample_c_points(data, max_entries, num_avg_pts):
-
+    def sample_c_points(data, max_entries, num_avg_pts, num_rounds):
+        """Create objective function coefficients for player-round variables"""
         labels = data[['player', 'pos']]
         current_points = -1 * data.iloc[:, np.random.choice(range(2, max_entries+2), size=num_avg_pts)].mean(axis=1)
-
-        return labels, current_points
+        
+        # Expand points to match the 2D variable structure
+        # Each player's points are repeated for each round they could be selected
+        expanded_points = []
+        for player_points in current_points:
+            for round_idx in range(num_rounds):
+                expanded_points.append(player_points)
+        
+        return labels, np.array(expanded_points)
 
     @staticmethod
     def solve_ilp(c, G, h, A, b):
@@ -411,44 +481,45 @@ class FootballSimulation:
             
             # Build constraint matrices for remaining picks
             num_players = len(available_predictions)
+            num_rounds = len(adjusted_picks)
             
-            # Create master constraint matrix
-            # Rows: position constraints + player uniqueness + availability + total selection
-            # Columns: players
+            # Decision variables are now: num_players * num_rounds
+            # [p1_r1, p1_r2, ..., p1_rN, p2_r1, p2_r2, ..., p2_rN, ...]
+            
+            if num_rounds == 0:
+                success_trials += 1
+                continue
             
             # 1. Position Requirements (minimum constraints - use G matrix for >= constraints)
-            A_position = self.create_position_constraint_matrix(available_predictions, pos_require_adjusted)
+            A_position = self.create_position_constraint_matrix(available_predictions, pos_require_adjusted, num_rounds)
             
             # Convert position constraints to G matrix format (negate for >= to become <=)
             if A_position.shape[0] > 0:
                 G_position = -A_position  # Negate for >= constraints
                 h_position = -np.array([pos_require_adjusted[pos] for pos in pos_require_adjusted.keys() if pos != 'FLEX']).reshape(-1, 1)
             else:
-                G_position = np.zeros((0, num_players))
+                G_position = np.zeros((0, num_players * num_rounds))
                 h_position = np.zeros((0, 1))
             
-            # 2. Player Selection (each player at most once - use G matrix)
-            G_players = np.eye(num_players)  # Each player <= 1
-            h_players = np.ones((num_players, 1))
+            # 2. Player Uniqueness (each player selected at most once across all rounds)
+            G_players, h_players = self.create_player_uniqueness_constraints(num_players, num_rounds)
             
-            # 3. Availability Constraints (players unavailable based on ADP - use G matrix)
-            G_availability = np.eye(num_players)  # Player selection <= availability
-            h_availability = self.create_availability_vector(adp_sample, available_predictions, available_adp_samples, adjusted_picks)
+            # 3. Availability Constraints (players only available when ADP >= pick number)
+            G_availability, h_availability = self.create_availability_constraints(adp_sample, available_predictions, adjusted_picks)
             
-            # 4. Total Selection Constraint (select exactly remaining_picks players - use A matrix)
-            A_total = np.ones((1, num_players))
-            b_total = np.array([[remaining_picks]])
+            # 4. Round Selection Constraints (exactly 1 player per round - use A matrix)
+            A_rounds, b_rounds = self.create_round_selection_constraints(num_players, num_rounds)
             
             # Combine ALL G constraints (inequality <=)
             G_combined = np.vstack([G_position, G_players, G_availability])
             h_combined = np.vstack([h_position, h_players, h_availability])
             
-            # Only A constraint is total selection (equality ==)
-            A_combined = A_total
-            b_combined = b_total
+            # A constraints are round selections (equality ==)
+            A_combined = A_rounds
+            b_combined = b_rounds
 
             # Objective function (maximize points)
-            _, c_points = self.sample_c_points(available_predictions, num_options, num_avg_pts)
+            _, c_points = self.sample_c_points(available_predictions, num_options, num_avg_pts, num_rounds)
             
             # Convert to cvxopt matrices
             G = matrix(G_combined, tc='d')
@@ -463,25 +534,27 @@ class FootballSimulation:
                 
                 if status == 'optimal':
                     # Track selections and availability
-                    x_selected = np.array(x)[:, 0] == 1
-                    selected_players = available_predictions.player.values[x_selected]
+                    x_solution = np.array(x)[:, 0]
+                    
+                    # Convert 1D solution back to 2D player-round structure
+                    selected_players = []
+                    for player_idx in range(num_players):
+                        for round_idx in range(num_rounds):
+                            var_idx = player_idx * num_rounds + round_idx
+                            if x_solution[var_idx] == 1:
+                                player_name = available_predictions.iloc[player_idx].player
+                                selected_players.append(player_name)
                     
                     # Track availability for all players across adjusted picks
                     for j, player in enumerate(available_predictions.player):
                         player_available = False
                         player_adp = adp_sample[j]
                         
-                        # Same logic as create_availability_vector
-                        if len(adjusted_picks) > 0:
-                            next_pick = adjusted_picks[0]  # Our very next pick
-                            future_picks = adjusted_picks[1:]  # All subsequent picks
-                            
-                            # Always available for the next pick, or available based on ADP for future picks
-                            available_for_next = True  # Always available for immediate next pick
-                            available_for_future = len(future_picks) == 0 or any(player_adp >= pick_num for pick_num in future_picks)
-                            
-                            # Player is available if they can be selected in next pick OR future picks
-                            player_available = available_for_next or available_for_future
+                        # Player is available if they can be selected in any round
+                        for pick_num in adjusted_picks:
+                            if player_adp >= pick_num:
+                                player_available = True
+                                break
                         
                         if player_available:
                             player_selections[player]['available_count'] += 1
@@ -520,32 +593,32 @@ class FootballSimulation:
 
 #%%
     
-# conn = sqlite3.connect("C:/Users/borys/OneDrive/Documents/Github/Fantasy_Football_Snake/app/Simulation.sqlite3")
-# year = 2025
-# league = 'nffc'
-# num_teams = 12
-# num_rounds = 20  # Small test - just 3 rounds
-# my_pick_position = 1
-# num_iters = 25  # Small number for testing
-# pos_require_start = {'QB': 3, 'RB': 6, 'WR': 8, 'TE': 3}  # No FLEX for now
+conn = sqlite3.connect("C:/Users/borys/OneDrive/Documents/Github/Fantasy_Football_Snake/app/Simulation.sqlite3")
+year = 2025
+league = 'nffc'
+num_teams = 12
+num_rounds = 12  # Small test - just 3 rounds
+my_pick_position = 7
+num_iters = 25  # Small number for testing
+pos_require_start = {'QB': 2, 'RB': 3, 'WR': 5, 'TE': 2}  # No FLEX for now
 
-# try:
-#     sim = FootballSimulation(conn, year, pos_require_start, num_teams, num_rounds, my_pick_position,
-#                              pred_vers='final_ensemble', league=league, use_ownership=0)
+try:
+    sim = FootballSimulation(conn, year, pos_require_start, num_teams, num_rounds, my_pick_position,
+                             pred_vers='final_ensemble', league=league, use_ownership=0)
     
-#     print(f"Snake picks: {sim.my_picks}")
-#     print(f"Player data shape: {sim.player_data.shape}")
+    print(f"Snake picks: {sim.my_picks}")
+    print(f"Player data shape: {sim.player_data.shape}")
     
-#     # Test run
-#     to_add = ['Ceedee Lamb', 'Brock Bowers', 'Jaxon Smith Njigba']  # No pre-selected players
-#     to_drop = ["Ja'Marr Chase", 'Ashton Jeanty']  # No excluded players
+    # Test run
+    to_add = []  # No pre-selected players
+    to_drop = []  # No excluded players
     
-#     results = sim.run_sim(to_add, to_drop, num_iters, num_avg_pts=3, upside_frac=0, next_year_frac=0)
-#     print("Top 10 results:")
-#     print(results.head(10))
+    results = sim.run_sim(to_add, to_drop, num_iters, num_avg_pts=3, upside_frac=0, next_year_frac=0)
+    print("Top 10 results:")
+    print(results.head(10))
     
-# except Exception as e:
-#     print(f"Error: {e}")
-#     import traceback
-#     traceback.print_exc()
+except Exception as e:
+    print(f"Error: {e}")
+    import traceback
+    traceback.print_exc()
 # %%
