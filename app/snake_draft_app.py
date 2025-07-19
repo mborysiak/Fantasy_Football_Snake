@@ -123,19 +123,62 @@ def run_simulation(sim, selected_data, num_iters):
         to_drop=other_teams, 
         num_iters=num_iters, 
         num_avg_pts=3, 
-
     )
     
-    # Format results
-    results = results.rename(columns={
-        'player': 'Player',
-        'SelectionCounts': 'Selections',
-        'AvailableCount': 'Available',
-        'PctSelectedWhenAvailable': 'Pct When Available',
-        'PctSelected': 'Pct Selected'
-    })
-    
+    # Keep all the round-specific columns
     return results
+
+def get_round_recommendations(results, sim, my_team_count, max_rounds=3):
+    """Get top recommendations for the current and next few rounds"""
+    
+    # Calculate which rounds to show
+    adjusted_picks = sim.calculate_adjusted_picks(my_team_count)
+    
+    if len(adjusted_picks) == 0:
+        return None, []
+    
+    # Determine the rounds we care about
+    current_round_num = my_team_count + 1
+    rounds_to_show = []
+    
+    for i in range(min(max_rounds, len(adjusted_picks))):
+        round_num = current_round_num + i
+        rounds_to_show.append(round_num)
+    
+    # Create round-specific recommendations
+    round_data = {}
+    
+    for round_num in rounds_to_show:
+        count_col = f'Round{round_num}Count'
+        available_col = f'Round{round_num}Available'
+        
+        # Check if the required columns exist
+        if all(col in results.columns for col in [count_col, available_col]) and 'player' in results.columns:
+            # Filter for players who were available for this round
+            round_results = results[results[available_col] > 0].copy()
+            
+            if len(round_results) > 0:
+                # Calculate percentage selected when available for this round
+                round_results[f'Round{round_num}PctAvailable'] = (
+                    round_results[count_col] / round_results[available_col] * 100
+                ).round(1)
+                
+                # Sort by actual selection count for this round (not percentage) and take top 10
+                top_picks = round_results.nlargest(10, count_col)[
+                    ['player', count_col, available_col, f'Round{round_num}PctAvailable']
+                ].copy()
+                
+                # Rename columns for display
+                top_picks = top_picks.rename(columns={
+                    'player': 'Player',
+                    count_col: 'Selected',
+                    available_col: 'Available', 
+                    f'Round{round_num}PctAvailable': 'Pct Selected'
+                })
+                
+                round_data[round_num] = top_picks
+    
+    return adjusted_picks, round_data
 
 def create_my_team_display(selected_data, pos_require):
     """Create display of current team with position requirements"""
@@ -574,26 +617,79 @@ def main():
                             settings['num_iters'], 
                         )
                     
-                    st.write("Players ranked by selection frequency in optimal lineups")
-                    
-                    # Display simplified results - just Player and Pct Selected
-                    display_results = results[['Player', 'Pct Selected']].copy()
-                    
-                    st.dataframe(
-                        display_results,
-                        column_config={
-                            "Pct Selected": st.column_config.ProgressColumn(
-                                "Pct Selected",
-                                help="Percentage of optimal lineups",
-                                format="%.1f%%",
-                                min_value=0,
-                                max_value=100,
-                            ),
-                        },
-                        use_container_width=True,
-                        hide_index=True,
-                        height=400
+                    # Get round-specific recommendations
+                    picks_remaining, round_recommendations = get_round_recommendations(
+                        results, sim, num_selected, max_rounds=3
                     )
+                    
+                    if round_recommendations:
+                        st.write("**Top recommendations by round** (based on optimal draft simulations)")
+                        
+                        # Add explanation
+                        st.info(
+                            "🎯 **Current Round**: All available players can be selected on your turn\n\n"
+                            "📊 **Future Rounds**: Based on typical ADP patterns and availability"
+                        )
+                        
+                        # Create tabs for each round
+                        if len(round_recommendations) == 1:
+                            # Single round - no tabs needed
+                            round_num = list(round_recommendations.keys())[0]
+                            pick_num = picks_remaining[0] if picks_remaining else "Unknown"
+                            st.subheader(f"Round {round_num} (Pick #{pick_num})")
+                            
+                            round_data = round_recommendations[round_num]
+                            st.dataframe(
+                                round_data,
+                                column_config={
+                                    "Pct Selected": st.column_config.ProgressColumn(
+                                        "Pct Selected",
+                                        help="Percentage selected when available in this round",
+                                        format="%.1f%%",
+                                        min_value=0,
+                                        max_value=100,
+                                    ),
+                                },
+                                use_container_width=True,
+                                hide_index=True,
+                                height=400
+                            )
+                        else:
+                            # Multiple rounds - use tabs
+                            tab_labels = []
+                            for i, round_num in enumerate(round_recommendations.keys()):
+                                pick_num = picks_remaining[i] if i < len(picks_remaining) else "TBD"
+                                if i == 0:
+                                    tab_labels.append(f"🎯 Round {round_num} (Pick #{pick_num})")
+                                else:
+                                    tab_labels.append(f"Round {round_num} (Pick #{pick_num})")
+                            
+                            tabs = st.tabs(tab_labels)
+                            
+                            for i, (round_num, round_data) in enumerate(round_recommendations.items()):
+                                with tabs[i]:
+                                    if i == 0:
+                                        st.write("**Current round - all available players can be selected**")
+                                    else:
+                                        st.write("**Future round - based on typical ADP availability**")
+                                    
+                                    st.dataframe(
+                                        round_data,
+                                        column_config={
+                                            "Pct Selected": st.column_config.ProgressColumn(
+                                                "Pct Selected",
+                                                help="Percentage selected when available in this round",
+                                                format="%.1f%%",
+                                                min_value=0,
+                                                max_value=100,
+                                            ),
+                                        },
+                                        use_container_width=True,
+                                        hide_index=True,
+                                        height=350
+                                    )
+                    else:
+                        st.warning("No recommendations available for upcoming rounds.")
         
         with col2:
             st.header("📋 My Team")

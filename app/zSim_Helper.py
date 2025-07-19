@@ -622,7 +622,6 @@ class FootballSimulation:
                 pass
 
         results = self.final_results(player_selections, success_trials)
-        results = results.iloc[:30]
 
         return results
 
@@ -645,59 +644,57 @@ class FootballSimulation:
 
 #%%
     
-# conn = sqlite3.connect("C:/Users/borys/OneDrive/Documents/Github/Fantasy_Football_Snake/app/Simulation.sqlite3")
-# year = 2025
-# league = 'dk'
-# num_teams = 12
-# num_rounds = 20
-# my_pick_position = 7
-# num_iters = 50
-# pos_require_start = {'QB': 3, 'RB': 6, 'WR': 8, 'TE': 3}  # No FLEX for now
+conn = sqlite3.connect("C:/Users/borys/OneDrive/Documents/Github/Fantasy_Football_Snake/app/Simulation.sqlite3")
+year = 2025
+league = 'dk'
+num_teams = 12
+num_rounds = 20
+my_pick_position = 7
+num_iters = 50
+pos_require_start = {'QB': 3, 'RB': 6, 'WR': 8, 'TE': 3}  # No FLEX for now
 
-# try:
-#     sim = FootballSimulation(conn, year, pos_require_start, num_teams, num_rounds, my_pick_position,
-#                              pred_vers='final_ensemble', league=league, use_ownership=0)
+try:
+    sim = FootballSimulation(conn, year, pos_require_start, num_teams, num_rounds, my_pick_position,
+                             pred_vers='final_ensemble', league=league, use_ownership=0)
     
-#     print(f"Snake picks: {sim.my_picks}")
-#     print(f"Player data shape: {sim.player_data.shape}")
+    print(f"Snake picks: {sim.my_picks}")
+    print(f"Player data shape: {sim.player_data.shape}")
     
-#     # Test run
-#     to_add = ['Ceedee Lamb']  # No pre-selected players
-#     to_drop = ["Ja'Marr Chase", 'Malik Nabers', 'Saquon Barkley', 'Puka Nacua',
-#                 'Bijan Robinson', 'Christian Mccaffrey', 'Brian Thomas', 'Amon Ra St Brown',
-#                 'Justin Jefferson', 'Ashton Jeanty', 'Devon Achane', 'Jahmyr Gibbs', 'Nico Collins', 'Ladd Mcconkey',
-#                 'Derrick Henry'
-
-#                 ]  # No excluded players
+    # Test run
+    to_add = []  # No pre-selected players
+    to_drop = ["Ja'Marr Chase", 'Saquon Barkley', 'Puka Nacua',
+                'Bijan Robinson', 'Christian Mccaffrey',
+                'Justin Jefferson', 'Jahmyr Gibbs', 
+                ]
     
-#     results = sim.run_sim(to_add, to_drop, num_iters, num_avg_pts=3, upside_frac=0, next_year_frac=0)
-#     print("Top 10 results:")
-#     print(results.head(10))
+    results = sim.run_sim(to_add, to_drop, num_iters, num_avg_pts=3, upside_frac=0, next_year_frac=0)
+    print("Top 10 results:")
+    print(results.head(10))
     
-#     # Show round-by-round breakdown for top players
-#     print("\nRound-by-round breakdown for top 3 players:")
-#     for i in range(min(3, len(results))):
-#         player = results.iloc[i]
-#         print(f"\n{player['player']}:")
-#         print(f"  Total: {player['TotalSelectionCounts']}/{player['TotalAvailableCount']} ({player['PctSelectedWhenAvailable']:.1f}%)")
+    # Show round-by-round breakdown for top players
+    print("\nRound-by-round breakdown for top 3 players:")
+    for i in range(min(3, len(results))):
+        player = results.iloc[i]
+        print(f"\n{player['player']}:")
+        print(f"  Total: {player['TotalSelectionCounts']}/{player['TotalAvailableCount']} ({player['PctSelectedWhenAvailable']:.1f}%)")
         
-#         # Show round data
-#         for round_num in range(1, num_rounds + 1):
-#             count_col = f'Round{round_num}Count'
-#             avail_col = f'Round{round_num}Available'
-#             pct_col = f'Round{round_num}Pct'
+        # Show round data
+        for round_num in range(1, num_rounds + 1):
+            count_col = f'Round{round_num}Count'
+            avail_col = f'Round{round_num}Available'
+            pct_col = f'Round{round_num}Pct'
             
-#             if count_col in player.index and avail_col in player.index:
-#                 count = player[count_col]
-#                 available = player[avail_col]
-#                 pct = player[pct_col] if pct_col in player.index else 0
-#                 print(f"  Round {round_num}: {count}/{available} ({pct:.1f}%)")
+            if count_col in player.index and avail_col in player.index:
+                count = player[count_col]
+                available = player[avail_col]
+                pct = player[pct_col] if pct_col in player.index else 0
+                print(f"  Round {round_num}: {count}/{available} ({pct:.1f}%)")
     
-# except Exception as e:
-#     print(f"Error: {e}")
-#     import traceback
-#     traceback.print_exc()
-# # %%
+except Exception as e:
+    print(f"Error: {e}")
+    import traceback
+    traceback.print_exc()
+# %%
 
-# results.sort_values(by='Round2Count', ascending=False).iloc[:59]
+results.sort_values(by='Round3Count', ascending=False).iloc[:59]
 # %%
