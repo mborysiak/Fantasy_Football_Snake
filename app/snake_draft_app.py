@@ -371,7 +371,7 @@ def sidebar_controls():
     pos_require = {}
     pos_require['QB'] = st.sidebar.number_input('QB', min_value=1, max_value=5, value=3, step=1)
     pos_require['RB'] = st.sidebar.number_input('RB', min_value=2, max_value=15, value=6, step=1)
-    pos_require['WR'] = st.sidebar.number_input('WR', min_value=3, max_value=15, value=9, step=1)
+    pos_require['WR'] = st.sidebar.number_input('WR', min_value=3, max_value=15, value=8, step=1)
     pos_require['TE'] = st.sidebar.number_input('TE', min_value=1, max_value=5, value=3, step=1)
     # pos_require['FLEX'] = st.sidebar.number_input('FLEX', min_value=0, max_value=3, value=1, step=1)
     
