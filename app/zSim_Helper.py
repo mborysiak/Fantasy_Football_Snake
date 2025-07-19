@@ -84,7 +84,7 @@ class FootballSimulation:
                                         self.conn)
 
         df = pd.merge(df, adp_data, how='left', left_on='player', right_on='player')
-        df = df.fillna({'avg_pick': 200, 'adp_std_dev': 20, 'adp_min_pick': 180, 'adp_max_pick': 250})
+        df = df.fillna({'avg_pick': 240, 'adp_std_dev': 20, 'adp_min_pick': 200, 'adp_max_pick': 250})
         df.loc[df.std_dev<0.1, 'std_dev'] = 0.2 * df.loc[df.std_dev<0.1, 'avg_pick'] # Avoid division by zero in calculations
         df.loc[df.adp_min_pick > df.avg_pick, 'adp_min_pick'] = df.loc[df.adp_min_pick > df.avg_pick, 'avg_pick'] * 0.8
         df.loc[df.adp_max_pick < df.avg_pick, 'adp_max_pick'] = df.loc[df.adp_max_pick < df.avg_pick, 'avg_pick'] * 1.2        
@@ -135,9 +135,10 @@ class FootballSimulation:
         elif col=='adp':
             cols = ['avg_pick', 'adp_std_dev', 'adp_min_pick', 'adp_max_pick']
 
-        pred_list = []
-        for mean_val, sdev, min_sc, max_sc in self.player_data[cols].values:
-            pred_list.append(self.trunc_normal(mean_val, sdev, min_sc, max_sc, num_options))
+        # Vectorized approach: process all players at once when possible
+        data_values = self.player_data[cols].values
+        pred_list = [self.trunc_normal(mean_val, sdev, min_sc, max_sc, num_options) 
+                     for mean_val, sdev, min_sc, max_sc in data_values]
 
         return pd.DataFrame(pred_list)
     
@@ -186,7 +187,11 @@ class FootballSimulation:
 
     @staticmethod
     def drop_players(df, to_drop):
-        return df[~df.player.isin(to_drop)].reset_index(drop=True)
+        if not to_drop:  # Early return for empty list
+            return df
+        # Convert to set for O(1) lookups if it's a list
+        to_drop_set = set(to_drop) if isinstance(to_drop, (list, tuple)) else to_drop
+        return df[~df.player.isin(to_drop_set)].reset_index(drop=True)
 
 
     @staticmethod
@@ -278,39 +283,27 @@ class FootballSimulation:
         if num_rounds == 0:
             return np.zeros((0, num_players * num_rounds)), np.zeros((0, 1))
         
-        # Decision variables are structured as: [p1_r1, p1_r2, ..., p1_rN, p2_r1, p2_r2, ..., p2_rN, ...]
-        # Total variables: num_players * num_rounds
+        # Vectorized approach: create sparse identity matrix pattern
+        total_constraints = num_players * num_rounds
         
-        # Create availability constraints (G matrix format: Gx <= h)
-        # For current round: all players available
-        # For future rounds: ADP-based availability
-        G_availability_list = []
-        h_availability_list = []
+        # Create G matrix as identity matrix (each constraint affects one variable)
+        G_availability = np.eye(total_constraints)
         
-        for player_idx in range(num_players):
-            player_adp = adp_sample[player_idx]
-            
-            for round_idx, pick_num in enumerate(adjusted_picks):
-                # Variable index for this player-round combination
-                var_idx = player_idx * num_rounds + round_idx
-                
-                # Create constraint: x[player_idx, round_idx] <= availability
-                constraint_row = np.zeros(num_players * num_rounds)
-                constraint_row[var_idx] = 1
-                
-                # For the current round (round_idx == 0), all players are available
-                # For future rounds, use ADP constraints
-                if round_idx == 0:
-                    available = 1  # All players available for current pick
-                else:
-                    # Player is available if your pick number <= their ADP (you pick before they're typically drafted)
-                    available = 1 if pick_num <= player_adp else 0
-                
-                G_availability_list.append(constraint_row)
-                h_availability_list.append(available)
+        # Vectorized availability calculation
+        adp_array = np.array(adp_sample)  # Shape: (num_players,)
+        picks_array = np.array(adjusted_picks)  # Shape: (num_rounds,)
         
-        G_availability = np.array(G_availability_list)
-        h_availability = np.array(h_availability_list).reshape(-1, 1)
+        # Create availability matrix: players x rounds
+        # For round 0: all players available (value = 1)
+        # For other rounds: available if pick_num <= player_adp
+        availability_matrix = np.ones((num_players, num_rounds))
+        
+        for round_idx in range(1, num_rounds):  # Skip round 0 (already set to 1)
+            pick_num = picks_array[round_idx]
+            availability_matrix[:, round_idx] = (adp_array >= pick_num).astype(int)
+        
+        # Flatten availability matrix to match constraint structure
+        h_availability = availability_matrix.flatten().reshape(-1, 1)
         
         return G_availability, h_availability
     
@@ -319,23 +312,16 @@ class FootballSimulation:
         if num_rounds == 0:
             return np.zeros((0, num_players * num_rounds)), np.zeros((0, 1))
         
-        # For each round, sum across all players should equal 1
-        A_rounds = []
-        b_rounds = []
+        # Vectorized approach: create block matrix
+        A_rounds = np.zeros((num_rounds, num_players * num_rounds))
         
+        # For each round, set coefficients to 1 for all players in that round
         for round_idx in range(num_rounds):
-            constraint_row = np.zeros(num_players * num_rounds)
-            
-            # For this round, set coefficient to 1 for all players
-            for player_idx in range(num_players):
-                var_idx = player_idx * num_rounds + round_idx
-                constraint_row[var_idx] = 1
-            
-            A_rounds.append(constraint_row)
-            b_rounds.append(1)  # Exactly 1 player per round
+            # All variables for this round: player_idx * num_rounds + round_idx
+            var_indices = np.arange(num_players) * num_rounds + round_idx
+            A_rounds[round_idx, var_indices] = 1
         
-        A_rounds = np.array(A_rounds)
-        b_rounds = np.array(b_rounds).reshape(-1, 1)
+        b_rounds = np.ones((num_rounds, 1))  # Exactly 1 player per round
         
         return A_rounds, b_rounds
     
@@ -344,23 +330,16 @@ class FootballSimulation:
         if num_rounds == 0:
             return np.zeros((0, num_players * num_rounds)), np.zeros((0, 1))
         
-        # For each player, sum across all rounds should be <= 1
-        G_players = []
-        h_players = []
+        # Vectorized approach: create block diagonal-like structure
+        G_players = np.zeros((num_players, num_players * num_rounds))
         
+        # For each player, set coefficients to 1 for all rounds they could be selected
         for player_idx in range(num_players):
-            constraint_row = np.zeros(num_players * num_rounds)
-            
-            # For this player, set coefficient to 1 for all rounds
-            for round_idx in range(num_rounds):
-                var_idx = player_idx * num_rounds + round_idx
-                constraint_row[var_idx] = 1
-            
-            G_players.append(constraint_row)
-            h_players.append(1)  # At most 1 selection per player
+            # All variables for this player: player_idx * num_rounds + round_idx for all rounds
+            var_indices = player_idx * num_rounds + np.arange(num_rounds)
+            G_players[player_idx, var_indices] = 1
         
-        G_players = np.array(G_players)
-        h_players = np.array(h_players).reshape(-1, 1)
+        h_players = np.ones((num_players, 1))  # At most 1 selection per player
         
         return G_players, h_players
 
@@ -372,14 +351,10 @@ class FootballSimulation:
         labels = data[['player', 'pos']]
         current_points = -1 * data.iloc[:, np.random.choice(range(2, max_entries+2), size=num_avg_pts)].mean(axis=1)
         
-        # Expand points to match the 2D variable structure
-        # Each player's points are repeated for each round they could be selected
-        expanded_points = []
-        for player_points in current_points:
-            for round_idx in range(num_rounds):
-                expanded_points.append(player_points)
+        # Vectorized expansion: repeat each player's points for all rounds
+        expanded_points = np.repeat(current_points.values, num_rounds)
         
-        return labels, np.array(expanded_points)
+        return labels, expanded_points
 
     @staticmethod
     def solve_ilp(c, G, h, A, b):
@@ -451,6 +426,10 @@ class FootballSimulation:
         num_options = 500
         player_selections = self.init_select_cnts()
         success_trials = 0
+        
+        # Pre-convert to sets for faster lookups
+        to_add_set = set(to_add)
+        to_drop_set = set(to_drop)
 
         for i in range(self.num_iters):
             
@@ -458,16 +437,16 @@ class FootballSimulation:
                 
                 # get predictions and remove already drafted players
                 ppg_pred = self.get_predictions('pred_fp_per_game', num_options=num_options)
-                ppg_pred = self.drop_players(ppg_pred, to_drop)
+                ppg_pred = self.drop_players(ppg_pred, to_drop_set)
 
                 ppg_pred_ny = self.get_predictions('pred_fp_per_game_ny', num_options=num_options)
-                ppg_pred_ny = self.drop_players(ppg_pred_ny, to_drop)
+                ppg_pred_ny = self.drop_players(ppg_pred_ny, to_drop_set)
                 
                 prob_top = self.get_predictions('prob_top', num_options=num_options)
-                prob_top = self.drop_players(prob_top, to_drop)
+                prob_top = self.drop_players(prob_top, to_drop_set)
 
                 adp_samples = self.get_adp_samples(num_options=num_options)
-                adp_samples = self.drop_players(adp_samples, to_drop)
+                adp_samples = self.drop_players(adp_samples, to_drop_set)
 
             # Select prediction type
             use_upside = np.random.choice([True, False], p=[upside_frac, 1-upside_frac])
@@ -483,9 +462,6 @@ class FootballSimulation:
             # Build constraint matrices for all picks at once
             num_players = len(predictions)
             num_picks = len(self.my_picks)
-            
-            # Account for already owned players
-            already_selected = set(to_add)
             
             # Calculate adjusted picks - remove first N picks if N players already selected
             adjusted_picks = self.calculate_adjusted_picks(len(to_add))
@@ -504,8 +480,8 @@ class FootballSimulation:
                         pos_require_adjusted[player_pos] -= 1
             
             # Remove already owned players from consideration
-            available_predictions = predictions[~predictions.player.isin(to_add)].reset_index(drop=True)
-            available_adp_samples = adp_samples[~adp_samples.player.isin(to_add)].reset_index(drop=True)
+            available_predictions = predictions[~predictions.player.isin(to_add_set)].reset_index(drop=True)
+            available_adp_samples = adp_samples[~adp_samples.player.isin(to_add_set)].reset_index(drop=True)
             
             if len(available_predictions) == 0:
                 continue
@@ -573,42 +549,44 @@ class FootballSimulation:
                 status, x = self.solve_ilp(c, G, h, A, b)
                 
                 if status == 'optimal':
-                    # Track selections and availability
+                    # Track selections and availability (vectorized approach)
                     x_solution = np.array(x)[:, 0]
                     
-                    # Convert 1D solution back to 2D player-round structure
-                    selected_players_by_round = {}
-                    for player_idx in range(num_players):
-                        for round_idx in range(num_rounds):
-                            var_idx = player_idx * num_rounds + round_idx
-                            if x_solution[var_idx] == 1:
-                                player_name = available_predictions.iloc[player_idx].player
-                                adjusted_round_idx = round_idx + len(to_add)  # Adjust for already selected players
-                                selected_players_by_round[adjusted_round_idx + 1] = player_name
+                    # Vectorized solution parsing: find selected players by round
+                    x_reshaped = x_solution.reshape(num_players, num_rounds)
+                    selected_indices = np.where(x_reshaped == 1)
                     
-                    # Track availability for ALL players in the dataset by round
-                    # This needs to happen for all players, not just those in the optimization
+                    selected_players_by_round = {}
+                    for i in range(len(selected_indices[0])):
+                        player_idx = selected_indices[0][i]
+                        round_idx = selected_indices[1][i]
+                        player_name = available_predictions.iloc[player_idx].player
+                        adjusted_round_idx = round_idx + len(to_add)  # Adjust for already selected players
+                        selected_players_by_round[adjusted_round_idx + 1] = player_name
+                    
+                    # Vectorized availability tracking for ALL players in the dataset
                     full_adp_sample = adp_samples.iloc[:, np.random.choice(range(2, adp_samples.shape[1]))].values
                     
+                    # Pre-compute availability for all players and rounds
+                    adjusted_picks_array = np.array(adjusted_picks)
+                    
+                    # Vectorized availability calculation
                     for j, player in enumerate(adp_samples.player):
+                        if player in to_add_set:
+                            continue  # Skip already selected players
+                            
                         player_adp = full_adp_sample[j]
                         
-                        # Track availability for each round
-                        for round_idx, pick_num in enumerate(adjusted_picks):
-                            adjusted_round_num = round_idx + len(to_add) + 1  # Convert to 1-based round number
-                            
-                            # For the current round (first in adjusted_picks), all players are available
-                            # For future rounds, use ADP constraints
-                            if round_idx == 0:
-                                # All players available for current pick (except those already selected)
-                                if player not in to_add:
-                                    player_selections[player][f'round_{adjusted_round_num}_available'] += 1
-                                    player_selections[player]['total_available_count'] += 1
-                            else:
-                                # For future rounds, use ADP constraints (and exclude already selected players)
-                                if player not in to_add and player_adp >= pick_num:  # Player is available for this pick
-                                    player_selections[player][f'round_{adjusted_round_num}_available'] += 1
-                                    player_selections[player]['total_available_count'] += 1
+                        # Vectorized round availability check
+                        # Round 0: always available, others: available if adp >= pick_num
+                        available_rounds = np.concatenate([[True], player_adp >= adjusted_picks_array[1:]])
+                        
+                        # Update counters for available rounds
+                        for round_idx, is_available in enumerate(available_rounds):
+                            if is_available:
+                                adjusted_round_num = round_idx + len(to_add) + 1
+                                player_selections[player][f'round_{adjusted_round_num}_available'] += 1
+                                player_selections[player]['total_available_count'] += 1
                     
                     # Track selections by round
                     for round_num, player in selected_players_by_round.items():
@@ -697,4 +675,4 @@ class FootballSimulation:
 # # %%
 
 # results.sort_values(by='Round1Count', ascending=False).iloc[:59]
-# %%
+# # %%
