@@ -268,7 +268,10 @@ class FootballSimulation:
         return A_position
     
     def create_availability_constraints(self, adp_sample, predictions, adjusted_picks):
-        """Create availability constraints for player-round combinations"""
+        """Create availability constraints for player-round combinations
+        For the current round (first in adjusted_picks), all players are available.
+        For future rounds, use ADP-based availability constraints.
+        """
         num_players = len(predictions)
         num_rounds = len(adjusted_picks)
         
@@ -279,7 +282,8 @@ class FootballSimulation:
         # Total variables: num_players * num_rounds
         
         # Create availability constraints (G matrix format: Gx <= h)
-        # Each player can only be selected in rounds where their ADP >= pick number
+        # For current round: all players available
+        # For future rounds: ADP-based availability
         G_availability_list = []
         h_availability_list = []
         
@@ -294,8 +298,13 @@ class FootballSimulation:
                 constraint_row = np.zeros(num_players * num_rounds)
                 constraint_row[var_idx] = 1
                 
-                # Player is available if your pick number <= their ADP (you pick before they're typically drafted)
-                available = 1 if pick_num <= player_adp else 0
+                # For the current round (round_idx == 0), all players are available
+                # For future rounds, use ADP constraints
+                if round_idx == 0:
+                    available = 1  # All players available for current pick
+                else:
+                    # Player is available if your pick number <= their ADP (you pick before they're typically drafted)
+                    available = 1 if pick_num <= player_adp else 0
                 
                 G_availability_list.append(constraint_row)
                 h_availability_list.append(available)
@@ -577,16 +586,29 @@ class FootballSimulation:
                                 adjusted_round_idx = round_idx + len(to_add)  # Adjust for already selected players
                                 selected_players_by_round[adjusted_round_idx + 1] = player_name
                     
-                    # Track availability for all players by round
-                    for j, player in enumerate(available_predictions.player):
-                        player_adp = adp_sample[j]
+                    # Track availability for ALL players in the dataset by round
+                    # This needs to happen for all players, not just those in the optimization
+                    full_adp_sample = adp_samples.iloc[:, np.random.choice(range(2, adp_samples.shape[1]))].values
+                    
+                    for j, player in enumerate(adp_samples.player):
+                        player_adp = full_adp_sample[j]
                         
                         # Track availability for each round
                         for round_idx, pick_num in enumerate(adjusted_picks):
                             adjusted_round_num = round_idx + len(to_add) + 1  # Convert to 1-based round number
-                            if player_adp >= pick_num:  # Player is available for this pick
-                                player_selections[player][f'round_{adjusted_round_num}_available'] += 1
-                                player_selections[player]['total_available_count'] += 1
+                            
+                            # For the current round (first in adjusted_picks), all players are available
+                            # For future rounds, use ADP constraints
+                            if round_idx == 0:
+                                # All players available for current pick (except those already selected)
+                                if player not in to_add:
+                                    player_selections[player][f'round_{adjusted_round_num}_available'] += 1
+                                    player_selections[player]['total_available_count'] += 1
+                            else:
+                                # For future rounds, use ADP constraints (and exclude already selected players)
+                                if player not in to_add and player_adp >= pick_num:  # Player is available for this pick
+                                    player_selections[player][f'round_{adjusted_round_num}_available'] += 1
+                                    player_selections[player]['total_available_count'] += 1
                     
                     # Track selections by round
                     for round_num, player in selected_players_by_round.items():
@@ -623,51 +645,59 @@ class FootballSimulation:
 
 #%%
     
-conn = sqlite3.connect("C:/Users/borys/OneDrive/Documents/Github/Fantasy_Football_Snake/app/Simulation.sqlite3")
-year = 2025
-league = 'dk'
-num_teams = 12
-num_rounds = 12  # Small test - just 3 rounds
-my_pick_position = 7
-num_iters = 250  # Small number for testing
-pos_require_start = {'QB': 2, 'RB': 3, 'WR': 5, 'TE': 2}  # No FLEX for now
+# conn = sqlite3.connect("C:/Users/borys/OneDrive/Documents/Github/Fantasy_Football_Snake/app/Simulation.sqlite3")
+# year = 2025
+# league = 'dk'
+# num_teams = 12
+# num_rounds = 20
+# my_pick_position = 7
+# num_iters = 50
+# pos_require_start = {'QB': 3, 'RB': 6, 'WR': 8, 'TE': 3}  # No FLEX for now
 
-try:
-    sim = FootballSimulation(conn, year, pos_require_start, num_teams, num_rounds, my_pick_position,
-                             pred_vers='final_ensemble', league=league, use_ownership=0)
+# try:
+#     sim = FootballSimulation(conn, year, pos_require_start, num_teams, num_rounds, my_pick_position,
+#                              pred_vers='final_ensemble', league=league, use_ownership=0)
     
-    print(f"Snake picks: {sim.my_picks}")
-    print(f"Player data shape: {sim.player_data.shape}")
+#     print(f"Snake picks: {sim.my_picks}")
+#     print(f"Player data shape: {sim.player_data.shape}")
     
-    # Test run
-    to_add = []  # No pre-selected players
-    to_drop = []  # No excluded players
+#     # Test run
+#     to_add = ['Ceedee Lamb']  # No pre-selected players
+#     to_drop = ["Ja'Marr Chase", 'Malik Nabers', 'Saquon Barkley', 'Puka Nacua',
+#                 'Bijan Robinson', 'Christian Mccaffrey', 'Brian Thomas', 'Amon Ra St Brown',
+#                 'Justin Jefferson', 'Ashton Jeanty', 'Devon Achane', 'Jahmyr Gibbs', 'Nico Collins', 'Ladd Mcconkey',
+#                 'Derrick Henry'
+
+#                 ]  # No excluded players
     
-    results = sim.run_sim(to_add, to_drop, num_iters, num_avg_pts=3, upside_frac=0, next_year_frac=0)
-    print("Top 10 results:")
-    print(results.head(10))
+#     results = sim.run_sim(to_add, to_drop, num_iters, num_avg_pts=3, upside_frac=0, next_year_frac=0)
+#     print("Top 10 results:")
+#     print(results.head(10))
     
-    # Show round-by-round breakdown for top players
-    print("\nRound-by-round breakdown for top 3 players:")
-    for i in range(min(3, len(results))):
-        player = results.iloc[i]
-        print(f"\n{player['player']}:")
-        print(f"  Total: {player['TotalSelectionCounts']}/{player['TotalAvailableCount']} ({player['PctSelectedWhenAvailable']:.1f}%)")
+#     # Show round-by-round breakdown for top players
+#     print("\nRound-by-round breakdown for top 3 players:")
+#     for i in range(min(3, len(results))):
+#         player = results.iloc[i]
+#         print(f"\n{player['player']}:")
+#         print(f"  Total: {player['TotalSelectionCounts']}/{player['TotalAvailableCount']} ({player['PctSelectedWhenAvailable']:.1f}%)")
         
-        # Show round data
-        for round_num in range(1, num_rounds + 1):
-            count_col = f'Round{round_num}Count'
-            avail_col = f'Round{round_num}Available'
-            pct_col = f'Round{round_num}Pct'
+#         # Show round data
+#         for round_num in range(1, num_rounds + 1):
+#             count_col = f'Round{round_num}Count'
+#             avail_col = f'Round{round_num}Available'
+#             pct_col = f'Round{round_num}Pct'
             
-            if count_col in player.index and avail_col in player.index:
-                count = player[count_col]
-                available = player[avail_col]
-                pct = player[pct_col] if pct_col in player.index else 0
-                print(f"  Round {round_num}: {count}/{available} ({pct:.1f}%)")
+#             if count_col in player.index and avail_col in player.index:
+#                 count = player[count_col]
+#                 available = player[avail_col]
+#                 pct = player[pct_col] if pct_col in player.index else 0
+#                 print(f"  Round {round_num}: {count}/{available} ({pct:.1f}%)")
     
-except Exception as e:
-    print(f"Error: {e}")
-    import traceback
-    traceback.print_exc()
+# except Exception as e:
+#     print(f"Error: {e}")
+#     import traceback
+#     traceback.print_exc()
+# # %%
+
+# results.sort_values(by='Round2Count', ascending=False).iloc[:59]
 # %%
