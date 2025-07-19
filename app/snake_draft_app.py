@@ -292,36 +292,47 @@ def apply_loaded_state(player_data, loaded_data):
 
 def render_save_button(selected_data, settings, placeholder):
     """Render the Save & Download button in the sidebar placeholder"""
-    draft_data, settings_data = save_draft_state(selected_data, settings)
     
-    if len(draft_data) > 0:
-        # Combine draft data and settings
-        combined_data = pd.concat([draft_data, settings_data], ignore_index=True)
+    # Count current selections to determine if button should be enabled
+    my_team_count = len(selected_data[selected_data['MyTeam'] == True])
+    other_team_count = len(selected_data[selected_data['OtherTeam'] == True])
+    has_selections = my_team_count > 0 or other_team_count > 0
+    
+    if has_selections:
+        # Generate the CSV data
+        draft_data, settings_data = save_draft_state(selected_data, settings)
         
-        # Create CSV data
-        csv_buffer = io.StringIO()
-        combined_data.to_csv(csv_buffer, index=False)
-        csv_string = csv_buffer.getvalue()
-        
-        # Generate filename with custom name and timestamp
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        file_name = st.session_state.save_file_name
-        if file_name.strip():
-            # Clean the filename (remove invalid characters)
-            clean_name = "".join(c for c in file_name.strip() if c.isalnum() or c in (' ', '-', '_')).strip()
-            clean_name = clean_name.replace(' ', '_')
-            filename = f"{clean_name}_{timestamp}.csv"
+        if len(draft_data) > 0:
+            # Combine draft data and settings
+            combined_data = pd.concat([draft_data, settings_data], ignore_index=True)
+            
+            # Create CSV data
+            csv_buffer = io.StringIO()
+            combined_data.to_csv(csv_buffer, index=False)
+            csv_string = csv_buffer.getvalue()
+            
+            # Generate filename with custom name and timestamp
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            file_name = st.session_state.save_file_name
+            if file_name.strip():
+                # Clean the filename (remove invalid characters)
+                clean_name = "".join(c for c in file_name.strip() if c.isalnum() or c in (' ', '-', '_')).strip()
+                clean_name = clean_name.replace(' ', '_')
+                filename = f"{clean_name}_{timestamp}.csv"
+            else:
+                filename = f"draft_state_{timestamp}.csv"
+            
+            # Direct download button
+            placeholder.download_button(
+                label="💾 Save & Download Draft",
+                data=csv_string,
+                file_name=filename,
+                mime="text/csv",
+                help="Save and download current draft selections as CSV",
+                key="save_draft_button"
+            )
         else:
-            filename = f"draft_state_{timestamp}.csv"
-        
-        # Direct download button in the placeholder
-        placeholder.download_button(
-            label="💾 Save & Download Draft",
-            data=csv_string,
-            file_name=filename,
-            mime="text/csv",
-            help="Save and download current draft selections as CSV"
-        )
+            placeholder.button("💾 Save & Download Draft", disabled=True, help="No players selected to save")
     else:
         placeholder.button("💾 Save & Download Draft", disabled=True, help="No players selected to save")
 
@@ -380,16 +391,6 @@ def sidebar_controls():
     
     st.sidebar.header("Save/Load Draft")
     
-    # Initialize session state for loaded data
-    if 'loaded_draft_data' not in st.session_state:
-        st.session_state.loaded_draft_data = None
-    if 'loaded_settings_data' not in st.session_state:
-        st.session_state.loaded_settings_data = None
-    if 'confirm_clear' not in st.session_state:
-        st.session_state.confirm_clear = False
-    if 'file_uploader_key' not in st.session_state:
-        st.session_state.file_uploader_key = 0
-    
     # File upload for loading draft state
     uploaded_file = st.sidebar.file_uploader(
         "Load Draft State",
@@ -405,6 +406,7 @@ def sidebar_controls():
         else:
             st.session_state.loaded_draft_data = loaded_data
             st.session_state.loaded_settings_data = loaded_settings
+            st.session_state.data_loaded_applied = False  # Reset flag to allow reapplication
             st.sidebar.success("Draft state loaded successfully!")
             
             # Show loaded info
@@ -424,10 +426,7 @@ def sidebar_controls():
         help="Enter a custom name for your draft file"
     )
     
-    # Store the file name in session state
-    if 'save_file_name' not in st.session_state:
-        st.session_state.save_file_name = ""
-    
+    # Update session state with file name
     st.session_state.save_file_name = file_name
     
     # Create a placeholder for the save button that will be populated later
@@ -452,6 +451,7 @@ def sidebar_controls():
                     # Clear any loaded data to ensure it doesn't interfere
                     st.session_state.loaded_draft_data = None
                     st.session_state.loaded_settings_data = None
+                    st.session_state.data_loaded_applied = False
                     # Reset file uploader by changing its key
                     st.session_state.file_uploader_key += 1
             with col2:
@@ -475,6 +475,26 @@ def sidebar_controls():
 def main():
     st.set_page_config(page_title="Snake Draft Optimizer", layout="wide")
     
+    # Initialize all session state variables at the start
+    if 'loaded_draft_data' not in st.session_state:
+        st.session_state.loaded_draft_data = None
+    if 'loaded_settings_data' not in st.session_state:
+        st.session_state.loaded_settings_data = None
+    if 'confirm_clear' not in st.session_state:
+        st.session_state.confirm_clear = False
+    if 'file_uploader_key' not in st.session_state:
+        st.session_state.file_uploader_key = 0
+    if 'save_file_name' not in st.session_state:
+        st.session_state.save_file_name = ""
+    if 'clear_selections' not in st.session_state:
+        st.session_state.clear_selections = False
+    if 'grid_key_counter' not in st.session_state:
+        st.session_state.grid_key_counter = 0
+    if 'league_changed' not in st.session_state:
+        st.session_state.league_changed = False
+    if 'data_loaded_applied' not in st.session_state:
+        st.session_state.data_loaded_applied = False
+    
     # Custom CSS to reduce padding
     st.markdown(
         """
@@ -491,10 +511,6 @@ def main():
     
     # Get settings from sidebar
     settings = sidebar_controls()
-    
-    # Initialize league_changed flag if it doesn't exist
-    if 'league_changed' not in st.session_state:
-        st.session_state.league_changed = False
     
     try:
         # Initialize simulation (will be fresh if refresh button was clicked)
@@ -516,26 +532,25 @@ def main():
         # Get player data
         player_data = get_player_data(sim)
         
-        # Apply loaded draft state if available
-        if st.session_state.loaded_draft_data is not None:
+        # Apply loaded draft state if available and not yet applied
+        if (st.session_state.loaded_draft_data is not None and 
+            not st.session_state.data_loaded_applied):
             player_data = apply_loaded_state(player_data, st.session_state.loaded_draft_data)
-            # Clear the loaded data after applying to prevent reapplying
-            st.session_state.loaded_draft_data = None
+            # Mark as applied but don't clear the data yet
+            st.session_state.data_loaded_applied = True
         
         # Handle clear selections if requested (before creating the grid)
-        if 'clear_selections' in st.session_state and st.session_state.clear_selections:
+        if st.session_state.clear_selections:
             # Reset player data by clearing selections
             player_data['MyTeam'] = False
             player_data['OtherTeam'] = False
             st.session_state.clear_selections = False
             # Force grid to reset by changing the key
-            if 'grid_key_counter' not in st.session_state:
-                st.session_state.grid_key_counter = 0
             st.session_state.grid_key_counter += 1
             st.success("All selections cleared!")
         
         # Get grid key for forcing reset when needed
-        grid_key = f"main_{st.session_state.get('grid_key_counter', 0)}"
+        grid_key = f"main_{st.session_state.grid_key_counter}"
         
         # Main content
         col1, col2 = st.columns([2, 1])
@@ -547,46 +562,8 @@ def main():
             selected_data = create_interactive_grid(player_data, key_suffix=grid_key)
             
             # Render the Save & Download button in the sidebar placeholder
+            # This ensures we capture the latest grid state
             render_save_button(selected_data, settings, settings['save_button_placeholder'])
-            
-            # Handle save and download in one click
-            if 'show_download' in st.session_state and st.session_state.show_download:
-                draft_data, settings_data = save_draft_state(selected_data, settings)
-                
-                if len(draft_data) > 0:
-                    # Combine draft data and settings
-                    combined_data = pd.concat([draft_data, settings_data], ignore_index=True)
-                    
-                    # Create download
-                    csv_buffer = io.StringIO()
-                    combined_data.to_csv(csv_buffer, index=False)
-                    csv_string = csv_buffer.getvalue()
-                    
-                    # Generate filename with custom name and timestamp
-                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    file_name = st.session_state.save_file_name
-                    if file_name.strip():
-                        # Clean the filename (remove invalid characters)
-                        clean_name = "".join(c for c in file_name.strip() if c.isalnum() or c in (' ', '-', '_')).strip()
-                        clean_name = clean_name.replace(' ', '_')
-                        filename = f"{clean_name}_{timestamp}.csv"
-                    else:
-                        filename = f"draft_state_{timestamp}.csv"
-                    
-                    # Auto-trigger download
-                    st.sidebar.download_button(
-                        label="⬇️ Click to Download",
-                        data=csv_string,
-                        file_name=filename,
-                        mime="text/csv",
-                        help="Your draft state is ready - click to download!"
-                    )
-                    
-                    # Clear the flag after showing download button
-                    st.session_state.show_download = False
-                else:
-                    st.sidebar.warning("No players selected to save!")
-                    st.session_state.show_download = False
             
             # Get current selections for validation
             current_my_team = selected_data[selected_data['MyTeam'] == True]
