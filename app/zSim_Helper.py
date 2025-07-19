@@ -401,8 +401,6 @@ class FootballSimulation:
         to_drop_set = set(to_drop)
 
         for i in range(self.num_iters):
-
-            start1 = time.time()
             
             if i % int(num_options/10) == 0:
                 
@@ -544,15 +542,10 @@ class FootballSimulation:
             # Convert only the changing parts to cvxopt matrices
             h = matrix(h_combined, tc='d')            
             c = matrix(c_points, tc='d')
-            time1 = time.time() - start1
             # Solve ILP
             try:
-                start2 = time.time()
                 status, x = self.solve_ilp(c, G_static, h, A, b)
-                print(status)
-                time2 = time.time() - start2
                 if status == 'optimal':
-                    start3 = time.time()
                     
                     # Track player availability for this iteration (before tracking selections)
                     # Use the h_availability vector to determine which players were available
@@ -588,14 +581,11 @@ class FootballSimulation:
                         player_selections[player]['total_counts'] += 1
                     
                     success_trials += 1
-                    time3 = time.time() - start3
                     
             except Exception as e:
                 # If optimization fails, continue to next iteration
                 print(f"Optimization failed in iteration {i}: {e}")
                 pass
-
-            print(f'Time1: {time1:.2f}s, Time2: {time2:.2f}s, Time3: {time3:.2f}s, Success Trials: {success_trials}', end='\r')
 
         results = self.final_results(player_selections, success_trials)
 
