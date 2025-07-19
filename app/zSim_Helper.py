@@ -401,7 +401,7 @@ class FootballSimulation:
             column_renames[f'round_{i+1}_pct'] = f'Round{i+1}Pct'
         
         results = results.rename(columns=column_renames)
-        results = results.sort_values(by='TotalSelectionCounts', ascending=False).iloc[:59]
+        results = results.sort_values(by='TotalSelectionCounts', ascending=False)
         results = results.reset_index().rename(columns={'index': 'player'})
         results['PctSelected'] = 100*np.round(results.TotalSelectionCounts / success_trials, 3)
         return results
@@ -564,32 +564,6 @@ class FootballSimulation:
                         adjusted_round_idx = round_idx + len(to_add)  # Adjust for already selected players
                         selected_players_by_round[adjusted_round_idx + 1] = player_name
                     
-                    # Vectorized availability tracking for ALL players in the dataset
-                    # Use the same adp_sample that was used for the constraints
-                    
-                    # Pre-compute availability for all players and rounds
-                    adjusted_picks_array = np.array(adjusted_picks)
-                    
-                    # Vectorized availability calculation
-                    for j, player in enumerate(available_predictions.player):
-                        if player in to_add_set:
-                            continue  # Skip already selected players
-                            
-                        player_adp = adp_sample[j]
-                        
-                        # Vectorized round availability check
-                        # Round 0: always available, others: available if adp >= pick_num
-                        available_rounds = np.concatenate(([True], player_adp >= adjusted_picks_array[1:]))
-                        
-                        # Update counters for available rounds
-                        for round_idx, is_available in enumerate(available_rounds):
-                            if is_available:
-                                adjusted_round_num = round_idx + len(to_add) + 1
-                                if f'round_{adjusted_round_num}_available' in player_selections[player]:
-                                    player_selections[player][f'round_{adjusted_round_num}_available'] += 1
-                                    player_selections[player]['total_available_count'] += 1
-                    
-                    # Track selections by round
                     for round_num, player in selected_players_by_round.items():
                         player_selections[player][f'round_{round_num}_count'] += 1
                         player_selections[player]['total_counts'] += 1
@@ -676,5 +650,7 @@ except Exception as e:
     traceback.print_exc()
 # %%
 
-results.sort_values(by='Round1Count', ascending=False).iloc[:59]
+results.sort_values(by='Round2Count', ascending=False).iloc[:10]
+# %%
+results.sum().iloc[:20]
 # %%
