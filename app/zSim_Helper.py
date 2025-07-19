@@ -223,17 +223,18 @@ class FootballSimulation:
         
         A_position = np.zeros((num_positions, num_players * num_rounds))
         
-        for i, (pred_idx, player_row) in enumerate(predictions.iterrows()):
-            player_pos = player_row.pos
+        # Vectorized position assignment - avoid iterrows()
+        player_positions = predictions['pos'].values
+        
+        for pos_idx, position in enumerate(positions):
+            # Find all players with this position
+            player_mask = player_positions == position
+            player_indices = np.where(player_mask)[0]
             
-            # Add to specific position constraint for all rounds this player could be selected
-            if player_pos in positions:
-                pos_idx = positions.index(player_pos)
-                
-                # Sum across all rounds for this player
-                for round_idx in range(num_rounds):
-                    var_idx = i * num_rounds + round_idx
-                    A_position[pos_idx, var_idx] = 1
+            # For each player with this position, set coefficient to 1 across all rounds
+            for player_idx in player_indices:
+                var_indices = player_idx * num_rounds + np.arange(num_rounds)
+                A_position[pos_idx, var_indices] = 1
         
         # Create b vector with exact position requirements
         b_position = np.array([pos_require[pos] for pos in positions]).reshape(-1, 1)
@@ -251,29 +252,26 @@ class FootballSimulation:
         if num_rounds == 0:
             return np.zeros((0, num_players * num_rounds)), np.zeros((0, 1))
         
-        # Vectorized approach: create sparse identity matrix pattern
+        # Pre-allocate availability vector directly - avoid creating large identity matrix
         total_constraints = num_players * num_rounds
+        h_availability = np.ones(total_constraints, dtype=np.float64)
         
-        # Create G matrix as identity matrix (each constraint affects one variable)
-        G_availability = np.eye(total_constraints)
+        # Vectorized availability calculation - only update future rounds
+        if num_rounds > 1:
+            adp_array = adp_sample  # Already numpy array
+            picks_array = np.array(adjusted_picks)
+            
+            # Use broadcasting to compute availability for all player-round combinations at once
+            # Shape: (num_players, num_rounds-1) for rounds 1 to num_rounds-1
+            player_indices = np.arange(num_players)
+            for round_idx in range(1, num_rounds):
+                pick_num = picks_array[round_idx]
+                # Calculate flat indices for this round
+                flat_indices = player_indices * num_rounds + round_idx
+                # Set availability based on ADP
+                h_availability[flat_indices] = (adp_array >= pick_num).astype(np.float64)
         
-        # Vectorized availability calculation
-        adp_array = np.array(adp_sample)  # Shape: (num_players,)
-        picks_array = np.array(adjusted_picks)  # Shape: (num_rounds,)
-        
-        # Create availability matrix: players x rounds
-        # For round 0: all players available (value = 1)
-        # For other rounds: available if pick_num <= player_adp
-        availability_matrix = np.ones((num_players, num_rounds))
-        
-        for round_idx in range(1, num_rounds):  # Skip round 0 (already set to 1)
-            pick_num = picks_array[round_idx]
-            availability_matrix[:, round_idx] = (adp_array >= pick_num).astype(int)
-        
-        # Flatten availability matrix to match constraint structure
-        h_availability = availability_matrix.flatten().reshape(-1, 1)
-        
-        return G_availability, h_availability
+        return None, h_availability.reshape(-1, 1)  # Return None for G since we'll use pre-allocated identity
     
     def create_round_selection_constraints(self, num_players, num_rounds):
         """Create constraints to ensure exactly 1 player is selected per round"""
@@ -317,7 +315,10 @@ class FootballSimulation:
     def sample_c_points(data, max_entries, num_avg_pts, num_rounds):
         """Create objective function coefficients for player-round variables"""
         labels = data[['player', 'pos']]
-        current_points = -1 * data.iloc[:, np.random.choice(range(2, max_entries+2), size=num_avg_pts)].mean(axis=1)
+        
+        # Pre-generate random column indices to avoid repeated calls
+        col_indices = np.random.randint(2, max_entries+2, size=num_avg_pts)
+        current_points = -1 * data.iloc[:, col_indices].mean(axis=1)
         
         # Vectorized expansion: repeat each player's points for all rounds
         expanded_points = np.repeat(current_points.values, num_rounds)
@@ -455,6 +456,9 @@ class FootballSimulation:
                 available_predictions = predictions[~predictions.player.isin(to_add_set)].reset_index(drop=True)
                 available_adp_samples = adp_samples[~adp_samples.player.isin(to_add_set)].reset_index(drop=True)
                 
+                # Pre-convert ADP data columns to numpy array for faster access
+                adp_data_matrix = available_adp_samples.iloc[:, 2:].values  # Skip player and pos columns
+                
                 if len(available_predictions) == 0:
                     continue
             
@@ -471,6 +475,13 @@ class FootballSimulation:
                 if num_rounds == 0:
                     success_trials += 1
                     continue
+                
+                # Cache position mapping for faster constraint creation
+                position_cache = {}
+                player_positions = available_predictions['pos'].values
+                for pos_idx, position in enumerate(['QB', 'RB', 'WR', 'TE']):  # Common positions
+                    if position in pos_require_adjusted:
+                        position_cache[position] = np.where(player_positions == position)[0]
             
                 # 1. Position Requirements (exact constraints - use A matrix for == constraints)
                 A_position, b_position = self.create_position_constraint_matrix(available_predictions, pos_require_adjusted, num_rounds)
@@ -482,64 +493,81 @@ class FootballSimulation:
                 A_rounds, b_rounds = self.create_round_selection_constraints(num_players, num_rounds)
                 
                 # Pre-allocate combined matrices once (much faster than repeated vstack)
-                # Get availability matrix dimensions for pre-allocation
-                temp_G_avail, temp_h_avail = self.create_availability_constraints(
-                    np.ones(num_players), available_predictions, adjusted_picks)
+                # Create identity matrix for availability constraints (reused every iteration)
+                total_constraints = num_players * num_rounds
+                G_availability_identity = np.eye(total_constraints, dtype=np.float64)
                 
                 # Pre-allocate G matrices
-                G_rows = G_players.shape[0] + temp_G_avail.shape[0]
+                G_rows = G_players.shape[0] + total_constraints
                 G_cols = G_players.shape[1]
-                G_combined = np.empty((G_rows, G_cols), dtype=G_players.dtype)
+                G_combined = np.empty((G_rows, G_cols), dtype=np.float64)
                 G_combined[:G_players.shape[0]] = G_players  # Static part
+                G_combined[G_players.shape[0]:] = G_availability_identity  # Static identity part
                 
                 # Pre-allocate h vector
-                h_rows = h_players.shape[0] + temp_h_avail.shape[0]
-                h_combined = np.empty((h_rows, 1), dtype=h_players.dtype)
+                h_rows = h_players.shape[0] + total_constraints
+                h_combined = np.empty((h_rows, 1), dtype=np.float64)
                 h_combined[:h_players.shape[0]] = h_players  # Static part
                 
                 # Pre-allocate A matrices
                 A_rows = A_position.shape[0] + A_rounds.shape[0]
                 A_cols = A_position.shape[1]
-                A_combined = np.empty((A_rows, A_cols), dtype=A_position.dtype)
+                A_combined = np.empty((A_rows, A_cols), dtype=np.float64)
                 A_combined[:A_position.shape[0]] = A_position  # Static part
                 A_combined[A_position.shape[0]:] = A_rounds    # Static part
                 
                 # Pre-allocate b vector
                 b_rows = b_position.shape[0] + b_rounds.shape[0]
-                b_combined = np.empty((b_rows, 1), dtype=b_position.dtype)
+                b_combined = np.empty((b_rows, 1), dtype=np.float64)
                 b_combined[:b_position.shape[0]] = b_position  # Static part
                 b_combined[b_position.shape[0]:] = b_rounds    # Static part
 
+                # Pre-convert static matrices to cvxopt format (only once)
                 A = matrix(A_combined, tc='d')
                 b = matrix(b_combined, tc='d')
+                G_static = matrix(G_combined, tc='d')  # Pre-converted G matrix
                 
             
 
             # 3. Availability Constraints (players only available when ADP >= pick number)
-            adp_sample = available_adp_samples.iloc[:, np.random.choice(range(2, available_adp_samples.shape[1]))].values            
-            G_availability, h_availability = self.create_availability_constraints(adp_sample, available_predictions, adjusted_picks)
+            # Use pre-converted matrix for faster access
+            col_idx = np.random.randint(0, adp_data_matrix.shape[1])
+            adp_sample = adp_data_matrix[:, col_idx]
+            _, h_availability = self.create_availability_constraints(adp_sample, available_predictions, adjusted_picks)
             
             # Update only the changing parts (availability constraints)
-            G_combined[G_players.shape[0]:] = G_availability
             h_combined[h_players.shape[0]:] = h_availability
 
             # Objective function (maximize points)
             _, c_points = self.sample_c_points(available_predictions, num_options, num_avg_pts, num_rounds)
-            start4 = time.time()
-            # Convert to cvxopt matrices
-            G = matrix(G_combined, tc='d')
+            
+            # Convert only the changing parts to cvxopt matrices
             h = matrix(h_combined, tc='d')            
             c = matrix(c_points, tc='d')
-            time4 = time.time() - start4
             time1 = time.time() - start1
             # Solve ILP
             try:
                 start2 = time.time()
-                status, x = self.solve_ilp(c, G, h, A, b)
+                status, x = self.solve_ilp(c, G_static, h, A, b)
                 print(status)
                 time2 = time.time() - start2
                 if status == 'optimal':
                     start3 = time.time()
+                    
+                    # Track player availability for this iteration (before tracking selections)
+                    # Use the h_availability vector to determine which players were available
+                    h_avail_array = h_availability.flatten()
+                    
+                    for player_idx in range(num_players):
+                        player_name = available_predictions.iloc[player_idx].player
+                        for round_idx in range(num_rounds):
+                            # Calculate the constraint index for this player-round combination
+                            constraint_idx = player_idx * num_rounds + round_idx
+                            if h_avail_array[constraint_idx] == 1:  # Player was available
+                                adjusted_round_num = round_idx + len(to_add) + 1  # Adjust for already selected players
+                                player_selections[player_name][f'round_{adjusted_round_num}_available'] += 1
+                                player_selections[player_name]['total_available_count'] += 1
+                    
                     # Track selections and availability (vectorized approach)
                     x_solution = np.array(x)[:, 0]
                     
@@ -567,7 +595,7 @@ class FootballSimulation:
                 print(f"Optimization failed in iteration {i}: {e}")
                 pass
 
-            print(f'Time1: {time1:.2f}s, Time2: {time2:.2f}s, Time3: {time3:.2f}s, Time4: {time4:.2f}s, Success Trials: {success_trials}', end='\r')
+            print(f'Time1: {time1:.2f}s, Time2: {time2:.2f}s, Time3: {time3:.2f}s, Success Trials: {success_trials}', end='\r')
 
         results = self.final_results(player_selections, success_trials)
 
@@ -644,7 +672,7 @@ except Exception as e:
     traceback.print_exc()
 # %%
 
-results.sort_values(by='Round1Count', ascending=False).iloc[:10]
+results.sort_values(by='Round2Count', ascending=False).iloc[:10]
 # %%
 results.sum().iloc[:20]
 # %%
