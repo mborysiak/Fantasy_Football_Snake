@@ -543,23 +543,34 @@ class FootballSimulation:
             h = matrix(h_combined, tc='d')            
             c = matrix(c_points, tc='d')
             # Solve ILP
+
             try:
+                
                 status, x = self.solve_ilp(c, G_static, h, A, b)
                 if status == 'optimal':
-                    
-                    # Track player availability for this iteration (before tracking selections)
-                    # Use the h_availability vector to determine which players were available
+                    # Track player availability for this iteration (vectorized approach)
                     h_avail_array = h_availability.flatten()
                     
-                    for player_idx in range(num_players):
-                        player_name = available_predictions.iloc[player_idx].player
-                        for round_idx in range(num_rounds):
-                            # Calculate the constraint index for this player-round combination
-                            constraint_idx = player_idx * num_rounds + round_idx
-                            if h_avail_array[constraint_idx] == 1:  # Player was available
-                                adjusted_round_num = round_idx + len(to_add) + 1  # Adjust for already selected players
-                                player_selections[player_name][f'round_{adjusted_round_num}_available'] += 1
-                                player_selections[player_name]['total_available_count'] += 1
+                    # Vectorized availability tracking
+                    # Reshape availability array to (num_players, num_rounds)
+                    availability_matrix = h_avail_array.reshape(num_players, num_rounds)
+                    
+                    # Get player names as array for faster indexing
+                    player_names = available_predictions['player'].values
+                    
+                    # Find all available player-round combinations at once
+                    available_positions = np.where(availability_matrix == 1)
+                    player_indices = available_positions[0]
+                    round_indices = available_positions[1]
+                    
+                    # Batch update availability counts
+                    for i in range(len(player_indices)):
+                        player_idx = player_indices[i]
+                        round_idx = round_indices[i]
+                        player_name = player_names[player_idx]
+                        adjusted_round_num = round_idx + len(to_add) + 1
+                        player_selections[player_name][f'round_{adjusted_round_num}_available'] += 1
+                        player_selections[player_name]['total_available_count'] += 1
                     
                     # Track selections and availability (vectorized approach)
                     x_solution = np.array(x)[:, 0]
@@ -581,6 +592,7 @@ class FootballSimulation:
                         player_selections[player]['total_counts'] += 1
                     
                     success_trials += 1
+
                     
             except Exception as e:
                 # If optimization fails, continue to next iteration
@@ -610,59 +622,31 @@ class FootballSimulation:
 
 #%%
     
-# conn = sqlite3.connect("C:/Users/borys/OneDrive/Documents/Github/Fantasy_Football_Snake/app/Simulation.sqlite3")
-# year = 2025
-# league = 'dk'
-# num_teams = 12
-# num_rounds = 20
-# my_pick_position = 7
-# num_iters = 100
-# pos_require_start = {'QB': 3, 'RB': 6, 'WR': 8, 'TE': 3}  # No FLEX for now
+conn = sqlite3.connect("C:/Users/borys/OneDrive/Documents/Github/Fantasy_Football_Snake/app/Simulation.sqlite3")
+year = 2025
+league = 'dk'
+num_teams = 12
+num_rounds = 20
+my_pick_position = 7
+num_iters = 100
+pos_require_start = {'QB': 3, 'RB': 6, 'WR': 8, 'TE': 3}  # No FLEX for now
 
-# try:
-#     sim = FootballSimulation(conn, year, pos_require_start, num_teams, num_rounds, my_pick_position,
-#                              pred_vers='final_ensemble', league=league, use_ownership=0)
-    
-#     print(f"Snake picks: {sim.my_picks}")
-#     print(f"Player data shape: {sim.player_data.shape}")
-    
-#     # Test run
-#     to_add = []  # No pre-selected players
-#     to_drop = ["Ja'Marr Chase", 'Saquon Barkley', 'Puka Nacua',
-#                 'Bijan Robinson', 'Christian Mccaffrey',
-#                 'Justin Jefferson', 'Jahmyr Gibbs', 
-#                 ]
-    
-#     results = sim.run_sim(to_add, to_drop, num_iters, num_avg_pts=3, upside_frac=0, next_year_frac=0)
-#     print("Top 10 results:")
-#     print(results.head(10))
-    
-#     # Show round-by-round breakdown for top players
-#     print("\nRound-by-round breakdown for top 3 players:")
-#     for i in range(min(3, len(results))):
-#         player = results.iloc[i]
-#         print(f"\n{player['player']}:")
-#         print(f"  Total: {player['TotalSelectionCounts']}/{player['TotalAvailableCount']} ({player['PctSelectedWhenAvailable']:.1f}%)")
-        
-#         # Show round data
-#         for round_num in range(1, num_rounds + 1):
-#             count_col = f'Round{round_num}Count'
-#             avail_col = f'Round{round_num}Available'
-#             pct_col = f'Round{round_num}Pct'
-            
-#             if count_col in player.index and avail_col in player.index:
-#                 count = player[count_col]
-#                 available = player[avail_col]
-#                 pct = player[pct_col] if pct_col in player.index else 0
-#                 print(f"  Round {round_num}: {count}/{available} ({pct:.1f}%)")
-    
-# except Exception as e:
-#     print(f"Error: {e}")
-#     import traceback
-#     traceback.print_exc()
-# # %%
 
-# results.sort_values(by='Round2Count', ascending=False).iloc[:10]
-# # %%
-# results.sum().iloc[:20]
+sim = FootballSimulation(conn, year, pos_require_start, num_teams, num_rounds, my_pick_position,
+                            pred_vers='final_ensemble', league=league, use_ownership=0)
+
+print(f"Snake picks: {sim.my_picks}")
+print(f"Player data shape: {sim.player_data.shape}")
+
+# Test run
+to_add = []  # No pre-selected players
+to_drop = ["Ja'Marr Chase", 'Saquon Barkley', 'Puka Nacua',
+            'Bijan Robinson', 'Christian Mccaffrey',
+            'Justin Jefferson', 'Jahmyr Gibbs', 
+            ]
+
+results = sim.run_sim(to_add, to_drop, num_iters, num_avg_pts=3, upside_frac=0, next_year_frac=0)
+results.sort_values(by='Round2Count', ascending=False).iloc[:10]
+# %%
+
 # %%
