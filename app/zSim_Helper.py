@@ -209,43 +209,8 @@ class FootballSimulation:
         return idx_player_map, player_idx_map
 
 
-    @staticmethod
-    def position_matrix_mapping(pos_require):
-        position_map = {}
-        i = 0
-        for k, _ in pos_require.items():
-            position_map[k] = i
-            i+=1
-
-        return position_map
-
-
-    @staticmethod
-    def create_A_position(position_map, player_map):
-
-        num_positions = len(position_map)
-        num_players = len(player_map)
-        A_positions = np.zeros(shape=(num_positions, num_players))
-
-        for i in range(num_players):
-            cur_pos = player_map[i]['pos']
-            row_idx = position_map[cur_pos]
-            A_positions[row_idx, i] = 1
-            
-            # Add FLEX eligibility for RB, WR, TE
-            if cur_pos in ['RB', 'WR', 'TE'] and 'FLEX' in position_map:
-                flex_row_idx = position_map['FLEX']
-                A_positions[flex_row_idx, i] = 1
-
-        return A_positions
-
-    @staticmethod
-    def create_b_matrix(pos_require):
-        # Convert to minimum constraints (>= instead of ==)
-        return np.array(list(pos_require.values())).reshape(-1,1)
-
     def create_position_constraint_matrix(self, predictions, pos_require, num_rounds):
-        """Create position constraint matrix where each position has minimum requirements"""
+        """Create position constraint matrix for equality constraints (exactly meet position requirements)"""
         num_players = len(predictions)
         
         # Remove FLEX from position requirements for now
@@ -253,8 +218,8 @@ class FootballSimulation:
         num_positions = len(positions)
         
         if num_positions == 0 or num_rounds == 0:
-            # If no position constraints, return empty matrix
-            return np.zeros((0, num_players * num_rounds))
+            # If no position constraints, return empty matrices
+            return np.zeros((0, num_players * num_rounds)), np.zeros((0, 1))
         
         A_position = np.zeros((num_positions, num_players * num_rounds))
         
@@ -270,7 +235,10 @@ class FootballSimulation:
                     var_idx = i * num_rounds + round_idx
                     A_position[pos_idx, var_idx] = 1
         
-        return A_position
+        # Create b vector with exact position requirements
+        b_position = np.array([pos_require[pos] for pos in positions]).reshape(-1, 1)
+        
+        return A_position, b_position
     
     def create_availability_constraints(self, adp_sample, predictions, adjusted_picks):
         """Create availability constraints for player-round combinations
@@ -423,7 +391,7 @@ class FootballSimulation:
         
         # Initialize simulation parameters
         self.num_iters = num_iters
-        num_options = 500
+        num_options = 1000
         player_selections = self.init_select_cnts()
         success_trials = 0
         
@@ -475,10 +443,6 @@ class FootballSimulation:
             # Adjust position requirements based on already owned players (no FLEX for now)
             pos_require_adjusted = copy.deepcopy(self.pos_require_start)
             
-            # Remove FLEX from requirements temporarily
-            if 'FLEX' in pos_require_adjusted:
-                del pos_require_adjusted['FLEX']
-            
             for player in to_add:
                 if player in predictions.player.values:
                     player_pos = predictions[predictions.player == player].pos.iloc[0]
@@ -512,34 +476,34 @@ class FootballSimulation:
                 success_trials += 1
                 continue
             
-            # 1. Position Requirements (minimum constraints - use G matrix for >= constraints)
-            A_position = self.create_position_constraint_matrix(available_predictions, pos_require_adjusted, num_rounds)
             
-            # Convert position constraints to G matrix format (negate for >= to become <=)
-            if A_position.shape[0] > 0:
-                G_position = -A_position  # Negate for >= constraints
-                h_position = -np.array([pos_require_adjusted[pos] for pos in pos_require_adjusted.keys() if pos != 'FLEX']).reshape(-1, 1)
-            else:
-                G_position = np.zeros((0, num_players * num_rounds))
-                h_position = np.zeros((0, 1))
+
+            if i == 0:
+                # 1. Position Requirements (exact constraints - use A matrix for == constraints)
+                A_position, b_position = self.create_position_constraint_matrix(available_predictions, pos_require_adjusted, num_rounds)
+                
+                # 2. Player Uniqueness (each player selected at most once across all rounds)
+                G_players, h_players = self.create_player_uniqueness_constraints(num_players, num_rounds)
+
+                # 4. Round Selection Constraints (exactly 1 player per round - use A matrix)
+                A_rounds, b_rounds = self.create_round_selection_constraints(num_players, num_rounds)
+                
             
-            # 2. Player Uniqueness (each player selected at most once across all rounds)
-            G_players, h_players = self.create_player_uniqueness_constraints(num_players, num_rounds)
-            
+
             # 3. Availability Constraints (players only available when ADP >= pick number)
             G_availability, h_availability = self.create_availability_constraints(adp_sample, available_predictions, adjusted_picks)
+            start4 = time.time()
             
-            # 4. Round Selection Constraints (exactly 1 player per round - use A matrix)
-            A_rounds, b_rounds = self.create_round_selection_constraints(num_players, num_rounds)
+            # Combine G constraints (inequality <=) - only player uniqueness and availability
+            G_combined = np.vstack([G_players, G_availability])
+            h_combined = np.vstack([h_players, h_availability])
             
-            # Combine ALL G constraints (inequality <=)
-            G_combined = np.vstack([G_position, G_players, G_availability])
-            h_combined = np.vstack([h_position, h_players, h_availability])
-            
-            # A constraints are round selections (equality ==)
-            A_combined = A_rounds
-            b_combined = b_rounds
+            # Combine A constraints (equality ==) - position requirements and round selections
+            A_combined = np.vstack([A_position, A_rounds])
+            b_combined = np.vstack([b_position, b_rounds])
 
+            time4 = time.time() - start4
+            
             # Objective function (maximize points)
             _, c_points = self.sample_c_points(available_predictions, num_options, num_avg_pts, num_rounds)
             
@@ -586,7 +550,7 @@ class FootballSimulation:
                 print(f"Optimization failed in iteration {i}: {e}")
                 pass
 
-            print(f'Time1: {time1:.2f}s, Time2: {time2:.2f}s, Time3: {time3:.2f}s, Success Trials: {success_trials}', end='\r')
+            print(f'Time1: {time1:.2f}s, Time2: {time2:.2f}s, Time3: {time3:.2f}s, Time4: {time4:.2f}s, Success Trials: {success_trials}', end='\r')
 
         results = self.final_results(player_selections, success_trials)
 
@@ -663,7 +627,7 @@ except Exception as e:
     traceback.print_exc()
 # %%
 
-results.sort_values(by='Round2Count', ascending=False).iloc[:10]
+results.sort_values(by='Round1Count', ascending=False).iloc[:10]
 # %%
 results.sum().iloc[:20]
 # %%
