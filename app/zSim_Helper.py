@@ -433,52 +433,45 @@ class FootballSimulation:
             else: 
                 predictions = ppg_pred.copy()
 
-            # Build constraint matrices for all picks at once
-            num_players = len(predictions)
-            num_picks = len(self.my_picks)
-            
-            # Calculate adjusted picks - remove first N picks if N players already selected
-            adjusted_picks = self.calculate_adjusted_picks(len(to_add))
-            
-            # Adjust position requirements based on already owned players (no FLEX for now)
-            pos_require_adjusted = copy.deepcopy(self.pos_require_start)
-            
-            for player in to_add:
-                if player in predictions.player.values:
-                    player_pos = predictions[predictions.player == player].pos.iloc[0]
-                    if player_pos in pos_require_adjusted and pos_require_adjusted[player_pos] > 0:
-                        pos_require_adjusted[player_pos] -= 1
-            
-            # Remove already owned players from consideration
-            available_predictions = predictions[~predictions.player.isin(to_add_set)].reset_index(drop=True)
-            available_adp_samples = adp_samples[~adp_samples.player.isin(to_add_set)].reset_index(drop=True)
-            
-            if len(available_predictions) == 0:
-                continue
-            
-            # Recalculate number of picks needed based on adjusted picks
-            remaining_picks = len(adjusted_picks)
-            if remaining_picks <= 0:
-                success_trials += 1
-                continue
-            
-            # Sample ADP for availability constraints
-            adp_sample = available_adp_samples.iloc[:, np.random.choice(range(2, available_adp_samples.shape[1]))].values
-            
-            # Build constraint matrices for remaining picks
-            num_players = len(available_predictions)
-            num_rounds = len(adjusted_picks)
-            
-            # Decision variables are now: num_players * num_rounds
-            # [p1_r1, p1_r2, ..., p1_rN, p2_r1, p2_r2, ..., p2_rN, ...]
-            
-            if num_rounds == 0:
-                success_trials += 1
-                continue
-            
-            
 
             if i == 0:
+                # Build constraint matrices for all picks at once
+                num_players = len(predictions)
+                num_picks = len(self.my_picks)
+                
+                # Calculate adjusted picks - remove first N picks if N players already selected
+                adjusted_picks = self.calculate_adjusted_picks(len(to_add))
+                
+                # Adjust position requirements based on already owned players (no FLEX for now)
+                pos_require_adjusted = copy.deepcopy(self.pos_require_start)
+            
+                for player in to_add:
+                    if player in predictions.player.values:
+                        player_pos = predictions[predictions.player == player].pos.iloc[0]
+                        if player_pos in pos_require_adjusted and pos_require_adjusted[player_pos] > 0:
+                            pos_require_adjusted[player_pos] -= 1
+            
+                # Remove already owned players from consideration
+                available_predictions = predictions[~predictions.player.isin(to_add_set)].reset_index(drop=True)
+                available_adp_samples = adp_samples[~adp_samples.player.isin(to_add_set)].reset_index(drop=True)
+                
+                if len(available_predictions) == 0:
+                    continue
+            
+                # Recalculate number of picks needed based on adjusted picks
+                remaining_picks = len(adjusted_picks)
+                if remaining_picks <= 0:
+                    success_trials += 1
+                    continue
+
+                # Build constraint matrices for remaining picks
+                num_players = len(available_predictions)
+                num_rounds = len(adjusted_picks)
+
+                if num_rounds == 0:
+                    success_trials += 1
+                    continue
+            
                 # 1. Position Requirements (exact constraints - use A matrix for == constraints)
                 A_position, b_position = self.create_position_constraint_matrix(available_predictions, pos_require_adjusted, num_rounds)
                 
@@ -488,32 +481,56 @@ class FootballSimulation:
                 # 4. Round Selection Constraints (exactly 1 player per round - use A matrix)
                 A_rounds, b_rounds = self.create_round_selection_constraints(num_players, num_rounds)
                 
+                # Pre-allocate combined matrices once (much faster than repeated vstack)
+                # Get availability matrix dimensions for pre-allocation
+                temp_G_avail, temp_h_avail = self.create_availability_constraints(
+                    np.ones(num_players), available_predictions, adjusted_picks)
+                
+                # Pre-allocate G matrices
+                G_rows = G_players.shape[0] + temp_G_avail.shape[0]
+                G_cols = G_players.shape[1]
+                G_combined = np.empty((G_rows, G_cols), dtype=G_players.dtype)
+                G_combined[:G_players.shape[0]] = G_players  # Static part
+                
+                # Pre-allocate h vector
+                h_rows = h_players.shape[0] + temp_h_avail.shape[0]
+                h_combined = np.empty((h_rows, 1), dtype=h_players.dtype)
+                h_combined[:h_players.shape[0]] = h_players  # Static part
+                
+                # Pre-allocate A matrices
+                A_rows = A_position.shape[0] + A_rounds.shape[0]
+                A_cols = A_position.shape[1]
+                A_combined = np.empty((A_rows, A_cols), dtype=A_position.dtype)
+                A_combined[:A_position.shape[0]] = A_position  # Static part
+                A_combined[A_position.shape[0]:] = A_rounds    # Static part
+                
+                # Pre-allocate b vector
+                b_rows = b_position.shape[0] + b_rounds.shape[0]
+                b_combined = np.empty((b_rows, 1), dtype=b_position.dtype)
+                b_combined[:b_position.shape[0]] = b_position  # Static part
+                b_combined[b_position.shape[0]:] = b_rounds    # Static part
+
+                A = matrix(A_combined, tc='d')
+                b = matrix(b_combined, tc='d')
+                
             
 
             # 3. Availability Constraints (players only available when ADP >= pick number)
+            adp_sample = available_adp_samples.iloc[:, np.random.choice(range(2, available_adp_samples.shape[1]))].values            
             G_availability, h_availability = self.create_availability_constraints(adp_sample, available_predictions, adjusted_picks)
-            start4 = time.time()
             
-            # Combine G constraints (inequality <=) - only player uniqueness and availability
-            G_combined = np.vstack([G_players, G_availability])
-            h_combined = np.vstack([h_players, h_availability])
-            
-            # Combine A constraints (equality ==) - position requirements and round selections
-            A_combined = np.vstack([A_position, A_rounds])
-            b_combined = np.vstack([b_position, b_rounds])
+            # Update only the changing parts (availability constraints)
+            G_combined[G_players.shape[0]:] = G_availability
+            h_combined[h_players.shape[0]:] = h_availability
 
-            time4 = time.time() - start4
-            
             # Objective function (maximize points)
             _, c_points = self.sample_c_points(available_predictions, num_options, num_avg_pts, num_rounds)
-            
+            start4 = time.time()
             # Convert to cvxopt matrices
             G = matrix(G_combined, tc='d')
-            h = matrix(h_combined, tc='d')
-            A = matrix(A_combined, tc='d')
-            b = matrix(b_combined, tc='d')
+            h = matrix(h_combined, tc='d')            
             c = matrix(c_points, tc='d')
-            
+            time4 = time.time() - start4
             time1 = time.time() - start1
             # Solve ILP
             try:
