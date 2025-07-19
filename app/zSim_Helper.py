@@ -7,7 +7,7 @@ import copy
 from collections import Counter
 import contextlib
 import sqlite3
-
+import time
 
 # linear optimization
 from cvxopt import matrix
@@ -419,7 +419,7 @@ class FootballSimulation:
 
 
 
-    def run_sim(self, to_add, to_drop, num_iters, num_avg_pts=3, upside_frac=0, next_year_frac=0):
+    def run_sim(self, to_add, to_drop, num_iters, num_avg_pts=5, upside_frac=0, next_year_frac=0):
         
         # Initialize simulation parameters
         self.num_iters = num_iters
@@ -432,18 +432,24 @@ class FootballSimulation:
         to_drop_set = set(to_drop)
 
         for i in range(self.num_iters):
+
+            start1 = time.time()
             
-            if i % int(num_options/5) == 0:
+            if i % int(num_options/10) == 0:
                 
                 # get predictions and remove already drafted players
                 ppg_pred = self.get_predictions('pred_fp_per_game', num_options=num_options)
                 ppg_pred = self.drop_players(ppg_pred, to_drop_set)
 
-                ppg_pred_ny = self.get_predictions('pred_fp_per_game_ny', num_options=num_options)
-                ppg_pred_ny = self.drop_players(ppg_pred_ny, to_drop_set)
-                
-                prob_top = self.get_predictions('prob_top', num_options=num_options)
-                prob_top = self.drop_players(prob_top, to_drop_set)
+                if next_year_frac > 0:
+                    # Get next year predictions if applicable
+                    ppg_pred_ny = self.get_predictions('pred_fp_per_game_ny', num_options=num_options)
+                    ppg_pred_ny = self.drop_players(ppg_pred_ny, to_drop_set)
+
+                if upside_frac > 0:
+                    # Get upside predictions if applicable
+                    prob_upside = self.get_predictions('prob_upside', num_options=num_options)
+                    prob_upside = self.drop_players(prob_upside, to_drop_set)   
 
                 adp_samples = self.get_adp_samples(num_options=num_options)
                 adp_samples = self.drop_players(adp_samples, to_drop_set)
@@ -453,7 +459,7 @@ class FootballSimulation:
             use_next_year = np.random.choice([True, False], p=[next_year_frac, 1-next_year_frac])
 
             if use_upside: 
-                predictions = prob_top.copy()
+                predictions = prob_upside.copy()
             elif use_next_year: 
                 predictions = ppg_pred_ny.copy()
             else: 
@@ -544,11 +550,15 @@ class FootballSimulation:
             b = matrix(b_combined, tc='d')
             c = matrix(c_points, tc='d')
             
+            time1 = time.time() - start1
             # Solve ILP
             try:
+                start2 = time.time()
                 status, x = self.solve_ilp(c, G, h, A, b)
                 print(status)
+                time2 = time.time() - start2
                 if status == 'optimal':
+                    start3 = time.time()
                     # Track selections and availability (vectorized approach)
                     x_solution = np.array(x)[:, 0]
                     
@@ -569,11 +579,14 @@ class FootballSimulation:
                         player_selections[player]['total_counts'] += 1
                     
                     success_trials += 1
+                    time3 = time.time() - start3
                     
             except Exception as e:
                 # If optimization fails, continue to next iteration
                 print(f"Optimization failed in iteration {i}: {e}")
                 pass
+
+            print(f'Time1: {time1:.2f}s, Time2: {time2:.2f}s, Time3: {time3:.2f}s, Success Trials: {success_trials}', end='\r')
 
         results = self.final_results(player_selections, success_trials)
 
