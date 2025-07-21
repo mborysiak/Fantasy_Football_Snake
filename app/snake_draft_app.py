@@ -344,7 +344,7 @@ def sidebar_controls():
     league = st.sidebar.selectbox(
         'League Type',
         options=['nffc', 'dk'],
-        index=0,  # Default to 'nffc'
+        index=1,  # Default to 'nffc'
         help="Select the league type for predictions and ADP data"
     )
     
