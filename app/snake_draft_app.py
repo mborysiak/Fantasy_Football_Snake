@@ -361,7 +361,7 @@ def sidebar_controls():
         'My Pick Position', 
         min_value=1, 
         max_value=num_teams, 
-        value=7, 
+        value=1, 
         step=1
     )
     
@@ -385,7 +385,7 @@ def sidebar_controls():
         'Number of Simulations', 
         min_value=10, 
         max_value=500, 
-        value=100, 
+        value=200, 
         step=10
     )
     

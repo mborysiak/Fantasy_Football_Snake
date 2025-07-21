@@ -9,6 +9,9 @@ import contextlib
 import sqlite3
 import time
 
+# scipy imports
+import scipy.stats as stats
+
 # linear optimization
 from cvxopt import matrix
 from cvxopt.glpk import ilp
@@ -110,19 +113,39 @@ class FootballSimulation:
     
 
     @staticmethod
-    def trunc_normal(mean_val, sdev, min_sc, max_sc, num_samples=50):
-
-        import scipy.stats as stats
-
-        # create truncated distribution
-        lower_bound = (min_sc - mean_val) / sdev, 
-        upper_bound = (max_sc - mean_val) / sdev
-        trunc_dist = stats.truncnorm(lower_bound, upper_bound, loc=mean_val, scale=sdev)
+    def trunc_normal_vectorized(mean_vals, sdevs, min_scs, max_scs, num_samples=50):
+        """Fully vectorized truncated normal distribution generation for all players at once"""
         
-        estimates = trunc_dist.rvs(num_samples)
-
-        return estimates
-
+        # Convert inputs to numpy arrays for vectorized operations
+        mean_vals = np.asarray(mean_vals).reshape(-1, 1)  # Shape: (num_players, 1)
+        sdevs = np.asarray(sdevs).reshape(-1, 1)
+        min_scs = np.asarray(min_scs).reshape(-1, 1)
+        max_scs = np.asarray(max_scs).reshape(-1, 1)
+        
+        # Calculate standardized bounds (vectorized)
+        lower_bounds = (min_scs - mean_vals) / sdevs
+        upper_bounds = (max_scs - mean_vals) / sdevs
+        
+        # Get CDF values for bounds (vectorized)
+        norm_cdf_lower = stats.norm.cdf(lower_bounds)
+        norm_cdf_upper = stats.norm.cdf(upper_bounds)
+        
+        # Generate uniform random samples for all players at once
+        # Shape: (num_players, num_samples)
+        num_players = len(mean_vals)
+        uniform_samples = np.random.uniform(0, 1, (num_players, num_samples))
+        
+        # Transform uniform to truncated normal using vectorized operations
+        # Broadcasting will handle the shape differences automatically
+        scaled_uniform = norm_cdf_lower + uniform_samples * (norm_cdf_upper - norm_cdf_lower)
+        
+        # Convert to standard normal using inverse CDF (vectorized)
+        standard_normal_samples = stats.norm.ppf(scaled_uniform)
+        
+        # Transform to desired mean and scale (vectorized)
+        samples = mean_vals + sdevs * standard_normal_samples
+        
+        return samples
 
     def trunc_normal_dist(self, col, num_options=50):
         
@@ -135,12 +158,14 @@ class FootballSimulation:
         elif col=='adp':
             cols = ['avg_pick', 'adp_std_dev', 'adp_min_pick', 'adp_max_pick']
 
-        # Vectorized approach: process all players at once when possible
+        # Fully vectorized approach: process all players at once
         data_values = self.player_data[cols].values
-        pred_list = [self.trunc_normal(mean_val, sdev, min_sc, max_sc, num_options) 
-                     for mean_val, sdev, min_sc, max_sc in data_values]
-
-        return pd.DataFrame(pred_list)
+        mean_vals, sdevs, min_scs, max_scs = data_values.T
+        
+        # Get vectorized samples for all players
+        samples = self.trunc_normal_vectorized(mean_vals, sdevs, min_scs, max_scs, num_options)
+        
+        return pd.DataFrame(samples)
     
 
     def get_predictions(self, pred_label, num_options=500):
@@ -399,27 +424,49 @@ class FootballSimulation:
         # Pre-convert to sets for faster lookups
         to_add_set = set(to_add)
         to_drop_set = set(to_drop)
+        
+        # Pre-generate prediction batches to avoid repeated generation
+        batch_size = max(1, int(num_options/2))
+        num_batches = max(1, (num_iters + batch_size - 1) // batch_size)  # Ceiling division
+                
+        # Pre-generate all prediction batches
+        ppg_pred_batches = []
+        ppg_pred_ny_batches = []
+        prob_upside_batches = []
+        adp_sample_batches = []
+        
+        for batch_idx in range(num_batches):
+            # Generate predictions for this batch
+            ppg_pred = self.get_predictions('pred_fp_per_game', num_options=num_options)
+            ppg_pred = self.drop_players(ppg_pred, to_drop_set)
+            ppg_pred_batches.append(ppg_pred)
+
+            if next_year_frac > 0:
+                ppg_pred_ny = self.get_predictions('pred_fp_per_game_ny', num_options=num_options)
+                ppg_pred_ny = self.drop_players(ppg_pred_ny, to_drop_set)
+                ppg_pred_ny_batches.append(ppg_pred_ny)
+
+            if upside_frac > 0:
+                prob_upside = self.get_predictions('prob_upside', num_options=num_options)
+                prob_upside = self.drop_players(prob_upside, to_drop_set)
+                prob_upside_batches.append(prob_upside)
+
+            adp_samples = self.get_adp_samples(num_options=num_options)
+            adp_samples = self.drop_players(adp_samples, to_drop_set)
+            adp_sample_batches.append(adp_samples)
 
         for i in range(self.num_iters):
             
-            if i % int(num_options/2) == 0:
-                
-                # get predictions and remove already drafted players
-                ppg_pred = self.get_predictions('pred_fp_per_game', num_options=num_options)
-                ppg_pred = self.drop_players(ppg_pred, to_drop_set)
-
-                if next_year_frac > 0:
-                    # Get next year predictions if applicable
-                    ppg_pred_ny = self.get_predictions('pred_fp_per_game_ny', num_options=num_options)
-                    ppg_pred_ny = self.drop_players(ppg_pred_ny, to_drop_set)
-
-                if upside_frac > 0:
-                    # Get upside predictions if applicable
-                    prob_upside = self.get_predictions('prob_upside', num_options=num_options)
-                    prob_upside = self.drop_players(prob_upside, to_drop_set)   
-
-                adp_samples = self.get_adp_samples(num_options=num_options)
-                adp_samples = self.drop_players(adp_samples, to_drop_set)
+            # Use pre-generated batches instead of regenerating
+            batch_idx = i // batch_size
+            ppg_pred = ppg_pred_batches[batch_idx]
+            
+            if next_year_frac > 0:
+                ppg_pred_ny = ppg_pred_ny_batches[batch_idx]
+            if upside_frac > 0:
+                prob_upside = prob_upside_batches[batch_idx]
+            
+            adp_samples = adp_sample_batches[batch_idx]
 
             # Select prediction type
             use_upside = np.random.choice([True, False], p=[upside_frac, 1-upside_frac])
@@ -592,7 +639,6 @@ class FootballSimulation:
                         player_selections[player]['total_counts'] += 1
                     
                     success_trials += 1
-
                     
             except Exception as e:
                 # If optimization fails, continue to next iteration
@@ -622,28 +668,30 @@ class FootballSimulation:
 
 #%%
     
-# conn = sqlite3.connect("C:/Users/borys/OneDrive/Documents/Github/Fantasy_Football_Snake/app/Simulation.sqlite3")
-# year = 2025
-# league = 'dk'
-# num_teams = 12
-# num_rounds = 20
-# my_pick_position = 7
-# num_iters = 100
-# pos_require_start = {'QB': 3, 'RB': 6, 'WR': 8, 'TE': 3}  # No FLEX for now
+conn = sqlite3.connect("C:/Users/borys/OneDrive/Documents/Github/Fantasy_Football_Snake/app/Simulation.sqlite3")
+year = 2025
+league = 'dk'
+num_teams = 12
+num_rounds = 20
+my_pick_position = 7
+num_iters = 300
+pos_require_start = {'QB': 3, 'RB': 6, 'WR': 8, 'TE': 3}  # No FLEX for now
 
 
-# sim = FootballSimulation(conn, year, pos_require_start, num_teams, num_rounds, my_pick_position,
-#                             pred_vers='final_ensemble', league=league, use_ownership=0)
+sim = FootballSimulation(conn, year, pos_require_start, num_teams, num_rounds, my_pick_position,
+                            pred_vers='final_ensemble', league=league, use_ownership=0)
 
-# print(f"Snake picks: {sim.my_picks}")
-# print(f"Player data shape: {sim.player_data.shape}")
+print(f"Snake picks: {sim.my_picks}")
+print(f"Player data shape: {sim.player_data.shape}")
 
-# # Test run
-# to_add = []  # No pre-selected players
-# to_drop = ["Ja'Marr Chase", 'Saquon Barkley', 'Puka Nacua',
-#             'Bijan Robinson', 'Christian Mccaffrey',
-#             'Justin Jefferson', 'Jahmyr Gibbs', 
-#             ]
+# Test run
+to_add = []  # No pre-selected players
+to_drop = ["Ja'Marr Chase", 'Saquon Barkley', 'Puka Nacua',
+            'Bijan Robinson', 'Christian Mccaffrey',
+            'Justin Jefferson', 'Jahmyr Gibbs', 
+            ]
 
-# results = sim.run_sim(to_add, to_drop, num_iters, num_avg_pts=3, upside_frac=0, next_year_frac=0)
-# results.sort_values(by='Round2Count', ascending=False).iloc[:10]
+results = sim.run_sim(to_add, to_drop, num_iters, num_avg_pts=3, upside_frac=0, next_year_frac=0)
+results.sort_values(by='Round2Count', ascending=False).iloc[:10]
+
+# %%
