@@ -402,7 +402,7 @@ class FootballSimulation:
 
         for i in range(self.num_iters):
             
-            if i % int(num_options/10) == 0:
+            if i % int(num_options/2) == 0:
                 
                 # get predictions and remove already drafted players
                 ppg_pred = self.get_predictions('pred_fp_per_game', num_options=num_options)
