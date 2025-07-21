@@ -668,30 +668,30 @@ class FootballSimulation:
 
 #%%
     
-conn = sqlite3.connect("C:/Users/borys/OneDrive/Documents/Github/Fantasy_Football_Snake/app/Simulation.sqlite3")
-year = 2025
-league = 'dk'
-num_teams = 12
-num_rounds = 20
-my_pick_position = 7
-num_iters = 300
-pos_require_start = {'QB': 3, 'RB': 6, 'WR': 8, 'TE': 3}  # No FLEX for now
+# conn = sqlite3.connect("C:/Users/borys/OneDrive/Documents/Github/Fantasy_Football_Snake/app/Simulation.sqlite3")
+# year = 2025
+# league = 'dk'
+# num_teams = 12
+# num_rounds = 20
+# my_pick_position = 7
+# num_iters = 300
+# pos_require_start = {'QB': 3, 'RB': 6, 'WR': 8, 'TE': 3}  # No FLEX for now
 
 
-sim = FootballSimulation(conn, year, pos_require_start, num_teams, num_rounds, my_pick_position,
-                            pred_vers='final_ensemble', league=league, use_ownership=0)
+# sim = FootballSimulation(conn, year, pos_require_start, num_teams, num_rounds, my_pick_position,
+#                             pred_vers='final_ensemble', league=league, use_ownership=0)
 
-print(f"Snake picks: {sim.my_picks}")
-print(f"Player data shape: {sim.player_data.shape}")
+# print(f"Snake picks: {sim.my_picks}")
+# print(f"Player data shape: {sim.player_data.shape}")
 
-# Test run
-to_add = []  # No pre-selected players
-to_drop = ["Ja'Marr Chase", 'Saquon Barkley', 'Puka Nacua',
-            'Bijan Robinson', 'Christian Mccaffrey',
-            'Justin Jefferson', 'Jahmyr Gibbs', 
-            ]
+# # Test run
+# to_add = []  # No pre-selected players
+# to_drop = ["Ja'Marr Chase", 'Saquon Barkley', 'Puka Nacua',
+#             'Bijan Robinson', 'Christian Mccaffrey',
+#             'Justin Jefferson', 'Jahmyr Gibbs', 
+#             ]
 
-results = sim.run_sim(to_add, to_drop, num_iters, num_avg_pts=3, upside_frac=0, next_year_frac=0)
-results.sort_values(by='Round2Count', ascending=False).iloc[:10]
+# results = sim.run_sim(to_add, to_drop, num_iters, num_avg_pts=3, upside_frac=0, next_year_frac=0)
+# results.sort_values(by='Round2Count', ascending=False).iloc[:10]
 
 # %%
