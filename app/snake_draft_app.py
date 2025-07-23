@@ -340,11 +340,40 @@ def sidebar_controls():
     """Create sidebar controls"""
     st.sidebar.header("Draft Settings")
     
+    # Get loaded settings if available
+    loaded_settings = st.session_state.get('loaded_settings_data', None)
+    
+    # Debug info
+    if loaded_settings is not None:
+        st.sidebar.write(f"🔧 Using loaded settings")
+    
+    # Determine default values from loaded settings or use defaults
+    if loaded_settings is not None:
+        default_league = str(loaded_settings.get('League', 'dk')).lower()
+        default_num_teams = int(loaded_settings.get('NumTeams', 12))
+        default_my_pick = int(loaded_settings.get('MyPickPosition', 1))
+        default_qb = int(loaded_settings.get('QB', 3))
+        default_rb = int(loaded_settings.get('RB', 6))
+        default_wr = int(loaded_settings.get('WR', 8))
+        default_te = int(loaded_settings.get('TE', 3))
+        default_num_iters = int(loaded_settings.get('NumIters', 200))
+    else:
+        default_league = 'dk'
+        default_num_teams = 12
+        default_my_pick = 1
+        default_qb = 3
+        default_rb = 6
+        default_wr = 8
+        default_te = 3
+        default_num_iters = 200
+    
     # League selection
+    league_options = ['nffc', 'dk']
+    league_index = league_options.index(default_league) if default_league in league_options else 1
     league = st.sidebar.selectbox(
         'League Type',
-        options=['nffc', 'dk'],
-        index=1,  # Default to 'nffc'
+        options=league_options,
+        index=league_index,
         help="Select the league type for predictions and ADP data"
     )
     
@@ -353,7 +382,7 @@ def sidebar_controls():
         'Number of Teams', 
         min_value=8, 
         max_value=16, 
-        value=12, 
+        value=default_num_teams, 
         step=1
     )
     
@@ -361,7 +390,7 @@ def sidebar_controls():
         'My Pick Position', 
         min_value=1, 
         max_value=num_teams, 
-        value=1, 
+        value=min(default_my_pick, num_teams),  # Ensure it doesn't exceed num_teams
         step=1
     )
     
@@ -369,10 +398,10 @@ def sidebar_controls():
     
     # Position requirements
     pos_require = {}
-    pos_require['QB'] = st.sidebar.number_input('QB', min_value=1, max_value=5, value=3, step=1)
-    pos_require['RB'] = st.sidebar.number_input('RB', min_value=2, max_value=15, value=6, step=1)
-    pos_require['WR'] = st.sidebar.number_input('WR', min_value=3, max_value=15, value=8, step=1)
-    pos_require['TE'] = st.sidebar.number_input('TE', min_value=1, max_value=5, value=3, step=1)
+    pos_require['QB'] = st.sidebar.number_input('QB', min_value=1, max_value=5, value=default_qb, step=1)
+    pos_require['RB'] = st.sidebar.number_input('RB', min_value=2, max_value=15, value=default_rb, step=1)
+    pos_require['WR'] = st.sidebar.number_input('WR', min_value=3, max_value=15, value=default_wr, step=1)
+    pos_require['TE'] = st.sidebar.number_input('TE', min_value=1, max_value=5, value=default_te, step=1)
     # pos_require['FLEX'] = st.sidebar.number_input('FLEX', min_value=0, max_value=3, value=1, step=1)
     
     # Calculate total rounds from position requirements
@@ -385,7 +414,7 @@ def sidebar_controls():
         'Number of Simulations', 
         min_value=10, 
         max_value=500, 
-        value=200, 
+        value=default_num_iters, 
         step=10
     )
     
@@ -407,12 +436,15 @@ def sidebar_controls():
             st.session_state.loaded_draft_data = loaded_data
             st.session_state.loaded_settings_data = loaded_settings
             st.session_state.data_loaded_applied = False  # Reset flag to allow reapplication
+            st.session_state.settings_applied_to_ui = False  # Reset settings application flag
             st.sidebar.success("Draft state loaded successfully!")
             
             # Show loaded info
             if loaded_settings is not None:
                 st.sidebar.write(f"**Loaded:** {loaded_settings.get('SavedDate', 'Unknown date')}")
                 st.sidebar.write(f"**League:** {loaded_settings.get('League', 'Unknown').upper()}")
+                st.sidebar.write(f"**Draft Position:** {loaded_settings.get('MyPickPosition', 'Unknown')}")
+                st.sidebar.write(f"**Team Size:** {loaded_settings.get('NumTeams', 'Unknown')}")
             
             st.sidebar.write(f"**Players loaded:** {len(loaded_data) if loaded_data is not None else 0}")
     
@@ -452,11 +484,22 @@ def sidebar_controls():
                     st.session_state.loaded_draft_data = None
                     st.session_state.loaded_settings_data = None
                     st.session_state.data_loaded_applied = False
+                    st.session_state.settings_applied_to_ui = False
                     # Reset file uploader by changing its key
                     st.session_state.file_uploader_key += 1
             with col2:
                 if st.button("❌ Cancel", key="confirm_clear_no"):
                     st.session_state.confirm_clear = False
+    
+    # Clear loaded settings after they've been used for default values
+    # This prevents them from overriding user changes on subsequent runs
+    if loaded_settings is not None:
+        # Only clear if this is not the first run after loading (to allow the values to be applied)
+        if st.session_state.get('settings_applied_to_ui', False):
+            st.session_state.loaded_settings_data = None
+            st.session_state.settings_applied_to_ui = False
+        else:
+            st.session_state.settings_applied_to_ui = True
     
     return {
         'league': league,
@@ -494,6 +537,8 @@ def main():
         st.session_state.league_changed = False
     if 'data_loaded_applied' not in st.session_state:
         st.session_state.data_loaded_applied = False
+    if 'settings_applied_to_ui' not in st.session_state:
+        st.session_state.settings_applied_to_ui = False
     
     # Custom CSS to reduce padding
     st.markdown(
