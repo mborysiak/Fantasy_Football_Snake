@@ -46,27 +46,37 @@ class FootballSimulation:
         df = pd.read_sql_query(f'''SELECT player, 
                                           pos, 
                                           pred_fp_per_game, 
-                                          pred_prob_upside prob_upside,
-                                          pred_prob_top prob_top,
                                           pred_fp_per_game_ny,
-                                          std_dev_ny,
-                                          std_dev, 
-                                          min_score, 
-                                          max_score,
-                                          min_score_ny,
-                                          max_score_ny,
-                                          0 as prob_min,
-                                          1 as prob_max
-                                   FROM Final_Predictions
+                                          pred_resid_5,
+                                          pred_resid_10,
+                                          pred_resid_25,
+                                          pred_resid_75,
+                                          pred_resid_90,
+                                          pred_resid_95,
+                                          pred_resid_5_ny,
+                                          pred_resid_10_ny,
+                                          pred_resid_25_ny,
+                                          pred_resid_75_ny,
+                                          pred_resid_90_ny,
+                                          pred_resid_95_ny
+                                   FROM Final_Predictions_Resid
                                    WHERE year={self.set_year}
                                          AND dataset='{self.pred_vers}'
                                          AND version='{self.league}'
-                                        
+                                         
                                 ''', self.conn)
-        
-        df.loc[df.std_dev < 0.1, 'std_dev'] = 0.2 * df.loc[df.std_dev < 0.1, 'pred_fp_per_game']  # Avoid division by zero in calculations
-        df.loc[df.std_dev_ny < 0.1, 'std_dev_ny'] = 0.2 * df.loc[df.std_dev_ny < 0.1, 'pred_fp_per_game_ny']
 
+        if len(df) == 0:
+            raise ValueError(
+                f"No Final_Predictions_Resid rows found for "
+                f"year={self.set_year}, dataset={self.pred_vers}, version={self.league}."
+            )
+
+        resid_cols = [c for c in df.columns if c.startswith('pred_resid_')]
+        df[resid_cols] = df[resid_cols].fillna(0)
+        df['pred_fp_per_game_ny'] = df.pred_fp_per_game_ny.fillna(df.pred_fp_per_game)
+        df['pred_p10'] = np.maximum(0, df.pred_fp_per_game + df.pred_resid_10)
+        df['pred_p90'] = np.maximum(0, df.pred_fp_per_game + df.pred_resid_90)
 
         return df
     
@@ -88,7 +98,7 @@ class FootballSimulation:
 
         df = pd.merge(df, adp_data, how='left', left_on='player', right_on='player')
         df = df.fillna({'avg_pick': 240, 'adp_std_dev': 20, 'adp_min_pick': 200, 'adp_max_pick': 250})
-        df.loc[df.std_dev<0.1, 'std_dev'] = 0.2 * df.loc[df.std_dev<0.1, 'avg_pick'] # Avoid division by zero in calculations
+        df.loc[df.adp_std_dev < 0.1, 'adp_std_dev'] = 0.2 * df.loc[df.adp_std_dev < 0.1, 'avg_pick']
         df.loc[df.adp_min_pick > df.avg_pick, 'adp_min_pick'] = df.loc[df.adp_min_pick > df.avg_pick, 'avg_pick'] * 0.8
         df.loc[df.adp_max_pick < df.avg_pick, 'adp_max_pick'] = df.loc[df.adp_max_pick < df.avg_pick, 'avg_pick'] * 1.2        
         return df
@@ -147,16 +157,67 @@ class FootballSimulation:
         
         return samples
 
+    @staticmethod
+    def residual_quantile_vectorized(mean_vals, resid_vals, num_samples=50):
+        """Sample player outcomes from residual percentile knots."""
+        probs = np.array([0.00, 0.05, 0.10, 0.25, 0.75, 0.90, 0.95, 1.00])
+        mean_vals = np.asarray(mean_vals, dtype=np.float32).reshape(-1, 1)
+        resid_vals = np.asarray(resid_vals, dtype=np.float32)
+
+        q5, q10, q25, q75, q90, q95 = resid_vals.T
+        q0 = (2 * q5) - q10
+        q100 = (2 * q95) - q90
+        resid_knots = np.column_stack([q0, q5, q10, q25, q75, q90, q95, q100])
+        resid_knots = np.maximum.accumulate(resid_knots, axis=1)
+
+        num_players = len(mean_vals)
+        uniform_samples = np.random.uniform(0, 1, (num_players, num_samples)).astype(np.float32)
+        knot_idx = np.searchsorted(probs, uniform_samples, side='right') - 1
+        knot_idx = np.clip(knot_idx, 0, len(probs) - 2)
+
+        prob_left = probs[knot_idx]
+        prob_right = probs[knot_idx + 1]
+        resid_left = np.take_along_axis(resid_knots, knot_idx, axis=1)
+        resid_right = np.take_along_axis(resid_knots, knot_idx + 1, axis=1)
+
+        weight = (uniform_samples - prob_left) / (prob_right - prob_left)
+        sampled_resid = resid_left + (weight * (resid_right - resid_left))
+        samples = mean_vals + sampled_resid
+
+        return np.maximum(samples, 0)
+
     def trunc_normal_dist(self, col, num_options=50):
         
         if col=='pred_fp_per_game':
-            cols = ['pred_fp_per_game', 'std_dev', 'min_score', 'max_score']
-        elif col == 'prob_top':
-            cols = ['prob_top', 'prob_upside', 'prob_min', 'prob_max']
+            mean_col = 'pred_fp_per_game'
+            resid_dist_cols = [
+                'pred_resid_5', 'pred_resid_10', 'pred_resid_25',
+                'pred_resid_75', 'pred_resid_90', 'pred_resid_95'
+            ]
+            return pd.DataFrame(
+                self.residual_quantile_vectorized(
+                    self.player_data[mean_col].values,
+                    self.player_data[resid_dist_cols].values,
+                    num_options
+                )
+            )
         elif col == 'pred_fp_per_game_ny':
-            cols = ['pred_fp_per_game_ny', 'std_dev_ny', 'min_score_ny', 'max_score_ny']
+            mean_col = 'pred_fp_per_game_ny'
+            resid_dist_cols = [
+                'pred_resid_5_ny', 'pred_resid_10_ny', 'pred_resid_25_ny',
+                'pred_resid_75_ny', 'pred_resid_90_ny', 'pred_resid_95_ny'
+            ]
+            return pd.DataFrame(
+                self.residual_quantile_vectorized(
+                    self.player_data[mean_col].values,
+                    self.player_data[resid_dist_cols].values,
+                    num_options
+                )
+            )
         elif col=='adp':
             cols = ['avg_pick', 'adp_std_dev', 'adp_min_pick', 'adp_max_pick']
+        else:
+            raise ValueError(f"Unknown distribution column: {col}")
 
         # Fully vectorized approach: process all players at once
         data_values = self.player_data[cols].values
@@ -413,7 +474,7 @@ class FootballSimulation:
 
 
 
-    def run_sim(self, to_add, to_drop, num_iters, num_avg_pts=5, upside_frac=0, next_year_frac=0):
+    def run_sim(self, to_add, to_drop, num_iters, num_avg_pts=5, next_year_frac=0):
         
         # Initialize simulation parameters
         self.num_iters = num_iters
@@ -432,7 +493,6 @@ class FootballSimulation:
         # Pre-generate all prediction batches
         ppg_pred_batches = []
         ppg_pred_ny_batches = []
-        prob_upside_batches = []
         adp_sample_batches = []
         
         for batch_idx in range(num_batches):
@@ -446,11 +506,6 @@ class FootballSimulation:
                 ppg_pred_ny = self.drop_players(ppg_pred_ny, to_drop_set)
                 ppg_pred_ny_batches.append(ppg_pred_ny)
 
-            if upside_frac > 0:
-                prob_upside = self.get_predictions('prob_upside', num_options=num_options)
-                prob_upside = self.drop_players(prob_upside, to_drop_set)
-                prob_upside_batches.append(prob_upside)
-
             adp_samples = self.get_adp_samples(num_options=num_options)
             adp_samples = self.drop_players(adp_samples, to_drop_set)
             adp_sample_batches.append(adp_samples)
@@ -463,18 +518,13 @@ class FootballSimulation:
             
             if next_year_frac > 0:
                 ppg_pred_ny = ppg_pred_ny_batches[batch_idx]
-            if upside_frac > 0:
-                prob_upside = prob_upside_batches[batch_idx]
             
             adp_samples = adp_sample_batches[batch_idx]
 
             # Select prediction type
-            use_upside = np.random.choice([True, False], p=[upside_frac, 1-upside_frac])
-            use_next_year = np.random.choice([True, False], p=[next_year_frac, 1-next_year_frac])
+            use_next_year = next_year_frac > 0 and np.random.random() < next_year_frac
 
-            if use_upside: 
-                predictions = prob_upside.copy()
-            elif use_next_year: 
+            if use_next_year: 
                 predictions = ppg_pred_ny.copy()
             else: 
                 predictions = ppg_pred.copy()
@@ -669,7 +719,7 @@ class FootballSimulation:
 #%%
     
 # conn = sqlite3.connect("C:/Users/borys/OneDrive/Documents/Github/Fantasy_Football_Snake/app/Simulation.sqlite3")
-# year = 2025
+# year = 2026
 # league = 'dk'
 # num_teams = 12
 # num_rounds = 20
@@ -691,7 +741,7 @@ class FootballSimulation:
 #             'Justin Jefferson', 'Jahmyr Gibbs', 
 #             ]
 
-# results = sim.run_sim(to_add, to_drop, num_iters, num_avg_pts=3, upside_frac=0, next_year_frac=0)
+# results = sim.run_sim(to_add, to_drop, num_iters, num_avg_pts=3, next_year_frac=0)
 # results.sort_values(by='Round2Count', ascending=False).iloc[:10]
 
 # %%

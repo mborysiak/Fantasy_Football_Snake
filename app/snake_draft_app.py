@@ -9,7 +9,6 @@ from datetime import datetime
 
 # Configuration
 db_name = 'Simulation.sqlite3'
-year = 2025
 pred_vers = 'final_ensemble'
 
 #-----------------
@@ -21,6 +20,23 @@ def get_conn(filename):
     filepath = Path(__file__).parents[0] / filename
     conn = sqlite3.connect(filepath)
     return conn
+
+def get_prediction_options(filename, pred_vers):
+    """Return available year/league combinations from residual predictions."""
+    conn = get_conn(filename)
+    options = pd.read_sql_query(f'''
+        SELECT year, version
+        FROM Final_Predictions_Resid
+        WHERE dataset='{pred_vers}'
+        GROUP BY year, version
+        ORDER BY year DESC, version
+    ''', conn)
+    conn.close()
+
+    if len(options) == 0:
+        raise ValueError("No Final_Predictions_Resid rows found in the app database.")
+
+    return options
 
 def init_sim(filename, pred_vers, year, league, num_teams, num_rounds, my_pick_position, pos_require):
     conn = get_conn(filename)
@@ -42,7 +58,10 @@ def get_player_data(sim):
     player_data = sim.player_data.reset_index()
     
     # Select and rename relevant columns
-    player_data = player_data[['player', 'pos', 'years_of_experience', 'pred_fp_per_game', 'avg_pick', 'adp_std_dev', 'adp_min_pick', 'adp_max_pick']]
+    player_data = player_data[[
+        'player', 'pos', 'years_of_experience', 'pred_fp_per_game', 'pred_p10', 'pred_p90',
+        'avg_pick', 'adp_std_dev', 'adp_min_pick', 'adp_max_pick'
+    ]]
     
     # Rename columns for display
     player_data = player_data.rename(columns={
@@ -50,6 +69,8 @@ def get_player_data(sim):
         'pos': 'Pos', 
         'avg_pick': 'ADP',
         'pred_fp_per_game': 'PredPPG',
+        'pred_p10': 'PredP10',
+        'pred_p90': 'PredP90',
         'years_of_experience': 'Years_Exp',
         'adp_std_dev': 'ADP_StdDev',
         'adp_min_pick': 'ADP_Min',
@@ -58,6 +79,8 @@ def get_player_data(sim):
     
     # Round values for display
     player_data['PredPPG'] = player_data['PredPPG'].round(1)
+    player_data['PredP10'] = player_data['PredP10'].round(1)
+    player_data['PredP90'] = player_data['PredP90'].round(1)
     player_data['ADP'] = player_data['ADP'].round(1)
     player_data['ADP_StdDev'] = player_data['ADP_StdDev'].round(1)
     player_data['ADP_Min'] = player_data['ADP_Min'].round(1)
@@ -71,7 +94,10 @@ def get_player_data(sim):
     player_data = player_data.sort_values(by='ADP')
     
     # Reorder columns
-    player_data = player_data[['Player', 'Pos', 'Years_Exp', 'MyTeam', 'OtherTeam', 'ADP', 'PredPPG', 'ADP_StdDev', 'ADP_Min', 'ADP_Max']]
+    player_data = player_data[[
+        'Player', 'Pos', 'Years_Exp', 'MyTeam', 'OtherTeam', 'ADP',
+        'PredPPG', 'PredP10', 'PredP90', 'ADP_StdDev', 'ADP_Min', 'ADP_Max'
+    ]]
     
     return player_data
 
@@ -101,10 +127,20 @@ def create_interactive_grid(data, key_suffix=""):
                 help="Predicted Points Per Game",
                 format="%.1f"
             ),
+            "PredP10": st.column_config.NumberColumn(
+                "P10",
+                help="10th percentile predicted points per game",
+                format="%.1f"
+            ),
+            "PredP90": st.column_config.NumberColumn(
+                "P90",
+                help="90th percentile predicted points per game",
+                format="%.1f"
+            ),
 
         },
         use_container_width=True,
-        disabled=["Player", "Pos", "ADP", "PredPPG"],
+        disabled=["Player", "Pos", "ADP", "PredPPG", "PredP10", "PredP90"],
         hide_index=True,
         height=500
     )
@@ -223,6 +259,7 @@ def save_draft_state(selected_data, settings):
     # Add settings as metadata (we'll store this in the CSV as well)
     settings_data = pd.DataFrame([{
         'Type': 'Settings',
+        'Year': settings['year'],
         'League': settings['league'],
         'NumTeams': settings['num_teams'],
         'MyPickPosition': settings['my_pick_position'],
@@ -336,7 +373,7 @@ def render_save_button(selected_data, settings, placeholder):
     else:
         placeholder.button("💾 Save & Download Draft", disabled=True, help="No players selected to save")
 
-def sidebar_controls():
+def sidebar_controls(prediction_options):
     """Create sidebar controls"""
     st.sidebar.header("Draft Settings")
     
@@ -349,6 +386,7 @@ def sidebar_controls():
     
     # Determine default values from loaded settings or use defaults
     if loaded_settings is not None:
+        default_year = int(loaded_settings.get('Year', prediction_options.year.max()))
         default_league = str(loaded_settings.get('League', 'dk')).lower()
         default_num_teams = int(loaded_settings.get('NumTeams', 12))
         default_my_pick = int(loaded_settings.get('MyPickPosition', 1))
@@ -358,6 +396,7 @@ def sidebar_controls():
         default_te = int(loaded_settings.get('TE', 3))
         default_num_iters = int(loaded_settings.get('NumIters', 200))
     else:
+        default_year = int(prediction_options.year.max())
         default_league = 'dk'
         default_num_teams = 12
         default_my_pick = 1
@@ -367,9 +406,18 @@ def sidebar_controls():
         default_te = 3
         default_num_iters = 200
     
+    year_options = sorted(prediction_options.year.unique(), reverse=True)
+    year_index = year_options.index(default_year) if default_year in year_options else 0
+    year = st.sidebar.selectbox(
+        'Prediction Year',
+        options=year_options,
+        index=year_index,
+        help="Select the prediction year from Final_Predictions_Resid"
+    )
+
     # League selection
-    league_options = ['nffc', 'dk']
-    league_index = league_options.index(default_league) if default_league in league_options else 1
+    league_options = sorted(prediction_options[prediction_options.year == year].version.unique())
+    league_index = league_options.index(default_league) if default_league in league_options else 0
     league = st.sidebar.selectbox(
         'League Type',
         options=league_options,
@@ -502,6 +550,7 @@ def sidebar_controls():
             st.session_state.settings_applied_to_ui = True
     
     return {
+        'year': year,
         'league': league,
         'num_teams': num_teams,
         'num_rounds': num_rounds,
@@ -554,15 +603,17 @@ def main():
     
     st.title("🐍 Snake Draft Optimizer")
     
+    prediction_options = get_prediction_options(db_name, pred_vers)
+
     # Get settings from sidebar
-    settings = sidebar_controls()
+    settings = sidebar_controls(prediction_options)
     
     try:
         # Initialize simulation (will be fresh if refresh button was clicked)
         sim = init_sim(
             db_name, 
             pred_vers, 
-            year, 
+            settings['year'], 
             settings['league'],
             settings['num_teams'],
             settings['num_rounds'],
