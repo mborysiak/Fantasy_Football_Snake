@@ -13,7 +13,7 @@ import time
 import scipy.stats as stats
 
 # linear optimization
-from cvxopt import matrix
+from cvxopt import matrix, spmatrix
 from cvxopt.glpk import ilp
 
 import cvxopt
@@ -22,13 +22,14 @@ cvxopt.glpk.options['msg_lev'] = 'GLP_MSG_OFF'
 class FootballSimulation:
 
     def __init__(self, conn, set_year, pos_require_start, num_teams, num_rounds, my_pick_position,
-                 pred_vers='final_ensemble', league='beta', use_ownership=0):
+                 pred_vers='final_ensemble', league='beta', use_ownership=0, position_ranges=None):
 
         self.set_year = set_year
         self.pos_require_start = pos_require_start
         self.pred_vers = pred_vers
         self.league = league
         self.use_ownership = use_ownership
+        self.position_ranges = position_ranges
         self.conn = conn
         self.num_teams = num_teams
         self.num_rounds = num_rounds
@@ -744,6 +745,364 @@ class FootballSimulation:
         finally:
             np.random.set_state(state)
 
+    @staticmethod
+    def best_ball_slot_specs():
+        return [
+            ('QB', ('QB',), 1),
+            ('RB', ('RB',), 2),
+            ('WR', ('WR',), 3),
+            ('TE', ('TE',), 1),
+            ('FLEX', ('RB', 'WR', 'TE'), 1),
+        ]
+
+    @staticmethod
+    def default_best_ball_position_ranges():
+        return {
+            'QB': (2, 3),
+            'RB': (5, 7),
+            'WR': (7, 9),
+            'TE': (2, 3),
+        }
+
+    def best_ball_position_ranges(self, player_positions=None, selected_mask=None):
+        pos_ranges = self.position_ranges or self.default_best_ball_position_ranges()
+        if player_positions is None or selected_mask is None:
+            return pos_ranges
+
+        adjusted_ranges = {}
+        for pos, (min_count, max_count) in pos_ranges.items():
+            current_count = int(np.sum((player_positions == pos) & selected_mask))
+            adjusted_ranges[pos] = (min_count, max(max_count, current_count))
+
+        return adjusted_ranges
+
+    def build_best_ball_ilp_model(self, predictions, to_add_set, adjusted_picks, num_weeks):
+        player_names = predictions.player.values
+        player_positions = predictions.pos.values
+        num_players = len(predictions)
+        num_rounds = len(adjusted_picks)
+
+        selected_mask = np.array([p in to_add_set for p in player_names])
+        pos_ranges = self.best_ball_position_ranges(player_positions, selected_mask)
+        draft_pool_indices = np.where(~selected_mask)[0]
+        num_draftable = len(draft_pool_indices)
+
+        x_count = num_draftable * num_rounds
+        y_offset = x_count
+        start_offset = y_offset + num_players
+        next_var = start_offset
+
+        slot_specs = self.best_ball_slot_specs()
+        start_vars_by_slot_week = {
+            (slot, week): []
+            for slot, _, _ in slot_specs
+            for week in range(num_weeks)
+        }
+        start_vars_by_player_week = {
+            (player_idx, week): []
+            for player_idx in range(num_players)
+            for week in range(num_weeks)
+        }
+        objective_start_entries = []
+
+        for week in range(num_weeks):
+            for slot, eligible_positions, _ in slot_specs:
+                eligible_players = np.where(np.isin(player_positions, eligible_positions))[0]
+                for player_idx in eligible_players:
+                    var_idx = next_var
+                    next_var += 1
+                    start_vars_by_slot_week[(slot, week)].append(var_idx)
+                    start_vars_by_player_week[(player_idx, week)].append(var_idx)
+                    objective_start_entries.append((var_idx, player_idx, week))
+
+        num_vars = next_var
+        start_var_indices = np.arange(start_offset, num_vars)
+        x_var_indices = np.arange(x_count).reshape(num_draftable, num_rounds) if x_count else np.empty((0, num_rounds), dtype=int)
+        y_var_indices = y_offset + np.arange(num_players)
+
+        a_i = []
+        a_j = []
+        a_v = []
+        b_vals = []
+
+        def add_a_row(coeffs, rhs):
+            row_idx = len(b_vals)
+            for col_idx, value in coeffs:
+                if value != 0:
+                    a_i.append(row_idx)
+                    a_j.append(int(col_idx))
+                    a_v.append(float(value))
+            b_vals.append(float(rhs))
+
+        # Exactly one pick in each remaining round.
+        for round_idx in range(num_rounds):
+            add_a_row(
+                [(x_var_indices[draft_idx, round_idx], 1.0) for draft_idx in range(num_draftable)],
+                1.0
+            )
+
+        # Link draft assignment variables to final roster variables.
+        for draft_idx, player_idx in enumerate(draft_pool_indices):
+            coeffs = [(y_var_indices[player_idx], 1.0)]
+            coeffs.extend((x_var_indices[draft_idx, round_idx], -1.0) for round_idx in range(num_rounds))
+            add_a_row(coeffs, 0.0)
+
+        # Already drafted players are fixed on the final roster.
+        for player_idx in np.where(selected_mask)[0]:
+            add_a_row([(y_var_indices[player_idx], 1.0)], 1.0)
+
+        # Final roster size is fixed, while position counts are constrained by ranges below.
+        add_a_row([(y_var_indices[player_idx], 1.0) for player_idx in range(num_players)], self.num_rounds)
+
+        # Weekly best-ball lineup slots.
+        for week in range(num_weeks):
+            for slot, _, starter_count in slot_specs:
+                add_a_row(
+                    [(var_idx, 1.0) for var_idx in start_vars_by_slot_week[(slot, week)]],
+                    starter_count
+                )
+
+        g_i = []
+        g_j = []
+        g_v = []
+        h_static = []
+        availability_row_start = None
+
+        def add_g_row(coeffs, rhs):
+            row_idx = len(h_static)
+            for col_idx, value in coeffs:
+                if value != 0:
+                    g_i.append(row_idx)
+                    g_j.append(int(col_idx))
+                    g_v.append(float(value))
+            h_static.append(float(rhs))
+
+        # A player can only occupy one scoring lineup slot per week, and only if rostered.
+        for player_idx in range(num_players):
+            y_idx = y_var_indices[player_idx]
+            for week in range(num_weeks):
+                start_vars = start_vars_by_player_week[(player_idx, week)]
+                if len(start_vars) == 0:
+                    continue
+                coeffs = [(var_idx, 1.0) for var_idx in start_vars]
+                coeffs.append((y_idx, -1.0))
+                add_g_row(coeffs, 0.0)
+
+        # Position construction ranges for the final roster.
+        for pos, (min_count, max_count) in pos_ranges.items():
+            pos_players = np.where(player_positions == pos)[0]
+            pos_coeffs = [(y_var_indices[player_idx], 1.0) for player_idx in pos_players]
+            add_g_row(pos_coeffs, max_count)
+            add_g_row([(col_idx, -1.0) for col_idx, _ in pos_coeffs], -min_count)
+
+        availability_row_start = len(h_static)
+        for draft_idx in range(num_draftable):
+            for round_idx in range(num_rounds):
+                add_g_row([(x_var_indices[draft_idx, round_idx], 1.0)], 1.0)
+
+        # Weekly start variables are relaxed continuous variables, so they need explicit lower bounds.
+        for var_idx in start_var_indices:
+            add_g_row([(var_idx, -1.0)], 0.0)
+
+        A = spmatrix(a_v, a_i, a_j, (len(b_vals), num_vars), tc='d')
+        b = matrix(b_vals, tc='d')
+        G = spmatrix(g_v, g_i, g_j, (len(h_static), num_vars), tc='d')
+        h_template = np.array(h_static, dtype=np.float64)
+        binary_var_count = start_offset
+        objective_start_entries = np.array(objective_start_entries, dtype=np.int64)
+        objective_var_indices = objective_start_entries[:, 0]
+        objective_player_indices = objective_start_entries[:, 1]
+        objective_week_indices = objective_start_entries[:, 2]
+        availability_slice_end = availability_row_start + (num_draftable * num_rounds)
+
+        return {
+            'A': A,
+            'b': b,
+            'G': G,
+            'h_template': h_template,
+            'availability_row_start': availability_row_start,
+            'availability_slice_end': availability_slice_end,
+            'num_vars': num_vars,
+            'num_players': num_players,
+            'num_rounds': num_rounds,
+            'num_draftable': num_draftable,
+            'start_offset': start_offset,
+            'start_var_indices': start_var_indices,
+            'pos_ranges': pos_ranges,
+            'draft_pool_indices': draft_pool_indices,
+            'x_var_indices': x_var_indices,
+            'future_pick_nums': np.array(adjusted_picks[1:], dtype=np.float64),
+            'player_names': player_names,
+            'player_positions': player_positions,
+            'objective_var_indices': objective_var_indices,
+            'objective_player_indices': objective_player_indices,
+            'objective_week_indices': objective_week_indices,
+            'c_template': np.zeros(num_vars, dtype=np.float64),
+            'binary_vars': set(range(binary_var_count)),
+        }
+
+    @staticmethod
+    def best_ball_ilp_objective(model, weekly_scores):
+        c_vals = model['c_template'].copy()
+        c_vals[model['objective_var_indices']] = -weekly_scores[
+            model['objective_player_indices'],
+            model['objective_week_indices']
+        ]
+        return matrix(c_vals, tc='d')
+
+    @staticmethod
+    def best_ball_ilp_availability(model, adp_sample, adjusted_picks):
+        num_draftable = model['num_draftable']
+        num_rounds = model['num_rounds']
+        draft_pool_indices = model['draft_pool_indices']
+        availability = np.ones((num_draftable, num_rounds), dtype=np.float64)
+
+        if num_rounds > 1:
+            availability[:, 1:] = (
+                adp_sample[draft_pool_indices].reshape(-1, 1) >= model['future_pick_nums'].reshape(1, -1)
+            ).astype(np.float64)
+
+        h_vals = model['h_template'].copy()
+        h_vals[model['availability_row_start']:model['availability_slice_end']] = availability.reshape(-1)
+        return availability, matrix(h_vals, tc='d')
+
+    def solve_best_ball_ilp(self, model, weekly_scores, adp_sample, adjusted_picks):
+        availability, h = self.best_ball_ilp_availability(model, adp_sample, adjusted_picks)
+        c = self.best_ball_ilp_objective(model, weekly_scores)
+        status, x = ilp(
+            c,
+            model['G'],
+            h,
+            A=model['A'],
+            b=model['b'],
+            B=model['binary_vars'],
+        )
+        return status, x, availability
+
+    def filter_best_ball_ilp_pool(self, ppg_pred, ppg_pred_ny, adp_samples, to_add_set, pos_pool_multiplier=8):
+        pool = ppg_pred[['player', 'pos']].copy()
+        pool['proj_mean'] = ppg_pred.iloc[:, 2:].mean(axis=1).values
+        pool['adp_mean'] = adp_samples.iloc[:, 2:].mean(axis=1).values
+        pos_ranges = self.best_ball_position_ranges()
+
+        keep_players = set(pool.loc[pool.player.isin(to_add_set), 'player'])
+
+        for pos, (_, max_count) in pos_ranges.items():
+
+            pos_pool = pool[pool.pos == pos].copy()
+            if len(pos_pool) == 0:
+                continue
+
+            quota = min(len(pos_pool), max(max_count * pos_pool_multiplier, max_count + 12))
+            core_quota = max(max_count + 2, int(np.ceil(quota * 0.25)))
+
+            pos_pool['adp_rank'] = pos_pool.adp_mean.rank(method='first', ascending=True)
+            pos_pool['late_adp_rank'] = pos_pool.adp_mean.rank(method='first', ascending=False)
+            pos_pool['proj_rank'] = pos_pool.proj_mean.rank(method='first', ascending=False)
+            pos_pool['blend_rank'] = (0.55 * pos_pool.adp_rank) + (0.45 * pos_pool.proj_rank)
+
+            pos_keep = set(pos_pool.nsmallest(core_quota, 'adp_rank').player)
+            pos_keep.update(pos_pool.nsmallest(core_quota, 'proj_rank').player)
+            pos_keep.update(pos_pool.nsmallest(core_quota, 'late_adp_rank').player)
+
+            if len(pos_keep) < quota:
+                fill_pool = pos_pool[~pos_pool.player.isin(pos_keep)]
+                fill_count = quota - len(pos_keep)
+                pos_keep.update(fill_pool.nsmallest(fill_count, 'blend_rank').player)
+
+            keep_players.update(pos_keep)
+
+        keep_mask = ppg_pred.player.isin(keep_players)
+        ppg_pred = ppg_pred[keep_mask].reset_index(drop=True)
+        adp_samples = adp_samples[keep_mask].reset_index(drop=True)
+        if ppg_pred_ny is not None:
+            ppg_pred_ny = ppg_pred_ny[keep_mask].reset_index(drop=True)
+
+        return ppg_pred, ppg_pred_ny, adp_samples
+
+    def run_sim_best_ball_ilp(self, to_add, to_drop, num_iters, next_year_frac=0, num_weeks=17):
+        self.num_iters = num_iters
+        num_options = 1000
+        player_selections = self.init_select_cnts()
+        success_trials = 0
+
+        to_add_set = set(to_add)
+        to_drop_set = set(to_drop)
+
+        ppg_pred = self.drop_players(self.get_predictions('pred_fp_per_game', num_options=num_options), to_drop_set)
+        ppg_pred_ny = None
+        if next_year_frac > 0:
+            ppg_pred_ny = self.drop_players(self.get_predictions('pred_fp_per_game_ny', num_options=num_options), to_drop_set)
+
+        adp_samples = self.drop_players(self.get_adp_samples(num_options=num_options), to_drop_set)
+        adp_matrix = adp_samples.iloc[:, 2:].values
+
+        adjusted_picks = self.calculate_adjusted_picks(len(to_add))
+        if len(adjusted_picks) == 0:
+            return self.final_results(player_selections, 1)
+
+        ppg_pred, ppg_pred_ny, adp_samples = self.filter_best_ball_ilp_pool(
+            ppg_pred,
+            ppg_pred_ny,
+            adp_samples,
+            to_add_set,
+        )
+        adp_matrix = adp_samples.iloc[:, 2:].values
+
+        model = self.build_best_ball_ilp_model(ppg_pred, to_add_set, adjusted_picks, num_weeks)
+        sample_start_col = 2
+
+        for iter_idx in range(self.num_iters):
+            predictions = ppg_pred_ny if (next_year_frac > 0 and np.random.random() < next_year_frac) else ppg_pred
+            score_matrix = predictions.iloc[:, sample_start_col:].values.astype(np.float32)
+            week_cols = np.random.randint(0, score_matrix.shape[1], size=num_weeks)
+            weekly_scores = score_matrix[:, week_cols]
+
+            adp_col = np.random.randint(0, adp_matrix.shape[1])
+            adp_sample = adp_matrix[:, adp_col]
+
+            try:
+                status, x, availability = self.solve_best_ball_ilp(
+                    model,
+                    weekly_scores,
+                    adp_sample,
+                    adjusted_picks,
+                )
+            except Exception as e:
+                print(f"Best-ball ILP failed in iteration {iter_idx}: {e}")
+                continue
+
+            if status != 'optimal':
+                continue
+
+            player_names = model['player_names']
+            draft_pool_indices = model['draft_pool_indices']
+            num_rounds = model['num_rounds']
+            x_solution = np.array(x)[:, 0]
+            draft_solution = x_solution[model['x_var_indices'].reshape(-1)].reshape(model['num_draftable'], num_rounds)
+
+            available_positions = np.where(availability == 1)
+            for avail_idx in range(len(available_positions[0])):
+                draft_idx = available_positions[0][avail_idx]
+                round_idx = available_positions[1][avail_idx]
+                player_name = player_names[draft_pool_indices[draft_idx]]
+                round_num = round_idx + len(to_add) + 1
+                player_selections[player_name][f'round_{round_num}_available'] += 1
+                player_selections[player_name]['total_available_count'] += 1
+
+            selected_positions = np.where(draft_solution > 0.5)
+            for selected_idx in range(len(selected_positions[0])):
+                draft_idx = selected_positions[0][selected_idx]
+                round_idx = selected_positions[1][selected_idx]
+                player_name = player_names[draft_pool_indices[draft_idx]]
+                round_num = round_idx + len(to_add) + 1
+                player_selections[player_name][f'round_{round_num}_count'] += 1
+                player_selections[player_name]['total_counts'] += 1
+
+            success_trials += 1
+
+        return self.final_results(player_selections, max(success_trials, 1))
+
 
 
     def run_sim_best_ball_marginal(self, to_add, to_drop, num_iters, next_year_frac=0, num_weeks=17, candidate_pool_size=24):
@@ -891,6 +1250,9 @@ class FootballSimulation:
         return self.final_results(player_selections, max(success_trials, 1))
 
     def run_sim(self, to_add, to_drop, num_iters, num_avg_pts=5, next_year_frac=0, scoring_mode='total_points'):
+        if scoring_mode == 'best_ball_ilp':
+            return self.run_sim_best_ball_ilp(to_add, to_drop, num_iters, next_year_frac=next_year_frac)
+
         if scoring_mode in ('best_ball_marginal', 'best_ball_lookahead'):
             return self.run_sim_best_ball_marginal(to_add, to_drop, num_iters, next_year_frac=next_year_frac)
 

@@ -38,7 +38,7 @@ def get_prediction_options(filename, pred_vers):
 
     return options
 
-def init_sim(filename, pred_vers, year, league, num_teams, num_rounds, my_pick_position, pos_require):
+def init_sim(filename, pred_vers, year, league, num_teams, num_rounds, my_pick_position, pos_require, position_ranges=None):
     conn = get_conn(filename)
     sim = FootballSimulation(
         conn=conn, 
@@ -49,7 +49,8 @@ def init_sim(filename, pred_vers, year, league, num_teams, num_rounds, my_pick_p
         my_pick_position=my_pick_position,
         pred_vers=pred_vers, 
         league=league, 
-        use_ownership=0
+        use_ownership=0,
+        position_ranges=position_ranges,
     )
     return sim
 
@@ -217,7 +218,7 @@ def get_round_recommendations(results, sim, my_team_count, max_rounds=3):
     
     return adjusted_picks, round_data
 
-def create_my_team_display(selected_data, pos_require):
+def create_my_team_display(selected_data, pos_require, position_ranges=None):
     """Create display of current team with position requirements"""
     my_team = selected_data[selected_data['MyTeam'] == True]
     
@@ -229,9 +230,16 @@ def create_my_team_display(selected_data, pos_require):
         if pos == 'FLEX':
             continue  # Skip FLEX for now
         current_count = pos_counts.get(pos, 0)
+        if position_ranges and pos in position_ranges:
+            min_count, max_count = position_ranges[pos]
+            label = f"{pos} ({current_count}/{min_count}-{max_count})"
+            required_slots = max_count
+        else:
+            label = f"{pos} ({current_count}/{required})"
+            required_slots = required
         
         # Add header row for each position
-        team_display.append([f"{pos} ({current_count}/{required})", ""])
+        team_display.append([label, ""])
         
         # Add filled positions
         pos_players = my_team[my_team['Pos'] == pos]['Player'].tolist()
@@ -239,7 +247,7 @@ def create_my_team_display(selected_data, pos_require):
             team_display.append(["", player])
         
         # Add empty slots
-        for i in range(max(0, required - current_count)):
+        for i in range(max(0, required_slots - current_count)):
             team_display.append(["", "-- Empty --"])
     
     return pd.DataFrame(team_display, columns=['Position', 'Player'])
@@ -256,6 +264,12 @@ def save_draft_state(selected_data, settings):
     
     # Combine the data
     draft_data = pd.concat([my_team, other_team], ignore_index=True)
+    position_ranges = settings.get('position_ranges')
+    if position_ranges is None:
+        position_ranges = {
+            pos: (count, count)
+            for pos, count in settings['pos_require'].items()
+        }
     
     # Add settings as metadata (we'll store this in the CSV as well)
     settings_data = pd.DataFrame([{
@@ -270,6 +284,14 @@ def save_draft_state(selected_data, settings):
         'RB': settings['pos_require']['RB'],
         'WR': settings['pos_require']['WR'],
         'TE': settings['pos_require']['TE'],
+        'QB_Min': position_ranges['QB'][0],
+        'QB_Max': position_ranges['QB'][1],
+        'RB_Min': position_ranges['RB'][0],
+        'RB_Max': position_ranges['RB'][1],
+        'WR_Min': position_ranges['WR'][0],
+        'WR_Max': position_ranges['WR'][1],
+        'TE_Min': position_ranges['TE'][0],
+        'TE_Max': position_ranges['TE'][1],
         'NumIters': settings['num_iters'],
         'SavedDate': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     }])
@@ -324,6 +346,17 @@ def apply_loaded_state(player_data, loaded_data):
                 player_data.loc[player_idx, 'OtherTeam'] = True
     
     return player_data
+
+def get_setting_int(settings, key, default):
+    """Read an integer setting from a loaded CSV row with backward-compatible defaults."""
+    if settings is None or key not in settings:
+        return default
+
+    value = settings.get(key, default)
+    if pd.isna(value):
+        return default
+
+    return int(value)
 
 #------------------
 # App Components
@@ -387,19 +420,28 @@ def sidebar_controls(prediction_options):
         st.sidebar.write(f"🔧 Using loaded settings")
     
     # Determine default values from loaded settings or use defaults
+    default_ilp_ranges = FootballSimulation.default_best_ball_position_ranges()
     if loaded_settings is not None:
-        default_year = int(loaded_settings.get('Year', prediction_options.year.max()))
+        default_year = get_setting_int(loaded_settings, 'Year', int(prediction_options.year.max()))
         default_league = str(loaded_settings.get('League', 'dk')).lower()
-        default_num_teams = int(loaded_settings.get('NumTeams', 12))
-        default_my_pick = int(loaded_settings.get('MyPickPosition', 1))
-        default_qb = int(loaded_settings.get('QB', 3))
-        default_rb = int(loaded_settings.get('RB', 6))
-        default_wr = int(loaded_settings.get('WR', 8))
-        default_te = int(loaded_settings.get('TE', 3))
-        default_num_iters = int(loaded_settings.get('NumIters', 200))
-        default_scoring_mode = str(loaded_settings.get('ScoringMode', 'best_ball_lookahead'))
+        default_num_teams = get_setting_int(loaded_settings, 'NumTeams', 12)
+        default_my_pick = get_setting_int(loaded_settings, 'MyPickPosition', 1)
+        default_qb = get_setting_int(loaded_settings, 'QB', 3)
+        default_rb = get_setting_int(loaded_settings, 'RB', 6)
+        default_wr = get_setting_int(loaded_settings, 'WR', 8)
+        default_te = get_setting_int(loaded_settings, 'TE', 3)
+        default_num_rounds = get_setting_int(loaded_settings, 'NumRounds', 20)
+        default_num_iters = get_setting_int(loaded_settings, 'NumIters', 200)
+        default_scoring_mode = str(loaded_settings.get('ScoringMode', 'best_ball_ilp'))
         if default_scoring_mode == 'best_ball_marginal':
             default_scoring_mode = 'best_ball_lookahead'
+        default_position_ranges = {
+            pos: (
+                get_setting_int(loaded_settings, f'{pos}_Min', min_count),
+                get_setting_int(loaded_settings, f'{pos}_Max', max_count),
+            )
+            for pos, (min_count, max_count) in default_ilp_ranges.items()
+        }
     else:
         default_year = int(prediction_options.year.max())
         default_league = 'dk'
@@ -409,8 +451,10 @@ def sidebar_controls(prediction_options):
         default_rb = 6
         default_wr = 8
         default_te = 3
-        default_num_iters = 200
-        default_scoring_mode = 'best_ball_lookahead'
+        default_num_rounds = 20
+        default_num_iters = 50
+        default_scoring_mode = 'best_ball_ilp'
+        default_position_ranges = default_ilp_ranges
     
     year_options = sorted(prediction_options.year.unique(), reverse=True)
     year_index = year_options.index(default_year) if default_year in year_options else 0
@@ -448,31 +492,19 @@ def sidebar_controls(prediction_options):
         step=1
     )
     
-    st.sidebar.header("Position Requirements")
-    
-    # Position requirements
-    pos_require = {}
-    pos_require['QB'] = st.sidebar.number_input('QB', min_value=1, max_value=5, value=default_qb, step=1)
-    pos_require['RB'] = st.sidebar.number_input('RB', min_value=2, max_value=15, value=default_rb, step=1)
-    pos_require['WR'] = st.sidebar.number_input('WR', min_value=3, max_value=15, value=default_wr, step=1)
-    pos_require['TE'] = st.sidebar.number_input('TE', min_value=1, max_value=5, value=default_te, step=1)
-    # pos_require['FLEX'] = st.sidebar.number_input('FLEX', min_value=0, max_value=3, value=1, step=1)
-    
-    # Calculate total rounds from position requirements
-    num_rounds = sum(pos_require.values())
-    st.sidebar.write(f"**Total Rounds:** {num_rounds}")
-    
     st.sidebar.header("Simulation Settings")
-    
+
     num_iters = st.sidebar.number_input(
         'Number of Simulations', 
         min_value=10, 
         max_value=500, 
         value=default_num_iters, 
-        step=10
+        step=10,
+        help='Best-ball ILP is more expensive than lookahead; 50-100 simulations is a practical starting range.'
     )
 
     scoring_options = {
+        'Best-ball ILP': 'best_ball_ilp',
         'Best-ball lookahead': 'best_ball_lookahead',
         'Total roster points': 'total_points',
     }
@@ -484,11 +516,64 @@ def sidebar_controls(prediction_options):
         options=scoring_labels,
         index=scoring_index,
         help=(
-            'Best-ball lookahead compares each current-pick option by finishing the rest of the draft under ADP availability, then scoring the final best-ball roster. '
+            'Best-ball ILP solves the draft and weekly best-ball lineup simultaneously. '
+            'Best-ball lookahead is a faster heuristic that compares current picks by greedy full-draft completion. '
             'Total roster points preserves the older full-roster sum objective.'
         )
     )
     scoring_mode = scoring_options[scoring_label]
+
+    st.sidebar.header("Roster Construction")
+    if scoring_mode == 'best_ball_ilp':
+        position_ranges = {}
+        for pos in ['QB', 'RB', 'WR', 'TE']:
+            default_min, default_max = default_position_ranges[pos]
+            col_min, col_max = st.sidebar.columns(2)
+            with col_min:
+                min_count = st.number_input(
+                    f'{pos} Min',
+                    min_value=0,
+                    max_value=15,
+                    value=min(default_min, default_max),
+                    step=1,
+                    key=f'{pos.lower()}_min',
+                )
+            with col_max:
+                max_count = st.number_input(
+                    f'{pos} Max',
+                    min_value=min_count,
+                    max_value=15,
+                    value=max(default_min, default_max),
+                    step=1,
+                    key=f'{pos.lower()}_max',
+                )
+            position_ranges[pos] = (min_count, max_count)
+
+        min_total = sum(min_count for min_count, _ in position_ranges.values())
+        max_total = sum(max_count for _, max_count in position_ranges.values())
+        default_total = min(max(default_num_rounds, min_total), max_total)
+        num_rounds = st.sidebar.number_input(
+            'Total Roster Size',
+            min_value=min_total,
+            max_value=max_total,
+            value=default_total,
+            step=1,
+            help='Best-ball ILP selects this many total players while staying inside the position ranges.',
+        )
+        st.sidebar.caption(f"Range capacity: {min_total}-{max_total} players.")
+        pos_require = {
+            pos: max_count
+            for pos, (_, max_count) in position_ranges.items()
+        }
+    else:
+        position_ranges = None
+        pos_require = {}
+        pos_require['QB'] = st.sidebar.number_input('QB', min_value=1, max_value=5, value=default_qb, step=1)
+        pos_require['RB'] = st.sidebar.number_input('RB', min_value=2, max_value=15, value=default_rb, step=1)
+        pos_require['WR'] = st.sidebar.number_input('WR', min_value=3, max_value=15, value=default_wr, step=1)
+        pos_require['TE'] = st.sidebar.number_input('TE', min_value=1, max_value=5, value=default_te, step=1)
+        num_rounds = sum(pos_require.values())
+        st.sidebar.write(f"**Total Rounds:** {num_rounds}")
     
     st.sidebar.header("Save/Load Draft")
     
@@ -580,6 +665,7 @@ def sidebar_controls(prediction_options):
         'num_rounds': num_rounds,
         'my_pick_position': my_pick_position,
         'pos_require': pos_require,
+        'position_ranges': position_ranges,
         'num_iters': num_iters,
         'scoring_mode': scoring_mode,
         'save_button_placeholder': save_button_placeholder
@@ -643,7 +729,8 @@ def main():
             settings['num_teams'],
             settings['num_rounds'],
             settings['my_pick_position'],
-            settings['pos_require']
+            settings['pos_require'],
+            settings['position_ranges'],
         )
         
         # Reset the flag after initialization
@@ -794,7 +881,11 @@ def main():
             st.header("📋 My Team")
             
             # Display current team
-            team_display = create_my_team_display(selected_data, settings['pos_require'])
+            team_display = create_my_team_display(
+                selected_data,
+                settings['pos_require'],
+                settings['position_ranges'],
+            )
             st.dataframe(team_display, use_container_width=True, hide_index=True)
             
             # Calculate draft status based on current selections
