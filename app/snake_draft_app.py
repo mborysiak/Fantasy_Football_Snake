@@ -147,7 +147,15 @@ def create_interactive_grid(data, key_suffix=""):
     )
     return selected
 
-def run_simulation(sim, selected_data, num_iters, scoring_mode):
+def run_simulation(
+    sim,
+    selected_data,
+    num_iters,
+    scoring_mode,
+    current_pick_ev=False,
+    ev_shortlist_size=8,
+    weekly_score_mode='residual',
+):
     """Run the snake draft simulation"""
     
     # Get selected players
@@ -161,6 +169,9 @@ def run_simulation(sim, selected_data, num_iters, scoring_mode):
         num_iters=num_iters, 
         num_avg_pts=3, 
         scoring_mode=scoring_mode,
+        current_pick_ev=current_pick_ev,
+        ev_shortlist_size=ev_shortlist_size,
+        weekly_score_mode=weekly_score_mode,
     )
     
     # Keep all the round-specific columns
@@ -201,10 +212,20 @@ def get_round_recommendations(results, sim, my_team_count, max_rounds=3):
                     round_results[count_col] / round_results[available_col] * 100
                 ).round(1)
                 
-                # Sort by actual selection count for this round (not percentage) and take top 10
-                top_picks = round_results.nlargest(10, count_col)[
-                    ['player', count_col, available_col, f'Round{round_num}PctAvailable']
-                ].copy()
+                display_cols = ['player', count_col, available_col, f'Round{round_num}PctAvailable']
+                ev_cols = ['CurrentPickEV', 'CurrentPickEVVsBest', 'CurrentPickEVSamples']
+                include_ev = round_num == current_round_num and all(col in round_results.columns for col in ev_cols)
+                if include_ev:
+                    display_cols.extend(ev_cols)
+                    top_picks = (
+                        round_results[round_results.CurrentPickEV.notna()]
+                        .sort_values('CurrentPickEV', ascending=False)
+                        .head(10)[display_cols]
+                        .copy()
+                    )
+                else:
+                    # Sort by actual selection count for this round (not percentage) and take top 10
+                    top_picks = round_results.nlargest(10, count_col)[display_cols].copy()
                 
                 # Rename columns for display
                 top_picks = top_picks.rename(columns={
@@ -213,6 +234,12 @@ def get_round_recommendations(results, sim, my_team_count, max_rounds=3):
                     available_col: 'Available', 
                     f'Round{round_num}PctAvailable': 'Pct Selected'
                 })
+                if include_ev:
+                    top_picks = top_picks.rename(columns={
+                        'CurrentPickEV': 'EV',
+                        'CurrentPickEVVsBest': 'EV vs Best',
+                        'CurrentPickEVSamples': 'EV Samples',
+                    })
                 
                 round_data[round_num] = top_picks
     
@@ -280,6 +307,7 @@ def save_draft_state(selected_data, settings):
         'MyPickPosition': settings['my_pick_position'],
         'NumRounds': settings['num_rounds'],
         'ScoringMode': settings['scoring_mode'],
+        'WeeklyScoreMode': settings.get('weekly_score_mode', 'residual'),
         'QB': settings['pos_require']['QB'],
         'RB': settings['pos_require']['RB'],
         'WR': settings['pos_require']['WR'],
@@ -293,6 +321,8 @@ def save_draft_state(selected_data, settings):
         'TE_Min': position_ranges['TE'][0],
         'TE_Max': position_ranges['TE'][1],
         'NumIters': settings['num_iters'],
+        'CurrentPickEV': settings.get('current_pick_ev', False),
+        'EVShortlistSize': settings.get('ev_shortlist_size', 8),
         'SavedDate': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     }])
     
@@ -357,6 +387,19 @@ def get_setting_int(settings, key, default):
         return default
 
     return int(value)
+
+def get_setting_bool(settings, key, default):
+    """Read a boolean setting from a loaded CSV row with backward-compatible defaults."""
+    if settings is None or key not in settings:
+        return default
+
+    value = settings.get(key, default)
+    if pd.isna(value):
+        return default
+    if isinstance(value, str):
+        return value.strip().lower() in ('1', 'true', 'yes', 'y')
+
+    return bool(value)
 
 #------------------
 # App Components
@@ -432,7 +475,10 @@ def sidebar_controls(prediction_options):
         default_te = get_setting_int(loaded_settings, 'TE', 3)
         default_num_rounds = get_setting_int(loaded_settings, 'NumRounds', 20)
         default_num_iters = get_setting_int(loaded_settings, 'NumIters', 200)
+        default_current_pick_ev = get_setting_bool(loaded_settings, 'CurrentPickEV', False)
+        default_ev_shortlist_size = get_setting_int(loaded_settings, 'EVShortlistSize', 8)
         default_scoring_mode = str(loaded_settings.get('ScoringMode', 'best_ball_ilp'))
+        default_weekly_score_mode = str(loaded_settings.get('WeeklyScoreMode', 'template'))
         if default_scoring_mode == 'best_ball_marginal':
             default_scoring_mode = 'best_ball_lookahead'
         default_position_ranges = {
@@ -453,7 +499,10 @@ def sidebar_controls(prediction_options):
         default_te = 3
         default_num_rounds = 20
         default_num_iters = 50
+        default_current_pick_ev = False
+        default_ev_shortlist_size = 8
         default_scoring_mode = 'best_ball_ilp'
+        default_weekly_score_mode = 'template'
         default_position_ranges = default_ilp_ranges
     
     year_options = sorted(prediction_options.year.unique(), reverse=True)
@@ -522,6 +571,46 @@ def sidebar_controls(prediction_options):
         )
     )
     scoring_mode = scoring_options[scoring_label]
+    weekly_score_mode = 'residual'
+    current_pick_ev = False
+    ev_shortlist_size = default_ev_shortlist_size
+    if scoring_mode == 'best_ball_ilp':
+        weekly_score_options = {
+            'Weekly templates': 'template',
+            'Residual weeks': 'residual',
+        }
+        weekly_score_labels = list(weekly_score_options.keys())
+        weekly_score_values = list(weekly_score_options.values())
+        weekly_score_index = (
+            weekly_score_values.index(default_weekly_score_mode)
+            if default_weekly_score_mode in weekly_score_values
+            else 0
+        )
+        weekly_score_label = st.sidebar.selectbox(
+            'ILP Weekly Scores',
+            options=weekly_score_labels,
+            index=weekly_score_index,
+            help=(
+                'Weekly templates draw a season PPG from residuals, then apply a sampled '
+                'historical 16-week best-ball profile. Residual weeks preserves the prior '
+                'independent weekly sampling behavior.'
+            ),
+        )
+        weekly_score_mode = weekly_score_options[weekly_score_label]
+
+        current_pick_ev = st.sidebar.checkbox(
+            'Current Pick EV Ranking',
+            value=default_current_pick_ev,
+            help='After the normal ILP run, force each shortlisted current-pick candidate and rank by expected final roster score.',
+        )
+        if current_pick_ev:
+            ev_shortlist_size = st.sidebar.number_input(
+                'EV Shortlist Size',
+                min_value=3,
+                max_value=10,
+                value=min(max(default_ev_shortlist_size, 3), 10),
+                step=1,
+            )
 
     st.sidebar.header("Roster Construction")
     if scoring_mode == 'best_ball_ilp':
@@ -668,6 +757,9 @@ def sidebar_controls(prediction_options):
         'position_ranges': position_ranges,
         'num_iters': num_iters,
         'scoring_mode': scoring_mode,
+        'weekly_score_mode': weekly_score_mode,
+        'current_pick_ev': current_pick_ev,
+        'ev_shortlist_size': ev_shortlist_size,
         'save_button_placeholder': save_button_placeholder
     }
 
@@ -801,6 +893,9 @@ def main():
                             selected_data, 
                             settings['num_iters'], 
                             settings['scoring_mode'],
+                            settings['current_pick_ev'],
+                            settings['ev_shortlist_size'],
+                            settings['weekly_score_mode'],
                         )
                     
                     # Get round-specific recommendations
@@ -835,6 +930,21 @@ def main():
                                         min_value=0,
                                         max_value=100,
                                     ),
+                                    "EV": st.column_config.NumberColumn(
+                                        "EV",
+                                        help="Average final roster score when this player is forced as the current pick",
+                                        format="%.1f",
+                                    ),
+                                    "EV vs Best": st.column_config.NumberColumn(
+                                        "EV vs Best",
+                                        help="Expected score gap versus the best current-pick candidate",
+                                        format="%.1f",
+                                    ),
+                                    "EV Samples": st.column_config.NumberColumn(
+                                        "EV Samples",
+                                        help="Number of scenario solves used for this EV estimate",
+                                        format="%d",
+                                    ),
                                 },
                                 use_container_width=True,
                                 hide_index=True,
@@ -868,6 +978,21 @@ def main():
                                                 format="%.1f%%",
                                                 min_value=0,
                                                 max_value=100,
+                                            ),
+                                            "EV": st.column_config.NumberColumn(
+                                                "EV",
+                                                help="Average final roster score when this player is forced as the current pick",
+                                                format="%.1f",
+                                            ),
+                                            "EV vs Best": st.column_config.NumberColumn(
+                                                "EV vs Best",
+                                                help="Expected score gap versus the best current-pick candidate",
+                                                format="%.1f",
+                                            ),
+                                            "EV Samples": st.column_config.NumberColumn(
+                                                "EV Samples",
+                                                help="Number of scenario solves used for this EV estimate",
+                                                format="%d",
                                             ),
                                         },
                                         use_container_width=True,

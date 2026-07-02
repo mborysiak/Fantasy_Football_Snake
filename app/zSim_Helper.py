@@ -37,6 +37,8 @@ class FootballSimulation:
         
         # Calculate my picks for snake draft
         self.my_picks = self.calculate_snake_picks()
+        self.weekly_template_profiles = None
+        self.weekly_template_week_cols = None
 
         player_data = self.get_model_predictions()
 
@@ -243,6 +245,86 @@ class FootballSimulation:
         adp = self.trunc_normal_dist('adp', num_options).astype('int64')
         adp = pd.concat([labels, adp], axis=1)
         return adp
+
+    def load_weekly_template_profiles(self):
+        if self.weekly_template_profiles is not None:
+            return len(self.weekly_template_week_cols)
+
+        template_cols = pd.read_sql_query(
+            "SELECT * FROM Best_Ball_Weekly_Templates LIMIT 0",
+            self.conn,
+        ).columns
+        week_cols = sorted(
+            [c for c in template_cols if c.startswith('week_')],
+            key=lambda c: int(c.split('_')[1]),
+        )
+        if len(week_cols) == 0:
+            raise ValueError("Best_Ball_Weekly_Templates has no week_* columns.")
+
+        week_select = ', '.join([f't.{c}' for c in week_cols])
+        profiles = pd.read_sql_query(
+            f'''
+            SELECT m.player,
+                   p.template_id,
+                   {week_select}
+            FROM Best_Ball_Weekly_Player_Map m
+            INNER JOIN Best_Ball_Weekly_Template_Pools p
+                    ON m.template_pool_key = p.template_pool_key
+            INNER JOIN Best_Ball_Weekly_Templates t
+                    ON p.template_id = t.template_id
+            WHERE m.year = {self.set_year}
+                  AND m.version = '{self.league}'
+                  AND m.dataset = '{self.pred_vers}'
+            ORDER BY m.player, p.template_id
+            ''',
+            self.conn,
+        )
+
+        if len(profiles) == 0:
+            raise ValueError(
+                f"No weekly template profiles found for "
+                f"year={self.set_year}, version={self.league}, dataset={self.pred_vers}."
+            )
+
+        self.weekly_template_week_cols = week_cols
+        self.weekly_template_profiles = {
+            player: group[week_cols].to_numpy(dtype=np.float32)
+            for player, group in profiles.groupby('player', sort=False)
+        }
+        return len(week_cols)
+
+    def sample_template_weekly_scores(self, predictions, num_weeks):
+        template_weeks = self.load_weekly_template_profiles()
+        num_weeks = min(num_weeks, template_weeks)
+
+        players = predictions.player.values
+        score_matrix = predictions.iloc[:, 2:].values.astype(np.float32)
+        ppg_col = np.random.randint(0, score_matrix.shape[1])
+        sampled_ppg = score_matrix[:, ppg_col]
+
+        missing_players = [p for p in players if p not in self.weekly_template_profiles]
+        if missing_players:
+            missing_preview = ', '.join(missing_players[:10])
+            raise ValueError(
+                f"Missing weekly template profiles for {len(missing_players)} players: "
+                f"{missing_preview}"
+            )
+
+        weekly_scores = np.empty((len(players), num_weeks), dtype=np.float32)
+        for idx, player in enumerate(players):
+            profiles = self.weekly_template_profiles[player]
+            template_idx = np.random.randint(0, profiles.shape[0])
+            weekly_scores[idx] = sampled_ppg[idx] * profiles[template_idx, :num_weeks]
+
+        return weekly_scores
+
+    def sample_ilp_weekly_scores(self, predictions, num_weeks, weekly_score_mode='residual'):
+        if weekly_score_mode == 'template':
+            return self.sample_template_weekly_scores(predictions, num_weeks)
+
+        score_matrix = predictions.iloc[:, 2:].values.astype(np.float32)
+        week_cols = np.random.randint(0, score_matrix.shape[1], size=num_weeks)
+        return score_matrix[:, week_cols]
     
     def init_select_cnts(self):
         
@@ -951,23 +1033,73 @@ class FootballSimulation:
         return matrix(c_vals, tc='d')
 
     @staticmethod
-    def best_ball_ilp_availability(model, adp_sample, adjusted_picks):
+    def best_ball_ilp_availability(model, adp_sample=None, adjusted_picks=None, availability=None):
         num_draftable = model['num_draftable']
         num_rounds = model['num_rounds']
-        draft_pool_indices = model['draft_pool_indices']
-        availability = np.ones((num_draftable, num_rounds), dtype=np.float64)
+        if availability is None:
+            draft_pool_indices = model['draft_pool_indices']
+            availability = np.ones((num_draftable, num_rounds), dtype=np.float64)
 
-        if num_rounds > 1:
-            availability[:, 1:] = (
-                adp_sample[draft_pool_indices].reshape(-1, 1) >= model['future_pick_nums'].reshape(1, -1)
-            ).astype(np.float64)
+            if num_rounds > 1:
+                availability[:, 1:] = (
+                    adp_sample[draft_pool_indices].reshape(-1, 1) >= model['future_pick_nums'].reshape(1, -1)
+                ).astype(np.float64)
+        else:
+            availability = np.asarray(availability, dtype=np.float64)
 
         h_vals = model['h_template'].copy()
         h_vals[model['availability_row_start']:model['availability_slice_end']] = availability.reshape(-1)
         return availability, matrix(h_vals, tc='d')
 
-    def solve_best_ball_ilp(self, model, weekly_scores, adp_sample, adjusted_picks):
-        availability, h = self.best_ball_ilp_availability(model, adp_sample, adjusted_picks)
+    def simulate_opponent_draft_availability(
+        self,
+        model,
+        num_full_players,
+        model_full_indices,
+        selected_full_indices,
+        full_adp_sample,
+        adjusted_picks,
+        adp_temperature=10.0,
+        reach_temperature=8.0,
+    ):
+        """Simulate opponent picks without replacement, then project availability onto ILP players."""
+        num_draftable = model['num_draftable']
+        num_rounds = model['num_rounds']
+        availability = np.ones((num_draftable, num_rounds), dtype=np.float64)
+
+        full_adp_sample = np.asarray(full_adp_sample, dtype=np.float64)
+
+        remaining = np.ones(num_full_players, dtype=bool)
+        if len(selected_full_indices) > 0:
+            remaining[selected_full_indices] = False
+
+        for round_idx in range(1, num_rounds):
+            prev_pick = adjusted_picks[round_idx - 1]
+            cur_pick = adjusted_picks[round_idx]
+
+            for pick_num in range(prev_pick + 1, cur_pick):
+                remaining_indices = np.where(remaining)[0]
+                if len(remaining_indices) == 0:
+                    break
+
+                adp_vals = np.maximum(full_adp_sample[remaining_indices], 1.0)
+                reach_penalty = np.maximum(adp_vals - pick_num, 0) / reach_temperature
+                logits = (-adp_vals / adp_temperature) - reach_penalty
+                logits -= logits.max()
+                probs = np.exp(logits)
+                prob_sum = probs.sum()
+                if prob_sum <= 0 or not np.isfinite(prob_sum):
+                    chosen_idx = remaining_indices[np.argmin(adp_vals)]
+                else:
+                    chosen_idx = np.random.choice(remaining_indices, p=probs / prob_sum)
+                remaining[chosen_idx] = False
+
+            availability[:, round_idx] = remaining[model_full_indices].astype(np.float64)
+
+        return availability
+
+    def solve_best_ball_ilp(self, model, weekly_scores, adp_sample, adjusted_picks, availability=None):
+        availability, h = self.best_ball_ilp_availability(model, adp_sample, adjusted_picks, availability)
         c = self.best_ball_ilp_objective(model, weekly_scores)
         status, x = ilp(
             c,
@@ -978,6 +1110,43 @@ class FootballSimulation:
             B=model['binary_vars'],
         )
         return status, x, availability
+
+    def solve_forced_current_pick_best_ball_ilp(
+        self,
+        model,
+        weekly_scores,
+        adp_sample,
+        adjusted_picks,
+        availability,
+        forced_player_name,
+    ):
+        if forced_player_name not in set(model['player_names']):
+            return None
+
+        player_idx = int(np.where(model['player_names'] == forced_player_name)[0][0])
+        draft_pool_matches = np.where(model['draft_pool_indices'] == player_idx)[0]
+        if len(draft_pool_matches) == 0:
+            return None
+
+        forced_draft_idx = int(draft_pool_matches[0])
+        forced_availability = np.zeros_like(availability)
+        forced_availability[:, 1:] = availability[:, 1:]
+        forced_availability[forced_draft_idx, 0] = 1.0
+
+        status, x, _ = self.solve_best_ball_ilp(
+            model,
+            weekly_scores,
+            adp_sample,
+            adjusted_picks,
+            forced_availability,
+        )
+        if status != 'optimal':
+            return None
+
+        c = np.array(self.best_ball_ilp_objective(model, weekly_scores))[:, 0]
+        x_vals = np.array(x)[:, 0]
+        objective_value = -float(np.dot(c, x_vals))
+        return objective_value
 
     def filter_best_ball_ilp_pool(self, ppg_pred, ppg_pred_ny, adp_samples, to_add_set, pos_pool_multiplier=8):
         pool = ppg_pred[['player', 'pos']].copy()
@@ -997,13 +1166,19 @@ class FootballSimulation:
             core_quota = max(max_count + 2, int(np.ceil(quota * 0.25)))
 
             pos_pool['adp_rank'] = pos_pool.adp_mean.rank(method='first', ascending=True)
-            pos_pool['late_adp_rank'] = pos_pool.adp_mean.rank(method='first', ascending=False)
             pos_pool['proj_rank'] = pos_pool.proj_mean.rank(method='first', ascending=False)
             pos_pool['blend_rank'] = (0.55 * pos_pool.adp_rank) + (0.45 * pos_pool.proj_rank)
 
             pos_keep = set(pos_pool.nsmallest(core_quota, 'adp_rank').player)
             pos_keep.update(pos_pool.nsmallest(core_quota, 'proj_rank').player)
-            pos_keep.update(pos_pool.nsmallest(core_quota, 'late_adp_rank').player)
+
+            late_cutoff = pos_pool.adp_mean.quantile(0.60)
+            real_late_pool = pos_pool[
+                (pos_pool.adp_mean >= late_cutoff) &
+                (pos_pool.adp_mean < 230)
+            ]
+            late_pool = real_late_pool if len(real_late_pool) >= core_quota else pos_pool[pos_pool.adp_mean >= late_cutoff]
+            pos_keep.update(late_pool.nsmallest(core_quota, 'proj_rank').player)
 
             if len(pos_keep) < quota:
                 fill_pool = pos_pool[~pos_pool.player.isin(pos_keep)]
@@ -1020,11 +1195,73 @@ class FootballSimulation:
 
         return ppg_pred, ppg_pred_ny, adp_samples
 
-    def run_sim_best_ball_ilp(self, to_add, to_drop, num_iters, next_year_frac=0, num_weeks=17):
+    def add_current_pick_ev(self, results, scenario_records, model, adjusted_picks, to_add, ev_shortlist_size):
+        if len(scenario_records) == 0:
+            return results
+
+        current_round = len(to_add) + 1
+        count_col = f'Round{current_round}Count'
+        available_col = f'Round{current_round}Available'
+        if count_col not in results.columns or available_col not in results.columns:
+            return results
+
+        shortlist = (
+            results[(results[available_col] > 0) & (results[count_col] > 0)]
+            .nlargest(ev_shortlist_size, count_col)
+            .player
+            .tolist()
+        )
+        if len(shortlist) == 0:
+            return results
+
+        ev_records = {}
+        for player_name in shortlist:
+            ev_values = []
+            for scenario in scenario_records:
+                ev = self.solve_forced_current_pick_best_ball_ilp(
+                    model,
+                    scenario['weekly_scores'],
+                    scenario['adp_sample'],
+                    adjusted_picks,
+                    scenario['availability'],
+                    player_name,
+                )
+                if ev is not None:
+                    ev_values.append(ev)
+
+            if len(ev_values) > 0:
+                ev_records[player_name] = {
+                    'CurrentPickEV': float(np.mean(ev_values)),
+                    'CurrentPickEVSamples': len(ev_values),
+                }
+
+        if len(ev_records) == 0:
+            return results
+
+        best_ev = max(v['CurrentPickEV'] for v in ev_records.values())
+        for player_name, ev_data in ev_records.items():
+            ev_data['CurrentPickEVVsBest'] = ev_data['CurrentPickEV'] - best_ev
+
+        ev_df = pd.DataFrame.from_dict(ev_records, orient='index').reset_index().rename(columns={'index': 'player'})
+        results = pd.merge(results, ev_df, how='left', on='player')
+        return results
+
+    def run_sim_best_ball_ilp(
+        self,
+        to_add,
+        to_drop,
+        num_iters,
+        next_year_frac=0,
+        num_weeks=17,
+        current_pick_ev=False,
+        ev_shortlist_size=8,
+        weekly_score_mode='residual',
+    ):
         self.num_iters = num_iters
         num_options = 1000
         player_selections = self.init_select_cnts()
         success_trials = 0
+        scenario_records = []
 
         to_add_set = set(to_add)
         to_drop_set = set(to_drop)
@@ -1035,11 +1272,15 @@ class FootballSimulation:
             ppg_pred_ny = self.drop_players(self.get_predictions('pred_fp_per_game_ny', num_options=num_options), to_drop_set)
 
         adp_samples = self.drop_players(self.get_adp_samples(num_options=num_options), to_drop_set)
-        adp_matrix = adp_samples.iloc[:, 2:].values
+        full_player_names = adp_samples.player.values
+        full_adp_matrix = adp_samples.iloc[:, 2:].values
 
         adjusted_picks = self.calculate_adjusted_picks(len(to_add))
         if len(adjusted_picks) == 0:
             return self.final_results(player_selections, 1)
+
+        if weekly_score_mode == 'template':
+            num_weeks = self.load_weekly_template_profiles()
 
         ppg_pred, ppg_pred_ny, adp_samples = self.filter_best_ball_ilp_pool(
             ppg_pred,
@@ -1050,16 +1291,34 @@ class FootballSimulation:
         adp_matrix = adp_samples.iloc[:, 2:].values
 
         model = self.build_best_ball_ilp_model(ppg_pred, to_add_set, adjusted_picks, num_weeks)
-        sample_start_col = 2
+        full_idx = {player: idx for idx, player in enumerate(full_player_names)}
+        model_player_names = model['player_names'][model['draft_pool_indices']]
+        model_full_indices = np.array([full_idx[player] for player in model_player_names], dtype=np.int64)
+        selected_full_indices = np.array(
+            [full_idx[player] for player in to_add_set if player in full_idx],
+            dtype=np.int64,
+        )
+        num_full_players = len(full_player_names)
 
         for iter_idx in range(self.num_iters):
             predictions = ppg_pred_ny if (next_year_frac > 0 and np.random.random() < next_year_frac) else ppg_pred
-            score_matrix = predictions.iloc[:, sample_start_col:].values.astype(np.float32)
-            week_cols = np.random.randint(0, score_matrix.shape[1], size=num_weeks)
-            weekly_scores = score_matrix[:, week_cols]
+            weekly_scores = self.sample_ilp_weekly_scores(
+                predictions,
+                num_weeks,
+                weekly_score_mode=weekly_score_mode,
+            )
 
-            adp_col = np.random.randint(0, adp_matrix.shape[1])
+            adp_col = np.random.randint(0, full_adp_matrix.shape[1])
             adp_sample = adp_matrix[:, adp_col]
+            full_adp_sample = full_adp_matrix[:, adp_col]
+            availability = self.simulate_opponent_draft_availability(
+                model,
+                num_full_players,
+                model_full_indices,
+                selected_full_indices,
+                full_adp_sample,
+                adjusted_picks,
+            )
 
             try:
                 status, x, availability = self.solve_best_ball_ilp(
@@ -1067,6 +1326,7 @@ class FootballSimulation:
                     weekly_scores,
                     adp_sample,
                     adjusted_picks,
+                    availability,
                 )
             except Exception as e:
                 print(f"Best-ball ILP failed in iteration {iter_idx}: {e}")
@@ -1100,8 +1360,25 @@ class FootballSimulation:
                 player_selections[player_name]['total_counts'] += 1
 
             success_trials += 1
+            if current_pick_ev:
+                scenario_records.append({
+                    'weekly_scores': weekly_scores.copy(),
+                    'adp_sample': adp_sample.copy(),
+                    'availability': availability.copy(),
+                })
 
-        return self.final_results(player_selections, max(success_trials, 1))
+        results = self.final_results(player_selections, max(success_trials, 1))
+        if current_pick_ev:
+            results = self.add_current_pick_ev(
+                results,
+                scenario_records,
+                model,
+                adjusted_picks,
+                to_add,
+                ev_shortlist_size,
+            )
+
+        return results
 
 
 
@@ -1249,9 +1526,28 @@ class FootballSimulation:
 
         return self.final_results(player_selections, max(success_trials, 1))
 
-    def run_sim(self, to_add, to_drop, num_iters, num_avg_pts=5, next_year_frac=0, scoring_mode='total_points'):
+    def run_sim(
+        self,
+        to_add,
+        to_drop,
+        num_iters,
+        num_avg_pts=5,
+        next_year_frac=0,
+        scoring_mode='total_points',
+        current_pick_ev=False,
+        ev_shortlist_size=8,
+        weekly_score_mode='residual',
+    ):
         if scoring_mode == 'best_ball_ilp':
-            return self.run_sim_best_ball_ilp(to_add, to_drop, num_iters, next_year_frac=next_year_frac)
+            return self.run_sim_best_ball_ilp(
+                to_add,
+                to_drop,
+                num_iters,
+                next_year_frac=next_year_frac,
+                current_pick_ev=current_pick_ev,
+                ev_shortlist_size=ev_shortlist_size,
+                weekly_score_mode=weekly_score_mode,
+            )
 
         if scoring_mode in ('best_ball_marginal', 'best_ball_lookahead'):
             return self.run_sim_best_ball_marginal(to_add, to_drop, num_iters, next_year_frac=next_year_frac)
