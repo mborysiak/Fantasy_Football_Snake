@@ -412,6 +412,278 @@ class FootballSimulation:
         return labels, expanded_points
 
     @staticmethod
+    def _top_sum(pos_scores, num_starters):
+        if pos_scores.shape[0] == 0 or num_starters <= 0:
+            return np.zeros(pos_scores.shape[1], dtype=np.float32)
+
+        k = min(num_starters, pos_scores.shape[0])
+        return np.partition(pos_scores, -k, axis=0)[-k:].sum(axis=0)
+
+    @staticmethod
+    def _next_best(pos_scores, num_starters):
+        if pos_scores.shape[0] <= num_starters:
+            return np.zeros(pos_scores.shape[1], dtype=np.float32)
+
+        sorted_scores = np.sort(pos_scores, axis=0)
+        return sorted_scores[-num_starters - 1]
+
+    @staticmethod
+    def _pos_lineup_state(pos_scores, num_starters, num_weeks):
+        if pos_scores.shape[0] == 0 or num_starters <= 0:
+            zeros = np.zeros(num_weeks, dtype=np.float32)
+            return zeros, zeros, zeros
+
+        k = min(num_starters, pos_scores.shape[0])
+        top_k = np.partition(pos_scores, -k, axis=0)[-k:]
+        top_sum = top_k.sum(axis=0).astype(np.float32)
+
+        if pos_scores.shape[0] >= num_starters:
+            starter_threshold = top_k.min(axis=0).astype(np.float32)
+        else:
+            starter_threshold = np.zeros(num_weeks, dtype=np.float32)
+
+        if pos_scores.shape[0] > num_starters:
+            next_best = np.partition(pos_scores, -num_starters - 1, axis=0)[-num_starters - 1].astype(np.float32)
+        else:
+            next_best = np.zeros(num_weeks, dtype=np.float32)
+
+        return top_sum, starter_threshold, next_best
+
+    @classmethod
+    def best_ball_weekly_scores(cls, scores, positions):
+        """Score selected players as DraftKings best ball weekly lineups."""
+        if len(scores) == 0:
+            return np.zeros(0, dtype=np.float32)
+
+        scores = np.asarray(scores, dtype=np.float32)
+        positions = np.asarray(positions)
+        num_weeks = scores.shape[1]
+        weekly_score = np.zeros(num_weeks, dtype=np.float32)
+
+        qb = scores[positions == 'QB']
+        rb = scores[positions == 'RB']
+        wr = scores[positions == 'WR']
+        te = scores[positions == 'TE']
+
+        weekly_score += cls._top_sum(qb, 1)
+        weekly_score += cls._top_sum(rb, 2)
+        weekly_score += cls._top_sum(wr, 3)
+        weekly_score += cls._top_sum(te, 1)
+
+        flex = np.maximum.reduce([
+            cls._next_best(rb, 2),
+            cls._next_best(wr, 3),
+            cls._next_best(te, 1),
+        ])
+        weekly_score += flex
+
+        return weekly_score
+
+    @classmethod
+    def marginal_best_ball_values(cls, selected_scores, selected_positions, candidate_scores, candidate_positions):
+        """Estimate each candidate's marginal best-ball lineup value."""
+        candidate_scores = np.asarray(candidate_scores, dtype=np.float32)
+        candidate_positions = np.asarray(candidate_positions)
+        if candidate_scores.shape[0] == 0:
+            return np.zeros(0, dtype=np.float32)
+
+        num_weeks = candidate_scores.shape[1]
+        selected_scores = np.asarray(selected_scores, dtype=np.float32)
+        selected_positions = np.asarray(selected_positions)
+        if selected_scores.shape[0] == 0:
+            selected_scores = np.empty((0, num_weeks), dtype=np.float32)
+            selected_positions = np.array([], dtype=object)
+
+        starter_counts = {'QB': 1, 'RB': 2, 'WR': 3, 'TE': 1}
+        states = {}
+        for pos, starter_count in starter_counts.items():
+            pos_scores = selected_scores[selected_positions == pos]
+            states[pos] = cls._pos_lineup_state(pos_scores, starter_count, num_weeks)
+
+        rb_next = states['RB'][2]
+        wr_next = states['WR'][2]
+        te_next = states['TE'][2]
+        base_flex = np.maximum.reduce([rb_next, wr_next, te_next])
+
+        values = np.zeros(candidate_scores.shape[0], dtype=np.float32)
+        for pos in starter_counts:
+            pos_mask = candidate_positions == pos
+            if not np.any(pos_mask):
+                continue
+
+            pos_candidate_scores = candidate_scores[pos_mask]
+            _, pos_threshold, pos_next = states[pos]
+            starter_delta = np.maximum(pos_candidate_scores - pos_threshold, 0)
+
+            if pos == 'QB':
+                weekly_delta = starter_delta
+            else:
+                new_pos_next = np.maximum(pos_next, np.minimum(pos_candidate_scores, pos_threshold))
+                shape = pos_candidate_scores.shape
+                flex_rb = new_pos_next if pos == 'RB' else np.broadcast_to(rb_next, shape)
+                flex_wr = new_pos_next if pos == 'WR' else np.broadcast_to(wr_next, shape)
+                flex_te = new_pos_next if pos == 'TE' else np.broadcast_to(te_next, shape)
+                new_flex = np.maximum.reduce([flex_rb, flex_wr, flex_te])
+                weekly_delta = starter_delta + (new_flex - base_flex)
+
+            values[pos_mask] = weekly_delta.mean(axis=1)
+
+        return values
+
+    @classmethod
+    def best_ball_total_score(cls, selected_indices, weekly_scores, player_positions):
+        if len(selected_indices) == 0:
+            return 0
+
+        weekly_score = cls.best_ball_weekly_scores(
+            weekly_scores[selected_indices],
+            player_positions[selected_indices]
+        )
+        return float(weekly_score.sum())
+
+    @staticmethod
+    def open_position_mask(player_positions, pos_require_adjusted):
+        return np.array([
+            pos_require_adjusted.get(pos, 0) > 0
+            for pos in player_positions
+        ])
+
+    def get_candidate_indices(self, selected_set, player_positions, pos_require_adjusted, adp_sample, pick_num, use_adp):
+        candidate_mask = np.ones(len(player_positions), dtype=bool)
+        if selected_set:
+            candidate_mask[list(selected_set)] = False
+
+        candidate_mask &= self.open_position_mask(player_positions, pos_require_adjusted)
+
+        if use_adp:
+            candidate_mask &= adp_sample >= pick_num
+
+        return np.where(candidate_mask)[0]
+
+    @staticmethod
+    def select_rollout_candidates(current_candidates, immediate_values, adp_sample, player_positions, candidate_pool_size):
+        if len(current_candidates) <= candidate_pool_size:
+            return current_candidates
+
+        pool_parts = [
+            current_candidates[np.argsort(-immediate_values)[:candidate_pool_size]],
+            current_candidates[np.argsort(adp_sample[current_candidates])[:candidate_pool_size]],
+        ]
+
+        per_pos_quota = max(2, candidate_pool_size // 8)
+        current_positions = player_positions[current_candidates]
+        for pos in ['QB', 'RB', 'WR', 'TE']:
+            pos_locs = np.where(current_positions == pos)[0]
+            if len(pos_locs) == 0:
+                continue
+
+            pos_candidates = current_candidates[pos_locs]
+            pos_values = immediate_values[pos_locs]
+            pool_parts.append(pos_candidates[np.argsort(-pos_values)[:per_pos_quota]])
+            pool_parts.append(pos_candidates[np.argsort(adp_sample[pos_candidates])[:per_pos_quota]])
+
+        return np.unique(np.concatenate(pool_parts))
+
+    def complete_greedy_best_ball_path(
+        self,
+        selected_indices,
+        pos_require_adjusted,
+        start_round_idx,
+        adjusted_picks,
+        weekly_scores,
+        player_positions,
+        adp_sample,
+    ):
+        selected_indices = list(selected_indices)
+        selected_set = set(selected_indices)
+        pos_require_adjusted = copy.deepcopy(pos_require_adjusted)
+        path_picks = []
+        path_available = []
+        num_weeks = weekly_scores.shape[1]
+
+        for round_idx in range(start_round_idx, len(adjusted_picks)):
+            candidate_indices = self.get_candidate_indices(
+                selected_set,
+                player_positions,
+                pos_require_adjusted,
+                adp_sample,
+                adjusted_picks[round_idx],
+                use_adp=round_idx > 0
+            )
+
+            if len(candidate_indices) == 0:
+                return None, None, False
+
+            selected_scores = (
+                weekly_scores[selected_indices]
+                if selected_indices else np.empty((0, num_weeks), dtype=np.float32)
+            )
+            selected_positions = (
+                player_positions[selected_indices]
+                if selected_indices else np.array([], dtype=object)
+            )
+            values = self.marginal_best_ball_values(
+                selected_scores,
+                selected_positions,
+                weekly_scores[candidate_indices],
+                player_positions[candidate_indices]
+            )
+
+            pick_idx = candidate_indices[int(np.argmax(values))]
+            path_picks.append(pick_idx)
+            path_available.append(candidate_indices)
+
+            selected_indices.append(pick_idx)
+            selected_set.add(pick_idx)
+            pick_pos = player_positions[pick_idx]
+            if pick_pos in pos_require_adjusted and pos_require_adjusted[pick_pos] > 0:
+                pos_require_adjusted[pick_pos] -= 1
+
+        return path_picks, path_available, True
+
+    def order_path_by_availability(
+        self,
+        path_picks,
+        initial_selected_indices,
+        pos_require_adjusted,
+        adjusted_picks,
+        player_positions,
+        adp_sample,
+    ):
+        """Order a completed roster path by who is least likely to last to the next pick."""
+        remaining_picks = list(path_picks)
+        selected_set = set(initial_selected_indices)
+        pos_require_remaining = copy.deepcopy(pos_require_adjusted)
+        ordered_picks = []
+        ordered_available = []
+
+        for round_idx, pick_num in enumerate(adjusted_picks):
+            available_indices = self.get_candidate_indices(
+                selected_set,
+                player_positions,
+                pos_require_remaining,
+                adp_sample,
+                pick_num,
+                use_adp=round_idx > 0
+            )
+            available_set = set(available_indices)
+            feasible_picks = [idx for idx in remaining_picks if idx in available_set]
+            if len(feasible_picks) == 0:
+                return path_picks, ordered_available, False
+
+            pick_idx = min(feasible_picks, key=lambda idx: adp_sample[idx])
+            ordered_picks.append(pick_idx)
+            ordered_available.append(available_indices)
+
+            remaining_picks.remove(pick_idx)
+            selected_set.add(pick_idx)
+            pick_pos = player_positions[pick_idx]
+            if pick_pos in pos_require_remaining and pos_require_remaining[pick_pos] > 0:
+                pos_require_remaining[pick_pos] -= 1
+
+        return ordered_picks, ordered_available, True
+
+    @staticmethod
     def solve_ilp(c, G, h, A, b):
     
         (status, x) = ilp(c, G, h, A=A, b=b, B=set(range(0, len(c))))
@@ -474,7 +746,154 @@ class FootballSimulation:
 
 
 
-    def run_sim(self, to_add, to_drop, num_iters, num_avg_pts=5, next_year_frac=0):
+    def run_sim_best_ball_marginal(self, to_add, to_drop, num_iters, next_year_frac=0, num_weeks=17, candidate_pool_size=24):
+        self.num_iters = num_iters
+        num_options = 1000
+        player_selections = self.init_select_cnts()
+        success_trials = 0
+
+        to_drop_set = set(to_drop)
+
+        ppg_pred = self.drop_players(self.get_predictions('pred_fp_per_game', num_options=num_options), to_drop_set)
+        ppg_pred_ny = None
+        if next_year_frac > 0:
+            ppg_pred_ny = self.drop_players(self.get_predictions('pred_fp_per_game_ny', num_options=num_options), to_drop_set)
+
+        adp_samples = self.drop_players(self.get_adp_samples(num_options=num_options), to_drop_set)
+        adp_matrix = adp_samples.iloc[:, 2:].values
+
+        adjusted_picks = self.calculate_adjusted_picks(len(to_add))
+        if len(adjusted_picks) == 0:
+            return self.final_results(player_selections, 1)
+
+        player_names = ppg_pred.player.values
+        player_positions = ppg_pred.pos.values
+        player_idx = {player: idx for idx, player in enumerate(player_names)}
+        sample_start_col = 2
+
+        for _ in range(self.num_iters):
+            predictions = ppg_pred_ny if (next_year_frac > 0 and np.random.random() < next_year_frac) else ppg_pred
+            score_matrix = predictions.iloc[:, sample_start_col:].values.astype(np.float32)
+            week_cols = np.random.randint(0, score_matrix.shape[1], size=num_weeks)
+            weekly_scores = score_matrix[:, week_cols]
+
+            adp_col = np.random.randint(0, adp_matrix.shape[1])
+            adp_sample = adp_matrix[:, adp_col]
+
+            selected_indices = [player_idx[p] for p in to_add if p in player_idx]
+            selected_set = set(selected_indices)
+
+            pos_require_adjusted = copy.deepcopy(self.pos_require_start)
+            for idx in selected_indices:
+                pos = player_positions[idx]
+                if pos in pos_require_adjusted and pos_require_adjusted[pos] > 0:
+                    pos_require_adjusted[pos] -= 1
+
+            current_candidates = self.get_candidate_indices(
+                selected_set,
+                player_positions,
+                pos_require_adjusted,
+                adp_sample,
+                adjusted_picks[0],
+                use_adp=False
+            )
+            if len(current_candidates) == 0:
+                continue
+
+            selected_scores = (
+                weekly_scores[selected_indices]
+                if selected_indices else np.empty((0, num_weeks), dtype=np.float32)
+            )
+            selected_positions = (
+                player_positions[selected_indices]
+                if selected_indices else np.array([], dtype=object)
+            )
+            immediate_values = self.marginal_best_ball_values(
+                selected_scores,
+                selected_positions,
+                weekly_scores[current_candidates],
+                player_positions[current_candidates]
+            )
+
+            eval_candidates = self.select_rollout_candidates(
+                current_candidates,
+                immediate_values,
+                adp_sample,
+                player_positions,
+                candidate_pool_size,
+            )
+
+            best_score = -np.inf
+            best_picks = None
+            best_available = None
+
+            for current_pick_idx in eval_candidates:
+                rollout_selected = selected_indices + [current_pick_idx]
+                rollout_require = copy.deepcopy(pos_require_adjusted)
+                pick_pos = player_positions[current_pick_idx]
+                if pick_pos in rollout_require and rollout_require[pick_pos] > 0:
+                    rollout_require[pick_pos] -= 1
+
+                future_picks, future_available, success = self.complete_greedy_best_ball_path(
+                    rollout_selected,
+                    rollout_require,
+                    1,
+                    adjusted_picks,
+                    weekly_scores,
+                    player_positions,
+                    adp_sample,
+                )
+                if not success:
+                    continue
+
+                full_picks = [current_pick_idx] + future_picks
+                full_selected = selected_indices + full_picks
+                roster_score = self.best_ball_total_score(full_selected, weekly_scores, player_positions)
+
+                if roster_score > best_score:
+                    best_score = roster_score
+                    best_picks = full_picks
+                    best_available = [current_candidates] + future_available
+
+            if best_picks is None:
+                continue
+
+            original_best_picks = best_picks
+            original_best_available = best_available
+            ordered_picks, ordered_available, ordered_success = self.order_path_by_availability(
+                best_picks,
+                selected_indices,
+                pos_require_adjusted,
+                adjusted_picks,
+                player_positions,
+                adp_sample,
+            )
+            if ordered_success:
+                best_picks = ordered_picks
+                best_available = ordered_available
+            else:
+                best_picks = original_best_picks
+                best_available = original_best_available
+
+            for round_idx, (pick_idx, available_indices) in enumerate(zip(best_picks, best_available)):
+                round_num = round_idx + len(to_add) + 1
+                for idx in available_indices:
+                    player_name = player_names[idx]
+                    player_selections[player_name][f'round_{round_num}_available'] += 1
+                    player_selections[player_name]['total_available_count'] += 1
+
+                player_name = player_names[pick_idx]
+                player_selections[player_name][f'round_{round_num}_count'] += 1
+                player_selections[player_name]['total_counts'] += 1
+
+            success_trials += 1
+
+        return self.final_results(player_selections, max(success_trials, 1))
+
+    def run_sim(self, to_add, to_drop, num_iters, num_avg_pts=5, next_year_frac=0, scoring_mode='total_points'):
+        if scoring_mode in ('best_ball_marginal', 'best_ball_lookahead'):
+            return self.run_sim_best_ball_marginal(to_add, to_drop, num_iters, next_year_frac=next_year_frac)
+
         
         # Initialize simulation parameters
         self.num_iters = num_iters

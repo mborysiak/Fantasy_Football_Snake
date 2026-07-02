@@ -146,7 +146,7 @@ def create_interactive_grid(data, key_suffix=""):
     )
     return selected
 
-def run_simulation(sim, selected_data, num_iters):
+def run_simulation(sim, selected_data, num_iters, scoring_mode):
     """Run the snake draft simulation"""
     
     # Get selected players
@@ -159,6 +159,7 @@ def run_simulation(sim, selected_data, num_iters):
         to_drop=other_teams, 
         num_iters=num_iters, 
         num_avg_pts=3, 
+        scoring_mode=scoring_mode,
     )
     
     # Keep all the round-specific columns
@@ -264,6 +265,7 @@ def save_draft_state(selected_data, settings):
         'NumTeams': settings['num_teams'],
         'MyPickPosition': settings['my_pick_position'],
         'NumRounds': settings['num_rounds'],
+        'ScoringMode': settings['scoring_mode'],
         'QB': settings['pos_require']['QB'],
         'RB': settings['pos_require']['RB'],
         'WR': settings['pos_require']['WR'],
@@ -395,6 +397,9 @@ def sidebar_controls(prediction_options):
         default_wr = int(loaded_settings.get('WR', 8))
         default_te = int(loaded_settings.get('TE', 3))
         default_num_iters = int(loaded_settings.get('NumIters', 200))
+        default_scoring_mode = str(loaded_settings.get('ScoringMode', 'best_ball_lookahead'))
+        if default_scoring_mode == 'best_ball_marginal':
+            default_scoring_mode = 'best_ball_lookahead'
     else:
         default_year = int(prediction_options.year.max())
         default_league = 'dk'
@@ -405,6 +410,7 @@ def sidebar_controls(prediction_options):
         default_wr = 8
         default_te = 3
         default_num_iters = 200
+        default_scoring_mode = 'best_ball_lookahead'
     
     year_options = sorted(prediction_options.year.unique(), reverse=True)
     year_index = year_options.index(default_year) if default_year in year_options else 0
@@ -465,6 +471,24 @@ def sidebar_controls(prediction_options):
         value=default_num_iters, 
         step=10
     )
+
+    scoring_options = {
+        'Best-ball lookahead': 'best_ball_lookahead',
+        'Total roster points': 'total_points',
+    }
+    scoring_labels = list(scoring_options.keys())
+    scoring_values = list(scoring_options.values())
+    scoring_index = scoring_values.index(default_scoring_mode) if default_scoring_mode in scoring_values else 0
+    scoring_label = st.sidebar.selectbox(
+        'Optimization Scoring',
+        options=scoring_labels,
+        index=scoring_index,
+        help=(
+            'Best-ball lookahead compares each current-pick option by finishing the rest of the draft under ADP availability, then scoring the final best-ball roster. '
+            'Total roster points preserves the older full-roster sum objective.'
+        )
+    )
+    scoring_mode = scoring_options[scoring_label]
     
     st.sidebar.header("Save/Load Draft")
     
@@ -557,6 +581,7 @@ def sidebar_controls(prediction_options):
         'my_pick_position': my_pick_position,
         'pos_require': pos_require,
         'num_iters': num_iters,
+        'scoring_mode': scoring_mode,
         'save_button_placeholder': save_button_placeholder
     }
 
@@ -688,6 +713,7 @@ def main():
                             sim, 
                             selected_data, 
                             settings['num_iters'], 
+                            settings['scoring_mode'],
                         )
                     
                     # Get round-specific recommendations
@@ -700,8 +726,8 @@ def main():
                         
                         # Add explanation
                         st.info(
-                            "🎯 **Current Round**: All available players can be selected on your turn\n\n"
-                            "📊 **Future Rounds**: Based on typical ADP patterns and availability"
+                            "🎯 **Current Round**: Available players are compared by full draft-path outcome\n\n"
+                            "📊 **Future Rounds**: Simulated from typical ADP patterns and availability"
                         )
                         
                         # Create tabs for each round
@@ -742,7 +768,7 @@ def main():
                             for i, (round_num, round_data) in enumerate(round_recommendations.items()):
                                 with tabs[i]:
                                     if i == 0:
-                                        st.write("**Current round - all available players can be selected**")
+                                        st.write("**Current round - compared by full draft-path outcome**")
                                     else:
                                         st.write("**Future round - based on typical ADP availability**")
                                     
