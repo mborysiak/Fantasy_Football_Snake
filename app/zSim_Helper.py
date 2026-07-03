@@ -8,6 +8,8 @@ from collections import Counter
 import contextlib
 import sqlite3
 import time
+import os
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 # scipy imports
 import scipy.stats as stats
@@ -869,37 +871,54 @@ class FootballSimulation:
         draft_pool_indices = np.where(~selected_mask)[0]
         num_draftable = len(draft_pool_indices)
 
-        x_count = num_draftable * num_rounds
+        full_x_count = num_draftable * num_rounds
+        x_pick_buffer = 2
+        pick_nums = np.array(adjusted_picks, dtype=np.float64)
+        adp_bounds = (
+            self.player_data[['player', 'adp_min_pick', 'adp_max_pick']]
+            .drop_duplicates('player')
+            .set_index('player')
+            .reindex(player_names)
+        )
+        total_draft_picks = self.num_teams * self.num_rounds
+        adp_min_pick = adp_bounds.adp_min_pick.fillna(1).to_numpy(dtype=np.float64)
+        adp_max_pick = adp_bounds.adp_max_pick.fillna(total_draft_picks + x_pick_buffer).to_numpy(dtype=np.float64)
+
+        valid_x_mask = np.zeros((num_draftable, num_rounds), dtype=bool)
+        if num_rounds > 0:
+            valid_x_mask[:, 0] = True
+        if num_rounds > 1 and num_draftable > 0:
+            draft_min = adp_min_pick[draft_pool_indices].reshape(-1, 1) - x_pick_buffer
+            draft_max = adp_max_pick[draft_pool_indices].reshape(-1, 1) + x_pick_buffer
+            future_picks = pick_nums[1:].reshape(1, -1)
+            valid_x_mask[:, 1:] = (future_picks >= draft_min) & (future_picks <= draft_max)
+
+        for round_idx in range(num_rounds):
+            if not valid_x_mask[:, round_idx].any():
+                valid_x_mask[:, round_idx] = True
+
+        x_count = int(valid_x_mask.sum())
         y_offset = x_count
         start_offset = y_offset + num_players
         next_var = start_offset
 
-        slot_specs = self.best_ball_slot_specs()
-        start_vars_by_slot_week = {
-            (slot, week): []
-            for slot, _, _ in slot_specs
-            for week in range(num_weeks)
-        }
-        start_vars_by_player_week = {
-            (player_idx, week): []
-            for player_idx in range(num_players)
-            for week in range(num_weeks)
-        }
+        lineup_positions = ('QB', 'RB', 'WR', 'TE')
+        lineup_player_indices = np.where(np.isin(player_positions, lineup_positions))[0]
+        start_var_by_player_week = np.full((num_players, num_weeks), -1, dtype=int)
         objective_start_entries = []
 
         for week in range(num_weeks):
-            for slot, eligible_positions, _ in slot_specs:
-                eligible_players = np.where(np.isin(player_positions, eligible_positions))[0]
-                for player_idx in eligible_players:
-                    var_idx = next_var
-                    next_var += 1
-                    start_vars_by_slot_week[(slot, week)].append(var_idx)
-                    start_vars_by_player_week[(player_idx, week)].append(var_idx)
-                    objective_start_entries.append((var_idx, player_idx, week))
+            for player_idx in lineup_player_indices:
+                var_idx = next_var
+                next_var += 1
+                start_var_by_player_week[player_idx, week] = var_idx
+                objective_start_entries.append((var_idx, player_idx, week))
 
         num_vars = next_var
-        start_var_indices = np.arange(start_offset, num_vars)
-        x_var_indices = np.arange(x_count).reshape(num_draftable, num_rounds) if x_count else np.empty((0, num_rounds), dtype=int)
+        start_var_indices = start_var_by_player_week[start_var_by_player_week >= 0]
+        x_var_indices = np.full((num_draftable, num_rounds), -1, dtype=int)
+        if x_count:
+            x_var_indices[valid_x_mask] = np.arange(x_count)
         y_var_indices = y_offset + np.arange(num_players)
 
         a_i = []
@@ -918,15 +937,24 @@ class FootballSimulation:
 
         # Exactly one pick in each remaining round.
         for round_idx in range(num_rounds):
+            round_vars = [
+                (x_var_indices[draft_idx, round_idx], 1.0)
+                for draft_idx in range(num_draftable)
+                if x_var_indices[draft_idx, round_idx] >= 0
+            ]
             add_a_row(
-                [(x_var_indices[draft_idx, round_idx], 1.0) for draft_idx in range(num_draftable)],
+                round_vars,
                 1.0
             )
 
         # Link draft assignment variables to final roster variables.
         for draft_idx, player_idx in enumerate(draft_pool_indices):
             coeffs = [(y_var_indices[player_idx], 1.0)]
-            coeffs.extend((x_var_indices[draft_idx, round_idx], -1.0) for round_idx in range(num_rounds))
+            coeffs.extend(
+                (x_var_indices[draft_idx, round_idx], -1.0)
+                for round_idx in range(num_rounds)
+                if x_var_indices[draft_idx, round_idx] >= 0
+            )
             add_a_row(coeffs, 0.0)
 
         # Already drafted players are fixed on the final roster.
@@ -936,13 +964,20 @@ class FootballSimulation:
         # Final roster size is fixed, while position counts are constrained by ranges below.
         add_a_row([(y_var_indices[player_idx], 1.0) for player_idx in range(num_players)], self.num_rounds)
 
-        # Weekly best-ball lineup slots.
+        # Weekly best-ball lineup: 1 QB plus 2 RB, 3 WR, 1 TE, and one RB/WR/TE flex.
         for week in range(num_weeks):
-            for slot, _, starter_count in slot_specs:
-                add_a_row(
-                    [(var_idx, 1.0) for var_idx in start_vars_by_slot_week[(slot, week)]],
-                    starter_count
-                )
+            qb_vars = [
+                (start_var_by_player_week[player_idx, week], 1.0)
+                for player_idx in np.where(player_positions == 'QB')[0]
+                if start_var_by_player_week[player_idx, week] >= 0
+            ]
+            skill_vars = [
+                (start_var_by_player_week[player_idx, week], 1.0)
+                for player_idx in np.where(np.isin(player_positions, ('RB', 'WR', 'TE')))[0]
+                if start_var_by_player_week[player_idx, week] >= 0
+            ]
+            add_a_row(qb_vars, 1.0)
+            add_a_row(skill_vars, 7.0)
 
         g_i = []
         g_j = []
@@ -959,16 +994,24 @@ class FootballSimulation:
                     g_v.append(float(value))
             h_static.append(float(rhs))
 
-        # A player can only occupy one scoring lineup slot per week, and only if rostered.
+        # A player can only start if rostered.
         for player_idx in range(num_players):
             y_idx = y_var_indices[player_idx]
             for week in range(num_weeks):
-                start_vars = start_vars_by_player_week[(player_idx, week)]
-                if len(start_vars) == 0:
+                start_idx = start_var_by_player_week[player_idx, week]
+                if start_idx < 0:
                     continue
-                coeffs = [(var_idx, 1.0) for var_idx in start_vars]
-                coeffs.append((y_idx, -1.0))
-                add_g_row(coeffs, 0.0)
+                add_g_row([(start_idx, 1.0), (y_idx, -1.0)], 0.0)
+
+        # Positional minimums create the non-QB flex structure with the weekly skill total above.
+        for week in range(num_weeks):
+            for pos, min_count in {'RB': 2, 'WR': 3, 'TE': 1}.items():
+                pos_start_vars = [
+                    (start_var_by_player_week[player_idx, week], -1.0)
+                    for player_idx in np.where(player_positions == pos)[0]
+                    if start_var_by_player_week[player_idx, week] >= 0
+                ]
+                add_g_row(pos_start_vars, -min_count)
 
         # Position construction ranges for the final roster.
         for pos, (min_count, max_count) in pos_ranges.items():
@@ -977,10 +1020,22 @@ class FootballSimulation:
             add_g_row(pos_coeffs, max_count)
             add_g_row([(col_idx, -1.0) for col_idx, _ in pos_coeffs], -min_count)
 
+        # Final roster indicators are continuous, but linked to binary draft variables.
+        # Keep explicit bounds so y remains a valid 0/1 roster indicator.
+        for player_idx in range(num_players):
+            y_idx = y_var_indices[player_idx]
+            add_g_row([(y_idx, 1.0)], 1.0)
+            add_g_row([(y_idx, -1.0)], 0.0)
+
         availability_row_start = len(h_static)
+        availability_entries = []
         for draft_idx in range(num_draftable):
             for round_idx in range(num_rounds):
-                add_g_row([(x_var_indices[draft_idx, round_idx], 1.0)], 1.0)
+                x_idx = x_var_indices[draft_idx, round_idx]
+                if x_idx < 0:
+                    continue
+                add_g_row([(x_idx, 1.0)], 1.0)
+                availability_entries.append((draft_idx, round_idx))
 
         # Weekly start variables are relaxed continuous variables, so they need explicit lower bounds.
         for var_idx in start_var_indices:
@@ -990,12 +1045,13 @@ class FootballSimulation:
         b = matrix(b_vals, tc='d')
         G = spmatrix(g_v, g_i, g_j, (len(h_static), num_vars), tc='d')
         h_template = np.array(h_static, dtype=np.float64)
-        binary_var_count = start_offset
+        binary_vars = set(range(x_count))
         objective_start_entries = np.array(objective_start_entries, dtype=np.int64)
         objective_var_indices = objective_start_entries[:, 0]
         objective_player_indices = objective_start_entries[:, 1]
         objective_week_indices = objective_start_entries[:, 2]
-        availability_slice_end = availability_row_start + (num_draftable * num_rounds)
+        availability_entries = np.array(availability_entries, dtype=np.int64).reshape(-1, 2)
+        availability_slice_end = availability_row_start + len(availability_entries)
 
         return {
             'A': A,
@@ -1008,11 +1064,19 @@ class FootballSimulation:
             'num_players': num_players,
             'num_rounds': num_rounds,
             'num_draftable': num_draftable,
+            'x_count': x_count,
+            'full_x_count': full_x_count,
+            'x_pruned_count': full_x_count - x_count,
+            'x_pick_buffer': x_pick_buffer,
             'start_offset': start_offset,
             'start_var_indices': start_var_indices,
+            'start_var_by_player_week': start_var_by_player_week,
+            'start_var_count': int(len(start_var_indices)),
             'pos_ranges': pos_ranges,
             'draft_pool_indices': draft_pool_indices,
             'x_var_indices': x_var_indices,
+            'valid_x_mask': valid_x_mask,
+            'availability_entries': availability_entries,
             'future_pick_nums': np.array(adjusted_picks[1:], dtype=np.float64),
             'player_names': player_names,
             'player_positions': player_positions,
@@ -1020,7 +1084,7 @@ class FootballSimulation:
             'objective_player_indices': objective_player_indices,
             'objective_week_indices': objective_week_indices,
             'c_template': np.zeros(num_vars, dtype=np.float64),
-            'binary_vars': set(range(binary_var_count)),
+            'binary_vars': binary_vars,
         }
 
     @staticmethod
@@ -1048,7 +1112,12 @@ class FootballSimulation:
             availability = np.asarray(availability, dtype=np.float64)
 
         h_vals = model['h_template'].copy()
-        h_vals[model['availability_row_start']:model['availability_slice_end']] = availability.reshape(-1)
+        availability_entries = model['availability_entries']
+        if len(availability_entries) > 0:
+            h_vals[model['availability_row_start']:model['availability_slice_end']] = availability[
+                availability_entries[:, 0],
+                availability_entries[:, 1]
+            ]
         return availability, matrix(h_vals, tc='d')
 
     def simulate_opponent_draft_availability(
@@ -1059,15 +1128,18 @@ class FootballSimulation:
         selected_full_indices,
         full_adp_sample,
         adjusted_picks,
-        adp_temperature=10.0,
-        reach_temperature=8.0,
     ):
-        """Simulate opponent picks without replacement, then project availability onto ILP players."""
+        """Simulate opponent picks from sampled ADP order, then project availability onto ILP players."""
         num_draftable = model['num_draftable']
         num_rounds = model['num_rounds']
         availability = np.ones((num_draftable, num_rounds), dtype=np.float64)
 
         full_adp_sample = np.asarray(full_adp_sample, dtype=np.float64)
+        draft_order = np.argsort(
+            np.maximum(full_adp_sample, 1.0) + np.random.uniform(-0.01, 0.01, size=len(full_adp_sample)),
+            kind='mergesort',
+        )
+        draft_order_idx = 0
 
         remaining = np.ones(num_full_players, dtype=bool)
         if len(selected_full_indices) > 0:
@@ -1077,22 +1149,16 @@ class FootballSimulation:
             prev_pick = adjusted_picks[round_idx - 1]
             cur_pick = adjusted_picks[round_idx]
 
-            for pick_num in range(prev_pick + 1, cur_pick):
-                remaining_indices = np.where(remaining)[0]
-                if len(remaining_indices) == 0:
+            for _ in range(prev_pick + 1, cur_pick):
+                while draft_order_idx < len(draft_order) and not remaining[draft_order[draft_order_idx]]:
+                    draft_order_idx += 1
+
+                if draft_order_idx >= len(draft_order):
                     break
 
-                adp_vals = np.maximum(full_adp_sample[remaining_indices], 1.0)
-                reach_penalty = np.maximum(adp_vals - pick_num, 0) / reach_temperature
-                logits = (-adp_vals / adp_temperature) - reach_penalty
-                logits -= logits.max()
-                probs = np.exp(logits)
-                prob_sum = probs.sum()
-                if prob_sum <= 0 or not np.isfinite(prob_sum):
-                    chosen_idx = remaining_indices[np.argmin(adp_vals)]
-                else:
-                    chosen_idx = np.random.choice(remaining_indices, p=probs / prob_sum)
+                chosen_idx = draft_order[draft_order_idx]
                 remaining[chosen_idx] = False
+                draft_order_idx += 1
 
             availability[:, round_idx] = remaining[model_full_indices].astype(np.float64)
 
@@ -1195,119 +1261,95 @@ class FootballSimulation:
 
         return ppg_pred, ppg_pred_ny, adp_samples
 
-    def add_current_pick_ev(self, results, scenario_records, model, adjusted_picks, to_add, ev_shortlist_size):
-        if len(scenario_records) == 0:
-            return results
+    def get_db_path(self):
+        db_info = self.conn.execute("PRAGMA database_list").fetchall()
+        for _, name, path in db_info:
+            if name == 'main' and path:
+                return path
+        return None
 
-        current_round = len(to_add) + 1
-        count_col = f'Round{current_round}Count'
-        available_col = f'Round{current_round}Available'
-        if count_col not in results.columns or available_col not in results.columns:
-            return results
+    def get_sim_config(self):
+        return {
+            'set_year': self.set_year,
+            'pos_require_start': self.pos_require_start,
+            'num_teams': self.num_teams,
+            'num_rounds': self.num_rounds,
+            'my_pick_position': self.my_pick_position,
+            'pred_vers': self.pred_vers,
+            'league': self.league,
+            'use_ownership': self.use_ownership,
+            'position_ranges': self.position_ranges,
+        }
 
-        shortlist = (
-            results[(results[available_col] > 0) & (results[count_col] > 0)]
-            .nlargest(ev_shortlist_size, count_col)
-            .player
-            .tolist()
-        )
-        if len(shortlist) == 0:
-            return results
+    @staticmethod
+    def merge_player_selection_counts(target, source):
+        for player, counts in source.items():
+            if player not in target:
+                target[player] = copy.deepcopy(counts)
+                continue
+            for key, value in counts.items():
+                target[player][key] += value
+        return target
 
-        ev_records = {}
-        for player_name in shortlist:
-            ev_values = []
-            for scenario in scenario_records:
-                ev = self.solve_forced_current_pick_best_ball_ilp(
-                    model,
-                    scenario['weekly_scores'],
-                    scenario['adp_sample'],
-                    adjusted_picks,
-                    scenario['availability'],
-                    player_name,
-                )
-                if ev is not None:
-                    ev_values.append(ev)
+    @staticmethod
+    def best_ball_model_summary(model, num_weeks):
+        return {
+            'num_players': int(model.get('num_players', 0)),
+            'num_draftable': int(model.get('num_draftable', 0)),
+            'num_rounds': int(model.get('num_rounds', 0)),
+            'num_weeks': int(num_weeks),
+            'num_vars': int(model.get('num_vars', 0)),
+            'binary_vars': int(len(model.get('binary_vars', []))),
+            'start_var_count': int(model.get('start_var_count', 0)),
+            'x_count': int(model.get('x_count', 0)),
+            'full_x_count': int(model.get('full_x_count', 0)),
+            'x_pruned_count': int(model.get('x_pruned_count', 0)),
+            'x_pick_buffer': int(model.get('x_pick_buffer', 0)),
+        }
 
-            if len(ev_values) > 0:
-                ev_records[player_name] = {
-                    'CurrentPickEV': float(np.mean(ev_values)),
-                    'CurrentPickEVSamples': len(ev_values),
-                }
-
-        if len(ev_records) == 0:
-            return results
-
-        best_ev = max(v['CurrentPickEV'] for v in ev_records.values())
-        for player_name, ev_data in ev_records.items():
-            ev_data['CurrentPickEVVsBest'] = ev_data['CurrentPickEV'] - best_ev
-
-        ev_df = pd.DataFrame.from_dict(ev_records, orient='index').reset_index().rename(columns={'index': 'player'})
-        results = pd.merge(results, ev_df, how='left', on='player')
-        return results
-
-    def run_sim_best_ball_ilp(
+    def run_best_ball_ilp_iteration_chunk(
         self,
-        to_add,
-        to_drop,
+        ppg_pred,
+        ppg_pred_ny,
+        adp_matrix,
+        full_adp_matrix,
+        adjusted_picks,
+        model,
+        model_full_indices,
+        selected_full_indices,
+        num_full_players,
         num_iters,
-        next_year_frac=0,
-        num_weeks=17,
-        current_pick_ev=False,
-        ev_shortlist_size=8,
-        weekly_score_mode='residual',
+        to_add,
+        next_year_frac,
+        weekly_score_mode,
+        num_weeks,
+        collect_scenarios=False,
+        seed=None,
     ):
-        self.num_iters = num_iters
-        num_options = 1000
+        if seed is not None:
+            np.random.seed(seed)
+
+        timings = Counter()
+        status_counts = Counter()
+        failed_exception_count = 0
         player_selections = self.init_select_cnts()
         success_trials = 0
         scenario_records = []
+        to_add_count = len(to_add)
 
-        to_add_set = set(to_add)
-        to_drop_set = set(to_drop)
-
-        ppg_pred = self.drop_players(self.get_predictions('pred_fp_per_game', num_options=num_options), to_drop_set)
-        ppg_pred_ny = None
-        if next_year_frac > 0:
-            ppg_pred_ny = self.drop_players(self.get_predictions('pred_fp_per_game_ny', num_options=num_options), to_drop_set)
-
-        adp_samples = self.drop_players(self.get_adp_samples(num_options=num_options), to_drop_set)
-        full_player_names = adp_samples.player.values
-        full_adp_matrix = adp_samples.iloc[:, 2:].values
-
-        adjusted_picks = self.calculate_adjusted_picks(len(to_add))
-        if len(adjusted_picks) == 0:
-            return self.final_results(player_selections, 1)
-
-        if weekly_score_mode == 'template':
-            num_weeks = self.load_weekly_template_profiles()
-
-        ppg_pred, ppg_pred_ny, adp_samples = self.filter_best_ball_ilp_pool(
-            ppg_pred,
-            ppg_pred_ny,
-            adp_samples,
-            to_add_set,
-        )
-        adp_matrix = adp_samples.iloc[:, 2:].values
-
-        model = self.build_best_ball_ilp_model(ppg_pred, to_add_set, adjusted_picks, num_weeks)
-        full_idx = {player: idx for idx, player in enumerate(full_player_names)}
-        model_player_names = model['player_names'][model['draft_pool_indices']]
-        model_full_indices = np.array([full_idx[player] for player in model_player_names], dtype=np.int64)
-        selected_full_indices = np.array(
-            [full_idx[player] for player in to_add_set if player in full_idx],
-            dtype=np.int64,
-        )
-        num_full_players = len(full_player_names)
-
-        for iter_idx in range(self.num_iters):
+        for iter_idx in range(num_iters):
+            iter_start = time.perf_counter()
             predictions = ppg_pred_ny if (next_year_frac > 0 and np.random.random() < next_year_frac) else ppg_pred
+
+            t0 = time.perf_counter()
             weekly_scores = self.sample_ilp_weekly_scores(
                 predictions,
                 num_weeks,
                 weekly_score_mode=weekly_score_mode,
             )
+            timings['weekly_score_sampling'] += time.perf_counter() - t0
 
+            t0 = time.perf_counter()
             adp_col = np.random.randint(0, full_adp_matrix.shape[1])
             adp_sample = adp_matrix[:, adp_col]
             full_adp_sample = full_adp_matrix[:, adp_col]
@@ -1319,8 +1361,10 @@ class FootballSimulation:
                 full_adp_sample,
                 adjusted_picks,
             )
+            timings['opponent_draft_availability'] += time.perf_counter() - t0
 
             try:
+                t0 = time.perf_counter()
                 status, x, availability = self.solve_best_ball_ilp(
                     model,
                     weekly_scores,
@@ -1328,25 +1372,34 @@ class FootballSimulation:
                     adjusted_picks,
                     availability,
                 )
+                timings['ilp_solve'] += time.perf_counter() - t0
+                status_counts[status] += 1
             except Exception as e:
+                timings['ilp_solve'] += time.perf_counter() - t0
+                timings['iteration_total'] += time.perf_counter() - iter_start
+                failed_exception_count += 1
                 print(f"Best-ball ILP failed in iteration {iter_idx}: {e}")
                 continue
 
             if status != 'optimal':
+                timings['iteration_total'] += time.perf_counter() - iter_start
                 continue
 
+            t0 = time.perf_counter()
             player_names = model['player_names']
             draft_pool_indices = model['draft_pool_indices']
             num_rounds = model['num_rounds']
             x_solution = np.array(x)[:, 0]
-            draft_solution = x_solution[model['x_var_indices'].reshape(-1)].reshape(model['num_draftable'], num_rounds)
+            draft_solution = np.zeros((model['num_draftable'], num_rounds), dtype=np.float64)
+            valid_x_mask = model['valid_x_mask']
+            draft_solution[valid_x_mask] = x_solution[model['x_var_indices'][valid_x_mask]]
 
-            available_positions = np.where(availability == 1)
+            available_positions = np.where((availability > 0.5) & valid_x_mask)
             for avail_idx in range(len(available_positions[0])):
                 draft_idx = available_positions[0][avail_idx]
                 round_idx = available_positions[1][avail_idx]
                 player_name = player_names[draft_pool_indices[draft_idx]]
-                round_num = round_idx + len(to_add) + 1
+                round_num = round_idx + to_add_count + 1
                 player_selections[player_name][f'round_{round_num}_available'] += 1
                 player_selections[player_name]['total_available_count'] += 1
 
@@ -1355,29 +1408,490 @@ class FootballSimulation:
                 draft_idx = selected_positions[0][selected_idx]
                 round_idx = selected_positions[1][selected_idx]
                 player_name = player_names[draft_pool_indices[draft_idx]]
-                round_num = round_idx + len(to_add) + 1
+                round_num = round_idx + to_add_count + 1
                 player_selections[player_name][f'round_{round_num}_count'] += 1
                 player_selections[player_name]['total_counts'] += 1
 
             success_trials += 1
-            if current_pick_ev:
+            if collect_scenarios:
                 scenario_records.append({
                     'weekly_scores': weekly_scores.copy(),
                     'adp_sample': adp_sample.copy(),
                     'availability': availability.copy(),
                 })
+            timings['result_accounting'] += time.perf_counter() - t0
+            timings['iteration_total'] += time.perf_counter() - iter_start
 
-        results = self.final_results(player_selections, max(success_trials, 1))
-        if current_pick_ev:
-            results = self.add_current_pick_ev(
-                results,
-                scenario_records,
-                model,
+        return {
+            'player_selections': player_selections,
+            'success_trials': success_trials,
+            'failed_exception_count': failed_exception_count,
+            'status_counts': dict(status_counts),
+            'scenario_records': scenario_records,
+            'timings': dict(timings),
+        }
+
+    def get_current_pick_ev_shortlist(
+        self,
+        results,
+        to_add,
+        ev_shortlist_size,
+        ev_wait_candidate_size=2,
+    ):
+        current_round = len(to_add) + 1
+        count_col = f'Round{current_round}Count'
+        available_col = f'Round{current_round}Available'
+        if count_col not in results.columns or available_col not in results.columns:
+            return []
+
+        current_available = results[results[available_col] > 0].copy()
+        shortlist = (
+            current_available[current_available[count_col] > 0]
+            .nlargest(ev_shortlist_size, count_col)
+            .player
+            .tolist()
+        )
+
+        next_count_col = f'Round{current_round + 1}Count'
+        if ev_wait_candidate_size > 0 and next_count_col in results.columns:
+            wait_candidates = (
+                current_available[current_available[next_count_col] > 0]
+                .nlargest(ev_wait_candidate_size, next_count_col)
+                .player
+                .tolist()
+            )
+            shortlist.extend(wait_candidates)
+
+        return list(dict.fromkeys(shortlist))
+
+    def solve_current_pick_ev_records(self, scenario_records, model, adjusted_picks, shortlist):
+        ev_values_by_player = {player_name: [] for player_name in shortlist}
+        complete_scenarios = 0
+        failed_scenarios = 0
+
+        for scenario in scenario_records:
+            scenario_evs = {}
+            for player_name in shortlist:
+                ev = self.solve_forced_current_pick_best_ball_ilp(
+                    model,
+                    scenario['weekly_scores'],
+                    scenario['adp_sample'],
+                    adjusted_picks,
+                    scenario['availability'],
+                    player_name,
+                )
+                if ev is None:
+                    scenario_evs = None
+                    break
+                scenario_evs[player_name] = ev
+
+            if scenario_evs is None:
+                failed_scenarios += 1
+                continue
+
+            complete_scenarios += 1
+            for player_name, ev in scenario_evs.items():
+                ev_values_by_player[player_name].append(ev)
+
+        return {
+            'ev_values_by_player': ev_values_by_player,
+            'complete_scenarios': complete_scenarios,
+            'failed_scenarios': failed_scenarios,
+        }
+
+    @staticmethod
+    def merge_ev_outputs(outputs, shortlist):
+        ev_values_by_player = {player_name: [] for player_name in shortlist}
+        complete_scenarios = 0
+        failed_scenarios = 0
+
+        for output in outputs:
+            complete_scenarios += output.get('complete_scenarios', 0)
+            failed_scenarios += output.get('failed_scenarios', 0)
+            for player_name in shortlist:
+                ev_values_by_player[player_name].extend(
+                    output.get('ev_values_by_player', {}).get(player_name, [])
+                )
+
+        return {
+            'ev_values_by_player': ev_values_by_player,
+            'complete_scenarios': complete_scenarios,
+            'failed_scenarios': failed_scenarios,
+        }
+
+    def apply_current_pick_ev_results(self, results, ev_output, shortlist):
+        ev_records = {}
+        for player_name in shortlist:
+            ev_values = ev_output['ev_values_by_player'].get(player_name, [])
+            if len(ev_values) == 0:
+                continue
+            ev_records[player_name] = {
+                'CurrentPickEV': float(np.mean(ev_values)),
+                'CurrentPickEVSamples': len(ev_values),
+                'CurrentPickEVFailedScenarios': int(ev_output.get('failed_scenarios', 0)),
+            }
+
+        if len(ev_records) == 0:
+            return results
+
+        best_ev = max(v['CurrentPickEV'] for v in ev_records.values())
+        for player_name, ev_data in ev_records.items():
+            ev_data['CurrentPickEVVsBest'] = ev_data['CurrentPickEV'] - best_ev
+
+        ev_df = pd.DataFrame.from_dict(ev_records, orient='index').reset_index().rename(columns={'index': 'player'})
+        return pd.merge(results, ev_df, how='left', on='player')
+
+    def add_current_pick_ev(
+        self,
+        results,
+        scenario_records,
+        model,
+        adjusted_picks,
+        to_add,
+        ev_shortlist_size,
+        ev_wait_candidate_size=2,
+    ):
+        if len(scenario_records) == 0:
+            return results
+
+        shortlist = self.get_current_pick_ev_shortlist(
+            results,
+            to_add,
+            ev_shortlist_size,
+            ev_wait_candidate_size=ev_wait_candidate_size,
+        )
+        if len(shortlist) == 0:
+            return results
+
+        ev_output = self.solve_current_pick_ev_records(
+            scenario_records,
+            model,
+            adjusted_picks,
+            shortlist,
+        )
+        return self.apply_current_pick_ev_results(results, ev_output, shortlist)
+
+    @staticmethod
+    def _split_work(total_items, num_workers):
+        num_workers = min(max(1, int(num_workers)), max(1, int(total_items)))
+        base_size = total_items // num_workers
+        remainder = total_items % num_workers
+        return [
+            base_size + (1 if idx < remainder else 0)
+            for idx in range(num_workers)
+            if base_size + (1 if idx < remainder else 0) > 0
+        ]
+
+    def run_parallel_best_ball_ilp_chunks(
+        self,
+        db_path,
+        ppg_pred,
+        ppg_pred_ny,
+        adp_samples,
+        full_player_names,
+        full_adp_matrix,
+        adjusted_picks,
+        to_add,
+        next_year_frac,
+        weekly_score_mode,
+        num_weeks,
+        collect_scenarios,
+        parallel_workers,
+    ):
+        chunk_sizes = self._split_work(self.num_iters, parallel_workers)
+        seeds = np.random.randint(1, 2**31 - 1, size=len(chunk_sizes)).tolist()
+        sim_config = self.get_sim_config()
+        to_add_list = list(to_add)
+
+        payloads = []
+        for chunk_idx, chunk_size in enumerate(chunk_sizes):
+            payloads.append({
+                'db_path': db_path,
+                'sim_config': sim_config,
+                'ppg_pred': ppg_pred,
+                'ppg_pred_ny': ppg_pred_ny,
+                'adp_samples': adp_samples,
+                'full_player_names': full_player_names,
+                'full_adp_matrix': full_adp_matrix,
+                'adjusted_picks': adjusted_picks,
+                'to_add': to_add_list,
+                'next_year_frac': next_year_frac,
+                'weekly_score_mode': weekly_score_mode,
+                'num_weeks': num_weeks,
+                'collect_scenarios': collect_scenarios,
+                'num_iters': chunk_size,
+                'seed': seeds[chunk_idx],
+            })
+
+        outputs = []
+        with ProcessPoolExecutor(max_workers=len(payloads)) as executor:
+            futures = [executor.submit(_best_ball_ilp_base_worker, payload) for payload in payloads]
+            for future in as_completed(futures):
+                outputs.append(future.result())
+
+        player_selections = self.init_select_cnts()
+        status_counts = Counter()
+        timings = Counter()
+        scenario_records = []
+        success_trials = 0
+        failed_exception_count = 0
+
+        for output in outputs:
+            self.merge_player_selection_counts(player_selections, output['player_selections'])
+            status_counts.update(output.get('status_counts', {}))
+            timings.update(output.get('timings', {}))
+            scenario_records.extend(output.get('scenario_records', []))
+            success_trials += output.get('success_trials', 0)
+            failed_exception_count += output.get('failed_exception_count', 0)
+
+        return {
+            'player_selections': player_selections,
+            'success_trials': success_trials,
+            'failed_exception_count': failed_exception_count,
+            'status_counts': dict(status_counts),
+            'scenario_records': scenario_records,
+            'timings': dict(timings),
+            'worker_count': len(payloads),
+        }
+
+    def run_parallel_current_pick_ev(
+        self,
+        db_path,
+        ppg_pred,
+        adp_samples,
+        scenario_records,
+        adjusted_picks,
+        shortlist,
+        to_add,
+        parallel_workers,
+    ):
+        if len(scenario_records) == 0 or len(shortlist) == 0:
+            return {
+                'ev_values_by_player': {player_name: [] for player_name in shortlist},
+                'complete_scenarios': 0,
+                'failed_scenarios': 0,
+            }
+
+        chunk_sizes = self._split_work(len(scenario_records), parallel_workers)
+        sim_config = self.get_sim_config()
+        to_add_list = list(to_add)
+        payloads = []
+        start_idx = 0
+        for chunk_size in chunk_sizes:
+            end_idx = start_idx + chunk_size
+            payloads.append({
+                'db_path': db_path,
+                'sim_config': sim_config,
+                'ppg_pred': ppg_pred,
+                'adp_samples': adp_samples,
+                'scenario_records': scenario_records[start_idx:end_idx],
+                'adjusted_picks': adjusted_picks,
+                'shortlist': shortlist,
+                'to_add': to_add_list,
+            })
+            start_idx = end_idx
+
+        outputs = []
+        with ProcessPoolExecutor(max_workers=len(payloads)) as executor:
+            futures = [executor.submit(_best_ball_ilp_ev_worker, payload) for payload in payloads]
+            for future in as_completed(futures):
+                outputs.append(future.result())
+
+        return self.merge_ev_outputs(outputs, shortlist)
+
+    def run_sim_best_ball_ilp(
+        self,
+        to_add,
+        to_drop,
+        num_iters,
+        next_year_frac=0,
+        num_weeks=17,
+        current_pick_ev=False,
+        ev_shortlist_size=8,
+        weekly_score_mode='residual',
+        parallel_workers=1,
+        ev_wait_candidate_size=2,
+    ):
+        total_start = time.perf_counter()
+        timings = Counter()
+        status_counts = Counter()
+        failed_exception_count = 0
+
+        self.num_iters = num_iters
+        num_options = 1000
+        player_selections = self.init_select_cnts()
+        success_trials = 0
+        scenario_records = []
+
+        to_add_set = set(to_add)
+        to_drop_set = set(to_drop)
+
+        t0 = time.perf_counter()
+        ppg_pred = self.drop_players(self.get_predictions('pred_fp_per_game', num_options=num_options), to_drop_set)
+        ppg_pred_ny = None
+        if next_year_frac > 0:
+            ppg_pred_ny = self.drop_players(self.get_predictions('pred_fp_per_game_ny', num_options=num_options), to_drop_set)
+
+        adp_samples = self.drop_players(self.get_adp_samples(num_options=num_options), to_drop_set)
+        full_player_names = adp_samples.player.values
+        full_adp_matrix = adp_samples.iloc[:, 2:].values
+        timings['prediction_adp_generation'] += time.perf_counter() - t0
+
+        adjusted_picks = self.calculate_adjusted_picks(len(to_add))
+        if len(adjusted_picks) == 0:
+            results = self.final_results(player_selections, 1)
+            timings['total'] = time.perf_counter() - total_start
+            results.attrs['timings'] = {
+                'mode': 'best_ball_ilp',
+                'weekly_score_mode': weekly_score_mode,
+                'requested_iters': num_iters,
+                'success_trials': 0,
+                'failed_exception_count': 0,
+                'status_counts': {},
+                'model': {},
+                'parallel_workers': 1,
+                'sections': dict(timings),
+            }
+            return results
+
+        if weekly_score_mode == 'template':
+            t0 = time.perf_counter()
+            num_weeks = self.load_weekly_template_profiles()
+            timings['template_profile_load'] += time.perf_counter() - t0
+
+        t0 = time.perf_counter()
+        ppg_pred, ppg_pred_ny, adp_samples = self.filter_best_ball_ilp_pool(
+            ppg_pred,
+            ppg_pred_ny,
+            adp_samples,
+            to_add_set,
+        )
+        adp_matrix = adp_samples.iloc[:, 2:].values
+        timings['pool_filter'] += time.perf_counter() - t0
+
+        t0 = time.perf_counter()
+        model = self.build_best_ball_ilp_model(ppg_pred, to_add_set, adjusted_picks, num_weeks)
+        full_idx = {player: idx for idx, player in enumerate(full_player_names)}
+        model_player_names = model['player_names'][model['draft_pool_indices']]
+        model_full_indices = np.array([full_idx[player] for player in model_player_names], dtype=np.int64)
+        selected_full_indices = np.array(
+            [full_idx[player] for player in to_add_set if player in full_idx],
+            dtype=np.int64,
+        )
+        num_full_players = len(full_player_names)
+        timings['model_build'] += time.perf_counter() - t0
+
+        db_path = self.get_db_path()
+        parallel_workers = int(max(1, parallel_workers))
+        use_parallel = parallel_workers > 1 and db_path is not None and self.num_iters > 1
+
+        if use_parallel:
+            t0 = time.perf_counter()
+            try:
+                chunk_output = self.run_parallel_best_ball_ilp_chunks(
+                    db_path,
+                    ppg_pred,
+                    ppg_pred_ny,
+                    adp_samples,
+                    full_player_names,
+                    full_adp_matrix,
+                    adjusted_picks,
+                    to_add,
+                    next_year_frac,
+                    weekly_score_mode,
+                    num_weeks,
+                    current_pick_ev,
+                    parallel_workers,
+                )
+                parallel_wall = time.perf_counter() - t0
+                timings['parallel_base_sims'] += parallel_wall
+            except Exception as e:
+                print(f"Parallel best-ball ILP failed, falling back to single worker: {e}")
+                use_parallel = False
+                timings['parallel_fallback'] += time.perf_counter() - t0
+
+        if not use_parallel:
+            chunk_output = self.run_best_ball_ilp_iteration_chunk(
+                ppg_pred,
+                ppg_pred_ny,
+                adp_matrix,
+                full_adp_matrix,
                 adjusted_picks,
+                model,
+                model_full_indices,
+                selected_full_indices,
+                num_full_players,
+                self.num_iters,
+                to_add,
+                next_year_frac,
+                weekly_score_mode,
+                num_weeks,
+                collect_scenarios=current_pick_ev,
+            )
+            timings.update(chunk_output.get('timings', {}))
+
+        player_selections = chunk_output['player_selections']
+        success_trials = chunk_output['success_trials']
+        failed_exception_count += chunk_output['failed_exception_count']
+        status_counts.update(chunk_output.get('status_counts', {}))
+        scenario_records = chunk_output.get('scenario_records', [])
+
+        t0 = time.perf_counter()
+        results = self.final_results(player_selections, max(success_trials, 1))
+        timings['final_results'] += time.perf_counter() - t0
+
+        if current_pick_ev:
+            t0 = time.perf_counter()
+            shortlist = self.get_current_pick_ev_shortlist(
+                results,
                 to_add,
                 ev_shortlist_size,
+                ev_wait_candidate_size=ev_wait_candidate_size,
             )
+            if len(shortlist) > 0:
+                if use_parallel and len(scenario_records) > 1:
+                    try:
+                        ev_output = self.run_parallel_current_pick_ev(
+                            db_path,
+                            ppg_pred,
+                            adp_samples,
+                            scenario_records,
+                            adjusted_picks,
+                            shortlist,
+                            to_add,
+                            parallel_workers,
+                        )
+                    except Exception as e:
+                        print(f"Parallel current-pick EV failed, falling back to single worker: {e}")
+                        ev_output = self.solve_current_pick_ev_records(
+                            scenario_records,
+                            model,
+                            adjusted_picks,
+                            shortlist,
+                        )
+                else:
+                    ev_output = self.solve_current_pick_ev_records(
+                        scenario_records,
+                        model,
+                        adjusted_picks,
+                        shortlist,
+                    )
+                results = self.apply_current_pick_ev_results(results, ev_output, shortlist)
+            timings['current_pick_ev'] += time.perf_counter() - t0
 
+        timings['total'] = time.perf_counter() - total_start
+        model_summary = self.best_ball_model_summary(model, num_weeks)
+        results.attrs['timings'] = {
+            'mode': 'best_ball_ilp',
+            'weekly_score_mode': weekly_score_mode,
+            'requested_iters': int(num_iters),
+            'success_trials': int(success_trials),
+            'failed_exception_count': int(failed_exception_count),
+            'status_counts': dict(status_counts),
+            'model': model_summary,
+            'parallel_workers': int(chunk_output.get('worker_count', 1) if use_parallel else 1),
+            'sections': dict(timings),
+        }
         return results
 
 
@@ -1537,6 +2051,7 @@ class FootballSimulation:
         current_pick_ev=False,
         ev_shortlist_size=8,
         weekly_score_mode='residual',
+        parallel_workers=1,
     ):
         if scoring_mode == 'best_ball_ilp':
             return self.run_sim_best_ball_ilp(
@@ -1547,6 +2062,7 @@ class FootballSimulation:
                 current_pick_ev=current_pick_ev,
                 ev_shortlist_size=ev_shortlist_size,
                 weekly_score_mode=weekly_score_mode,
+                parallel_workers=parallel_workers,
             )
 
         if scoring_mode in ('best_ball_marginal', 'best_ball_lookahead'):
@@ -1792,6 +2308,87 @@ class FootballSimulation:
                 pick = round_num * self.num_teams - self.my_pick_position + 1
             picks.append(pick)
         return picks
+
+
+def _best_ball_ilp_base_worker(payload):
+    conn = sqlite3.connect(payload['db_path'])
+    try:
+        sim = FootballSimulation(conn=conn, **payload['sim_config'])
+        np.random.seed(payload['seed'])
+
+        ppg_pred = payload['ppg_pred']
+        ppg_pred_ny = payload['ppg_pred_ny']
+        adp_samples = payload['adp_samples']
+        full_player_names = payload['full_player_names']
+        full_adp_matrix = payload['full_adp_matrix']
+        adjusted_picks = payload['adjusted_picks']
+        to_add = payload['to_add']
+        to_add_set = set(to_add)
+        num_weeks = payload['num_weeks']
+        if payload['weekly_score_mode'] == 'template':
+            sim.load_weekly_template_profiles()
+
+        model = sim.build_best_ball_ilp_model(ppg_pred, to_add_set, adjusted_picks, num_weeks)
+        full_idx = {player: idx for idx, player in enumerate(full_player_names)}
+        model_player_names = model['player_names'][model['draft_pool_indices']]
+        model_full_indices = np.array([full_idx[player] for player in model_player_names], dtype=np.int64)
+        selected_full_indices = np.array(
+            [full_idx[player] for player in to_add_set if player in full_idx],
+            dtype=np.int64,
+        )
+
+        return sim.run_best_ball_ilp_iteration_chunk(
+            ppg_pred,
+            ppg_pred_ny,
+            adp_samples.iloc[:, 2:].values,
+            full_adp_matrix,
+            adjusted_picks,
+            model,
+            model_full_indices,
+            selected_full_indices,
+            len(full_player_names),
+            payload['num_iters'],
+            to_add,
+            payload['next_year_frac'],
+            payload['weekly_score_mode'],
+            num_weeks,
+            collect_scenarios=payload['collect_scenarios'],
+            seed=payload['seed'],
+        )
+    finally:
+        conn.close()
+
+
+def _best_ball_ilp_ev_worker(payload):
+    conn = sqlite3.connect(payload['db_path'])
+    try:
+        sim = FootballSimulation(conn=conn, **payload['sim_config'])
+        scenario_records = payload['scenario_records']
+        shortlist = payload['shortlist']
+        if len(scenario_records) == 0:
+            return {
+                'ev_values_by_player': {player_name: [] for player_name in shortlist},
+                'complete_scenarios': 0,
+                'failed_scenarios': 0,
+            }
+
+        ppg_pred = payload['ppg_pred']
+        to_add = payload['to_add']
+        model = sim.build_best_ball_ilp_model(
+            ppg_pred,
+            set(to_add),
+            payload['adjusted_picks'],
+            scenario_records[0]['weekly_scores'].shape[1],
+        )
+
+        return sim.solve_current_pick_ev_records(
+            scenario_records,
+            model,
+            payload['adjusted_picks'],
+            shortlist,
+        )
+    finally:
+        conn.close()
 
 #%%
     

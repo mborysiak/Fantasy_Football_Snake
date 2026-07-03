@@ -5,6 +5,7 @@ import numpy as np
 import sqlite3
 from zSim_Helper import FootballSimulation
 import io
+import os
 from datetime import datetime
 
 # Configuration
@@ -155,6 +156,7 @@ def run_simulation(
     current_pick_ev=False,
     ev_shortlist_size=8,
     weekly_score_mode='residual',
+    parallel_workers=1,
 ):
     """Run the snake draft simulation"""
     
@@ -172,10 +174,94 @@ def run_simulation(
         current_pick_ev=current_pick_ev,
         ev_shortlist_size=ev_shortlist_size,
         weekly_score_mode=weekly_score_mode,
+        parallel_workers=parallel_workers,
     )
     
     # Keep all the round-specific columns
     return results
+
+def render_timing_summary(results):
+    """Display timing diagnostics attached by the simulation helper."""
+    timings = getattr(results, 'attrs', {}).get('timings')
+    if not timings:
+        return
+
+    sections = timings.get('sections', {})
+    total_sec = sections.get('total', sum(sections.values()))
+    requested_iters = max(int(timings.get('requested_iters', 1)), 1)
+    success_trials = int(timings.get('success_trials', 0))
+    model = timings.get('model', {})
+
+    section_labels = {
+        'prediction_adp_generation': 'Prediction + ADP samples',
+        'template_profile_load': 'Template profile load',
+        'pool_filter': 'Pool filter',
+        'model_build': 'ILP model build',
+        'parallel_base_sims': 'Parallel base simulations',
+        'parallel_fallback': 'Parallel fallback overhead',
+        'weekly_score_sampling': 'Weekly score sampling',
+        'opponent_draft_availability': 'Opponent draft availability',
+        'ilp_solve': 'ILP solve',
+        'result_accounting': 'Result accounting',
+        'current_pick_ev': 'Current pick EV solves',
+        'final_results': 'Final result table',
+        'iteration_total': 'Iteration total',
+    }
+
+    timing_rows = []
+    for key, label in section_labels.items():
+        sec = float(sections.get(key, 0))
+        if sec <= 0:
+            continue
+        timing_rows.append({
+            'Section': label,
+            'Total Sec': sec,
+            'Ms / Iter': (sec / requested_iters) * 1000,
+            'Pct Total': (sec / total_sec) * 100 if total_sec > 0 else 0,
+        })
+
+    timing_df = pd.DataFrame(timing_rows)
+    if len(timing_df) > 0:
+        timing_df = timing_df.sort_values('Total Sec', ascending=False)
+
+    with st.expander("Simulation timing", expanded=False):
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Total seconds", f"{total_sec:.1f}")
+        col2.metric("Successful sims", f"{success_trials}/{requested_iters}")
+        col3.metric("ILP vars", f"{int(model.get('num_vars', 0)):,}")
+        col4.metric("Binary vars", f"{int(model.get('binary_vars', 0)):,}")
+
+        st.caption(
+            f"Mode: {timings.get('mode')} | Weekly scores: {timings.get('weekly_score_mode')} | "
+            f"Workers: {timings.get('parallel_workers', 1)} | "
+            f"Status counts: {timings.get('status_counts', {})} | "
+            f"Exceptions: {timings.get('failed_exception_count', 0)}"
+        )
+        if model.get('full_x_count', 0):
+            st.caption(
+                f"Player-round vars: {int(model.get('x_count', 0)):,}/"
+                f"{int(model.get('full_x_count', 0)):,} "
+                f"(pruned {int(model.get('x_pruned_count', 0)):,}, "
+                f"buffer +/-{int(model.get('x_pick_buffer', 0))} picks)"
+            )
+        if model.get('start_var_count', 0):
+            st.caption(f"Weekly start vars: {int(model.get('start_var_count', 0)):,}")
+        if len(timing_df) > 0:
+            st.dataframe(
+                timing_df,
+                column_config={
+                    'Total Sec': st.column_config.NumberColumn('Total Sec', format='%.3f'),
+                    'Ms / Iter': st.column_config.NumberColumn('Ms / Iter', format='%.1f'),
+                    'Pct Total': st.column_config.ProgressColumn(
+                        'Pct Total',
+                        format='%.1f%%',
+                        min_value=0,
+                        max_value=100,
+                    ),
+                },
+                use_container_width=True,
+                hide_index=True,
+            )
 
 def get_round_recommendations(results, sim, my_team_count, max_rounds=3):
     """Get top recommendations for the current and next few rounds"""
@@ -321,6 +407,7 @@ def save_draft_state(selected_data, settings):
         'TE_Min': position_ranges['TE'][0],
         'TE_Max': position_ranges['TE'][1],
         'NumIters': settings['num_iters'],
+        'ParallelWorkers': settings.get('parallel_workers', 1),
         'CurrentPickEV': settings.get('current_pick_ev', False),
         'EVShortlistSize': settings.get('ev_shortlist_size', 8),
         'SavedDate': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -475,6 +562,7 @@ def sidebar_controls(prediction_options):
         default_te = get_setting_int(loaded_settings, 'TE', 3)
         default_num_rounds = get_setting_int(loaded_settings, 'NumRounds', 20)
         default_num_iters = get_setting_int(loaded_settings, 'NumIters', 200)
+        default_parallel_workers = get_setting_int(loaded_settings, 'ParallelWorkers', min(4, max(1, (os.cpu_count() or 2) - 1)))
         default_current_pick_ev = get_setting_bool(loaded_settings, 'CurrentPickEV', False)
         default_ev_shortlist_size = get_setting_int(loaded_settings, 'EVShortlistSize', 8)
         default_scoring_mode = str(loaded_settings.get('ScoringMode', 'best_ball_ilp'))
@@ -499,6 +587,7 @@ def sidebar_controls(prediction_options):
         default_te = 3
         default_num_rounds = 20
         default_num_iters = 50
+        default_parallel_workers = min(4, max(1, (os.cpu_count() or 2) - 1))
         default_current_pick_ev = False
         default_ev_shortlist_size = 8
         default_scoring_mode = 'best_ball_ilp'
@@ -550,6 +639,16 @@ def sidebar_controls(prediction_options):
         value=default_num_iters, 
         step=10,
         help='Best-ball ILP is more expensive than lookahead; 50-100 simulations is a practical starting range.'
+    )
+
+    max_workers = max(1, min(12, os.cpu_count() or 1))
+    parallel_workers = st.sidebar.number_input(
+        'Parallel Workers',
+        min_value=1,
+        max_value=max_workers,
+        value=min(max(default_parallel_workers, 1), max_workers),
+        step=1,
+        help='Best-ball ILP simulations can run across processes. Use 1 to disable parallel execution.',
     )
 
     scoring_options = {
@@ -756,6 +855,7 @@ def sidebar_controls(prediction_options):
         'pos_require': pos_require,
         'position_ranges': position_ranges,
         'num_iters': num_iters,
+        'parallel_workers': parallel_workers,
         'scoring_mode': scoring_mode,
         'weekly_score_mode': weekly_score_mode,
         'current_pick_ev': current_pick_ev,
@@ -896,7 +996,10 @@ def main():
                             settings['current_pick_ev'],
                             settings['ev_shortlist_size'],
                             settings['weekly_score_mode'],
+                            settings['parallel_workers'],
                         )
+
+                    render_timing_summary(results)
                     
                     # Get round-specific recommendations
                     picks_remaining, round_recommendations = get_round_recommendations(
