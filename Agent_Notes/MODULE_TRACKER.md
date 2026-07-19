@@ -1,0 +1,10 @@
+# Module Tracker
+
+| Module | Scope | Status | Current Baseline | Next Step |
+| --- | --- | --- | --- | --- |
+| App database | Consumed `Simulation.sqlite3` and table contracts | active | `app/Simulation.sqlite3` is copied from `Fantasy_Football/Data/Databases/Simulation.sqlite3` | Keep contract docs aligned with modeling repo table changes |
+| Player pool and ADP | Draftable player loading, ADP simulation, availability, pruning | active | App uses DB player context with app-side fallback/canonical joins and a wider x-pruning buffer to avoid hiding available fallers | Continue monitoring missing ADP and availability leakage audits |
+| Weekly templates | Historical weekly profile sampling and residual blending | active | Weighted template sampling uses `template_sample_prob`; template residual blend is centered/scaled and variance-preserving with 0.30 template strength | Revisit blend strength only after calibration evidence supports a change |
+| ILP optimizer | Per-pick roster optimization and objective scoring | active | `app/zSim_Helper.py` owns optimizer setup, sampled outcomes, stack bonuses, template residual blend, and constraints | Keep runtime/performance checks close to optimizer changes |
+| Streamlit UI | Controls, outputs, caching, and interaction flow | active | `app/snake_draft_app.py` wraps helper logic and caches weekly template profile data by DB mtime | Keep UI text aligned with current sampling/modeling behavior |
+| Research/audits | Calibration and pruning investigations | active | Recent CSV outputs are stored under `research/studies/2026-07-05_best_ball_template_calibration/`; reusable SQL snippets live under `docs/runbooks/queries/` | Promote durable conclusions into the decision log and runbook |

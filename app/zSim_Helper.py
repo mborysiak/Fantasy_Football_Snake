@@ -21,10 +21,18 @@ from cvxopt.glpk import ilp
 import cvxopt
 cvxopt.glpk.options['msg_lev'] = 'GLP_MSG_OFF'
 
+BASE_PRED_COL = 'base_pred_fp_per_game'
+TEMPLATE_RESID_BLEND = 0.30
+MODEL_RESID_BLEND = np.sqrt(1 - TEMPLATE_RESID_BLEND**2)
+MIN_RESID_SD = 1e-6
+X_PICK_BUFFER = 6
+
 class FootballSimulation:
 
     def __init__(self, conn, set_year, pos_require_start, num_teams, num_rounds, my_pick_position,
-                 pred_vers='final_ensemble', league='beta', use_ownership=0, position_ranges=None):
+                 pred_vers='final_ensemble', league='beta', use_ownership=0, position_ranges=None,
+                 use_stack_bonus=False, stack_bonus_pct=0.25, stack_pair_cap=12.0,
+                 stack_team_cap=18.0):
 
         self.set_year = set_year
         self.pos_require_start = pos_require_start
@@ -32,6 +40,10 @@ class FootballSimulation:
         self.league = league
         self.use_ownership = use_ownership
         self.position_ranges = position_ranges
+        self.use_stack_bonus = bool(use_stack_bonus)
+        self.stack_bonus_pct = float(stack_bonus_pct or 0)
+        self.stack_pair_cap = float(stack_pair_cap or 0)
+        self.stack_team_cap = float(stack_team_cap or 0)
         self.conn = conn
         self.num_teams = num_teams
         self.num_rounds = num_rounds
@@ -41,6 +53,10 @@ class FootballSimulation:
         self.my_picks = self.calculate_snake_picks()
         self.weekly_template_profiles = None
         self.weekly_template_week_cols = None
+        self.weekly_template_cum_probs = None
+        self.weekly_template_active_ppg_resids = None
+        self.weekly_template_centered_active_ppg_resids = None
+        self.weekly_template_active_ppg_resid_sds = None
 
         player_data = self.get_model_predictions()
 
@@ -77,6 +93,26 @@ class FootballSimulation:
                 f"year={self.set_year}, dataset={self.pred_vers}, version={self.league}."
             )
 
+        team_df = pd.read_sql_query(f'''
+            SELECT player,
+                   pos,
+                   team,
+                   avg_pick model_input_avg_pick,
+                   year_exp model_input_year_exp
+            FROM Best_Ball_Weekly_Player_Map
+            WHERE year={self.set_year}
+                  AND dataset='{self.pred_vers}'
+                  AND version='{self.league}'
+        ''', self.conn)
+        if len(team_df) > 0:
+            team_df = team_df.drop_duplicates(['player', 'pos'])
+            df = pd.merge(df, team_df, how='left', on=['player', 'pos'])
+        else:
+            df['team'] = ''
+            df['model_input_avg_pick'] = np.nan
+            df['model_input_year_exp'] = np.nan
+        df['team'] = df['team'].fillna('').astype(str).str.strip()
+
         resid_cols = [c for c in df.columns if c.startswith('pred_resid_')]
         df[resid_cols] = df[resid_cols].fillna(0)
         df['pred_fp_per_game_ny'] = df.pred_fp_per_game_ny.fillna(df.pred_fp_per_game)
@@ -86,10 +122,21 @@ class FootballSimulation:
         return df
     
 
+    @staticmethod
+    def player_join_key(values):
+        return (
+            pd.Series(values)
+            .fillna('')
+            .astype(str)
+            .str.lower()
+            .str.replace(r'[^a-z0-9]+', '', regex=True)
+        )
+
+
     def join_adp(self, df):
 
         # add ADP data to the dataframe 
-        adp_data = pd.read_sql_query(f'''SELECT player, 
+        adp_data = pd.read_sql_query(f'''SELECT player adp_player, 
                                                 Years_of_Experience as years_of_experience,
                                                 avg_pick,
                                                 std_dev adp_std_dev,
@@ -101,7 +148,37 @@ class FootballSimulation:
                                                ''', 
                                         self.conn)
 
-        df = pd.merge(df, adp_data, how='left', left_on='player', right_on='player')
+        df = df.copy()
+        df['_player_join_key'] = self.player_join_key(df['player']).values
+        adp_data['_player_join_key'] = self.player_join_key(adp_data['adp_player']).values
+        adp_data = (
+            adp_data.sort_values(['_player_join_key', 'avg_pick'])
+            .drop_duplicates('_player_join_key')
+        )
+
+        df = pd.merge(df, adp_data, how='left', on='_player_join_key')
+        model_input_avg_pick = pd.to_numeric(
+            df.get('model_input_avg_pick', np.nan), errors='coerce'
+        )
+        model_pick_fallback = df['avg_pick'].isna() & model_input_avg_pick.notna()
+        df['avg_pick'] = df['avg_pick'].combine_first(model_input_avg_pick)
+        df.loc[model_pick_fallback, 'adp_std_dev'] = (
+            df.loc[model_pick_fallback, 'adp_std_dev']
+            .fillna(0.2 * df.loc[model_pick_fallback, 'avg_pick'])
+        )
+        df.loc[model_pick_fallback, 'adp_min_pick'] = (
+            df.loc[model_pick_fallback, 'adp_min_pick']
+            .fillna(0.8 * df.loc[model_pick_fallback, 'avg_pick'])
+        )
+        df.loc[model_pick_fallback, 'adp_max_pick'] = (
+            df.loc[model_pick_fallback, 'adp_max_pick']
+            .fillna(1.2 * df.loc[model_pick_fallback, 'avg_pick'])
+        )
+        if 'model_input_year_exp' in df.columns:
+            df['years_of_experience'] = df['years_of_experience'].combine_first(
+                df['model_input_year_exp']
+            )
+        df = df.drop(columns=['_player_join_key', 'adp_player'], errors='ignore')
         df = df.fillna({'avg_pick': 240, 'adp_std_dev': 20, 'adp_min_pick': 200, 'adp_max_pick': 250})
         df.loc[df.adp_std_dev < 0.1, 'adp_std_dev'] = 0.2 * df.loc[df.adp_std_dev < 0.1, 'avg_pick']
         df.loc[df.adp_min_pick > df.avg_pick, 'adp_min_pick'] = df.loc[df.adp_min_pick > df.avg_pick, 'avg_pick'] * 0.8
@@ -236,9 +313,10 @@ class FootballSimulation:
 
     def get_predictions(self, pred_label, num_options=500):
 
-        labels = self.player_data[['player', 'pos']]
+        labels = self.player_data[['player', 'pos', 'team']]
         predictions = self.trunc_normal_dist(pred_label, num_options)
         predictions = pd.concat([labels, predictions], axis=1)
+        predictions[BASE_PRED_COL] = self.player_data[pred_label].values
 
         return predictions
     
@@ -248,13 +326,15 @@ class FootballSimulation:
         adp = pd.concat([labels, adp], axis=1)
         return adp
 
-    def load_weekly_template_profiles(self):
-        if self.weekly_template_profiles is not None:
-            return len(self.weekly_template_week_cols)
+    @staticmethod
+    def sample_value_columns(df):
+        return [c for c in df.columns if c not in ('player', 'pos', 'team', BASE_PRED_COL)]
 
+    @staticmethod
+    def read_weekly_template_profile_cache(conn, set_year, league, pred_vers):
         template_cols = pd.read_sql_query(
             "SELECT * FROM Best_Ball_Weekly_Templates LIMIT 0",
-            self.conn,
+            conn,
         ).columns
         week_cols = sorted(
             [c for c in template_cols if c.startswith('week_')],
@@ -263,46 +343,151 @@ class FootballSimulation:
         if len(week_cols) == 0:
             raise ValueError("Best_Ball_Weekly_Templates has no week_* columns.")
 
+        pool_cols = pd.read_sql_query(
+            "SELECT * FROM Best_Ball_Weekly_Template_Pools LIMIT 0",
+            conn,
+        ).columns
+        sample_prob_select = (
+            "p.template_sample_prob"
+            if "template_sample_prob" in pool_cols
+            else "NULL AS template_sample_prob"
+        )
+        active_ppg_resid_select = (
+            "t.active_ppg_resid"
+            if "active_ppg_resid" in template_cols
+            else "(t.active_ppg - t.historical_pred_fp_per_game) AS active_ppg_resid"
+        )
+        template_join = (
+            "ON p.template_id = t.template_id AND p.pool_version = t.league"
+            if "league" in template_cols
+            else "ON p.template_id = t.template_id"
+        )
+
         week_select = ', '.join([f't.{c}' for c in week_cols])
         profiles = pd.read_sql_query(
             f'''
             SELECT m.player,
                    p.template_id,
+                   {sample_prob_select},
+                   {active_ppg_resid_select},
                    {week_select}
             FROM Best_Ball_Weekly_Player_Map m
             INNER JOIN Best_Ball_Weekly_Template_Pools p
                     ON m.template_pool_key = p.template_pool_key
             INNER JOIN Best_Ball_Weekly_Templates t
-                    ON p.template_id = t.template_id
-            WHERE m.year = {self.set_year}
-                  AND m.version = '{self.league}'
-                  AND m.dataset = '{self.pred_vers}'
-            ORDER BY m.player, p.template_id
+                    {template_join}
+            WHERE m.year = {set_year}
+                  AND m.version = '{league}'
+                  AND m.dataset = '{pred_vers}'
+            ORDER BY m.player, p.match_rank
             ''',
-            self.conn,
+            conn,
         )
 
         if len(profiles) == 0:
             raise ValueError(
                 f"No weekly template profiles found for "
-                f"year={self.set_year}, version={self.league}, dataset={self.pred_vers}."
+                f"year={set_year}, version={league}, dataset={pred_vers}."
             )
 
-        self.weekly_template_week_cols = week_cols
-        self.weekly_template_profiles = {
-            player: group[week_cols].to_numpy(dtype=np.float32)
-            for player, group in profiles.groupby('player', sort=False)
-        }
+        weekly_template_profiles = {}
+        weekly_template_cum_probs = {}
+        weekly_template_active_ppg_resids = {}
+        weekly_template_centered_active_ppg_resids = {}
+        weekly_template_active_ppg_resid_sds = {}
+        for player, group in profiles.groupby('player', sort=False):
+            weekly_template_profiles[player] = group[week_cols].to_numpy(dtype=np.float32)
+            active_ppg_resids = group['active_ppg_resid'].fillna(0).to_numpy(dtype=np.float32)
+            weekly_template_active_ppg_resids[player] = active_ppg_resids
+            probs = group['template_sample_prob'].to_numpy(dtype=np.float64)
+            if (
+                len(probs) == 0
+                or np.any(~np.isfinite(probs))
+                or np.any(probs < 0)
+                or probs.sum() <= 0
+            ):
+                probs = np.repeat(1 / len(group), len(group))
+            else:
+                probs = probs / probs.sum()
+            cum_probs = np.cumsum(probs)
+            cum_probs[-1] = 1.0
+            weekly_template_cum_probs[player] = cum_probs
+            resid_mean = float(np.sum(probs * active_ppg_resids))
+            centered_resids = active_ppg_resids - resid_mean
+            resid_sd = float(np.sqrt(np.sum(probs * np.square(centered_resids))))
+            weekly_template_centered_active_ppg_resids[player] = centered_resids.astype(
+                np.float32
+            )
+            weekly_template_active_ppg_resid_sds[player] = resid_sd
+
+        return (
+            week_cols,
+            weekly_template_profiles,
+            weekly_template_cum_probs,
+            weekly_template_active_ppg_resids,
+            weekly_template_centered_active_ppg_resids,
+            weekly_template_active_ppg_resid_sds,
+        )
+
+    def set_weekly_template_profile_cache(
+        self,
+        week_cols,
+        weekly_template_profiles,
+        weekly_template_cum_probs,
+        weekly_template_active_ppg_resids,
+        weekly_template_centered_active_ppg_resids=None,
+        weekly_template_active_ppg_resid_sds=None,
+    ):
+        self.weekly_template_week_cols = list(week_cols)
+        self.weekly_template_profiles = weekly_template_profiles
+        self.weekly_template_cum_probs = weekly_template_cum_probs
+        self.weekly_template_active_ppg_resids = weekly_template_active_ppg_resids
+        if weekly_template_centered_active_ppg_resids is None:
+            weekly_template_centered_active_ppg_resids = {}
+            weekly_template_active_ppg_resid_sds = {}
+            for player, active_ppg_resids in weekly_template_active_ppg_resids.items():
+                active_ppg_resids = np.asarray(active_ppg_resids, dtype=np.float32)
+                cum_probs = np.asarray(weekly_template_cum_probs[player], dtype=np.float64)
+                probs = np.diff(np.insert(cum_probs, 0, 0.0))
+                resid_mean = float(np.sum(probs * active_ppg_resids))
+                centered_resids = active_ppg_resids - resid_mean
+                weekly_template_centered_active_ppg_resids[player] = centered_resids.astype(
+                    np.float32
+                )
+                weekly_template_active_ppg_resid_sds[player] = float(
+                    np.sqrt(np.sum(probs * np.square(centered_resids)))
+                )
+        self.weekly_template_centered_active_ppg_resids = (
+            weekly_template_centered_active_ppg_resids
+        )
+        self.weekly_template_active_ppg_resid_sds = weekly_template_active_ppg_resid_sds
         return len(week_cols)
+
+    def load_weekly_template_profiles(self):
+        if self.weekly_template_profiles is not None:
+            return len(self.weekly_template_week_cols)
+
+        cache = self.read_weekly_template_profile_cache(
+            self.conn,
+            self.set_year,
+            self.league,
+            self.pred_vers,
+        )
+        return self.set_weekly_template_profile_cache(*cache)
 
     def sample_template_weekly_scores(self, predictions, num_weeks):
         template_weeks = self.load_weekly_template_profiles()
         num_weeks = min(num_weeks, template_weeks)
 
         players = predictions.player.values
-        score_matrix = predictions.iloc[:, 2:].values.astype(np.float32)
+        score_matrix = predictions[self.sample_value_columns(predictions)].values.astype(np.float32)
         ppg_col = np.random.randint(0, score_matrix.shape[1])
         sampled_ppg = score_matrix[:, ppg_col]
+        if BASE_PRED_COL in predictions.columns:
+            base_ppg = predictions[BASE_PRED_COL].to_numpy(dtype=np.float32)
+        else:
+            base_ppg = score_matrix.mean(axis=1)
+        model_resid_sds = np.std(score_matrix - base_ppg[:, None], axis=1)
 
         missing_players = [p for p in players if p not in self.weekly_template_profiles]
         if missing_players:
@@ -315,8 +500,29 @@ class FootballSimulation:
         weekly_scores = np.empty((len(players), num_weeks), dtype=np.float32)
         for idx, player in enumerate(players):
             profiles = self.weekly_template_profiles[player]
-            template_idx = np.random.randint(0, profiles.shape[0])
-            weekly_scores[idx] = sampled_ppg[idx] * profiles[template_idx, :num_weeks]
+            cum_probs = self.weekly_template_cum_probs[player]
+            centered_active_ppg_resids = self.weekly_template_centered_active_ppg_resids[player]
+            template_resid_sd = self.weekly_template_active_ppg_resid_sds[player]
+            template_idx = np.searchsorted(cum_probs, np.random.random(), side='right')
+            model_resid = sampled_ppg[idx] - base_ppg[idx]
+            scaled_template_resid = 0.0
+            # Centering removes pool bias; scaling keeps the model residual variance calibrated.
+            if (
+                np.isfinite(template_resid_sd)
+                and np.isfinite(model_resid_sds[idx])
+                and template_resid_sd > MIN_RESID_SD
+                and model_resid_sds[idx] > MIN_RESID_SD
+            ):
+                scaled_template_resid = (
+                    centered_active_ppg_resids[template_idx]
+                    * (model_resid_sds[idx] / template_resid_sd)
+                )
+            blended_ppg = (
+                base_ppg[idx]
+                + (MODEL_RESID_BLEND * model_resid)
+                + (TEMPLATE_RESID_BLEND * scaled_template_resid)
+            )
+            weekly_scores[idx] = max(blended_ppg, 0) * profiles[template_idx, :num_weeks]
 
         return weekly_scores
 
@@ -324,7 +530,7 @@ class FootballSimulation:
         if weekly_score_mode == 'template':
             return self.sample_template_weekly_scores(predictions, num_weeks)
 
-        score_matrix = predictions.iloc[:, 2:].values.astype(np.float32)
+        score_matrix = predictions[self.sample_value_columns(predictions)].values.astype(np.float32)
         week_cols = np.random.randint(0, score_matrix.shape[1], size=num_weeks)
         return score_matrix[:, week_cols]
     
@@ -863,6 +1069,16 @@ class FootballSimulation:
     def build_best_ball_ilp_model(self, predictions, to_add_set, adjusted_picks, num_weeks):
         player_names = predictions.player.values
         player_positions = predictions.pos.values
+        if 'team' in predictions.columns:
+            player_teams = predictions.team.fillna('').astype(str).str.strip().values
+        else:
+            player_teams = np.array([''] * len(predictions), dtype=object)
+        player_ppg = (
+            predictions[self.sample_value_columns(predictions)]
+            .mean(axis=1)
+            .fillna(0)
+            .to_numpy(dtype=np.float64)
+        )
         num_players = len(predictions)
         num_rounds = len(adjusted_picks)
 
@@ -872,7 +1088,7 @@ class FootballSimulation:
         num_draftable = len(draft_pool_indices)
 
         full_x_count = num_draftable * num_rounds
-        x_pick_buffer = 2
+        x_pick_buffer = X_PICK_BUFFER
         pick_nums = np.array(adjusted_picks, dtype=np.float64)
         adp_bounds = (
             self.player_data[['player', 'adp_min_pick', 'adp_max_pick']]
@@ -913,6 +1129,47 @@ class FootballSimulation:
                 next_var += 1
                 start_var_by_player_week[player_idx, week] = var_idx
                 objective_start_entries.append((var_idx, player_idx, week))
+
+        stack_pair_entries = []
+        stack_score_entries = []
+        if (
+            self.use_stack_bonus
+            and self.stack_bonus_pct > 0
+            and self.stack_pair_cap > 0
+            and self.stack_team_cap > 0
+        ):
+            qb_indices = np.where(player_positions == 'QB')[0]
+            pass_catcher_indices = np.where(np.isin(player_positions, ('WR', 'TE')))[0]
+            stack_pairs_by_qb_team = {}
+
+            for qb_idx in qb_indices:
+                qb_team = player_teams[qb_idx]
+                if qb_team == '':
+                    continue
+
+                same_team_receivers = [
+                    rec_idx for rec_idx in pass_catcher_indices
+                    if player_teams[rec_idx] == qb_team
+                ]
+                for rec_idx in same_team_receivers:
+                    raw_bonus = self.stack_bonus_pct * (player_ppg[qb_idx] + player_ppg[rec_idx])
+                    pair_bonus = min(self.stack_pair_cap, raw_bonus)
+                    if pair_bonus <= 0:
+                        continue
+
+                    pair_var_idx = next_var
+                    next_var += 1
+                    stack_pair_entries.append(
+                        (pair_var_idx, qb_idx, rec_idx, qb_team, float(pair_bonus))
+                    )
+                    stack_pairs_by_qb_team.setdefault((qb_idx, qb_team), []).append(
+                        (pair_var_idx, float(pair_bonus))
+                    )
+
+            for (qb_idx, qb_team), pair_entries in stack_pairs_by_qb_team.items():
+                score_var_idx = next_var
+                next_var += 1
+                stack_score_entries.append((score_var_idx, qb_idx, qb_team, pair_entries))
 
         num_vars = next_var
         start_var_indices = start_var_by_player_week[start_var_by_player_week >= 0]
@@ -1027,6 +1284,32 @@ class FootballSimulation:
             add_g_row([(y_idx, 1.0)], 1.0)
             add_g_row([(y_idx, -1.0)], 0.0)
 
+        # Stack bonus variables are continuous. Pair variables are forced to 1
+        # when both same-team QB/WR-TE players are rostered, then a capped score
+        # variable turns the pair bonuses into objective points.
+        for pair_var_idx, qb_idx, rec_idx, _, _ in stack_pair_entries:
+            add_g_row([(pair_var_idx, 1.0), (y_var_indices[qb_idx], -1.0)], 0.0)
+            add_g_row([(pair_var_idx, 1.0), (y_var_indices[rec_idx], -1.0)], 0.0)
+            add_g_row(
+                [
+                    (y_var_indices[qb_idx], 1.0),
+                    (y_var_indices[rec_idx], 1.0),
+                    (pair_var_idx, -1.0),
+                ],
+                1.0,
+            )
+            add_g_row([(pair_var_idx, -1.0)], 0.0)
+
+        for score_var_idx, _, _, pair_entries in stack_score_entries:
+            add_g_row([(score_var_idx, 1.0)], self.stack_team_cap)
+            stack_score_coeffs = [(score_var_idx, 1.0)]
+            stack_score_coeffs.extend(
+                (pair_var_idx, -pair_bonus)
+                for pair_var_idx, pair_bonus in pair_entries
+            )
+            add_g_row(stack_score_coeffs, 0.0)
+            add_g_row([(score_var_idx, -1.0)], 0.0)
+
         availability_row_start = len(h_static)
         availability_entries = []
         for draft_idx in range(num_draftable):
@@ -1080,9 +1363,20 @@ class FootballSimulation:
             'future_pick_nums': np.array(adjusted_picks[1:], dtype=np.float64),
             'player_names': player_names,
             'player_positions': player_positions,
+            'player_teams': player_teams,
             'objective_var_indices': objective_var_indices,
             'objective_player_indices': objective_player_indices,
             'objective_week_indices': objective_week_indices,
+            'stack_pair_entries': stack_pair_entries,
+            'stack_score_var_indices': np.array(
+                [entry[0] for entry in stack_score_entries],
+                dtype=np.int64,
+            ),
+            'stack_pair_count': int(len(stack_pair_entries)),
+            'stack_score_count': int(len(stack_score_entries)),
+            'stack_bonus_pct': float(self.stack_bonus_pct if self.use_stack_bonus else 0),
+            'stack_pair_cap': float(self.stack_pair_cap if self.use_stack_bonus else 0),
+            'stack_team_cap': float(self.stack_team_cap if self.use_stack_bonus else 0),
             'c_template': np.zeros(num_vars, dtype=np.float64),
             'binary_vars': binary_vars,
         }
@@ -1094,6 +1388,9 @@ class FootballSimulation:
             model['objective_player_indices'],
             model['objective_week_indices']
         ]
+        stack_score_var_indices = model.get('stack_score_var_indices', np.array([], dtype=np.int64))
+        if len(stack_score_var_indices) > 0:
+            c_vals[stack_score_var_indices] = -1.0
         return matrix(c_vals, tc='d')
 
     @staticmethod
@@ -1216,8 +1513,8 @@ class FootballSimulation:
 
     def filter_best_ball_ilp_pool(self, ppg_pred, ppg_pred_ny, adp_samples, to_add_set, pos_pool_multiplier=8):
         pool = ppg_pred[['player', 'pos']].copy()
-        pool['proj_mean'] = ppg_pred.iloc[:, 2:].mean(axis=1).values
-        pool['adp_mean'] = adp_samples.iloc[:, 2:].mean(axis=1).values
+        pool['proj_mean'] = ppg_pred[self.sample_value_columns(ppg_pred)].mean(axis=1).values
+        pool['adp_mean'] = adp_samples[self.sample_value_columns(adp_samples)].mean(axis=1).values
         pos_ranges = self.best_ball_position_ranges()
 
         keep_players = set(pool.loc[pool.player.isin(to_add_set), 'player'])
@@ -1279,6 +1576,10 @@ class FootballSimulation:
             'league': self.league,
             'use_ownership': self.use_ownership,
             'position_ranges': self.position_ranges,
+            'use_stack_bonus': self.use_stack_bonus,
+            'stack_bonus_pct': self.stack_bonus_pct,
+            'stack_pair_cap': self.stack_pair_cap,
+            'stack_team_cap': self.stack_team_cap,
         }
 
     @staticmethod
@@ -1305,6 +1606,11 @@ class FootballSimulation:
             'full_x_count': int(model.get('full_x_count', 0)),
             'x_pruned_count': int(model.get('x_pruned_count', 0)),
             'x_pick_buffer': int(model.get('x_pick_buffer', 0)),
+            'stack_pair_count': int(model.get('stack_pair_count', 0)),
+            'stack_score_count': int(model.get('stack_score_count', 0)),
+            'stack_bonus_pct': float(model.get('stack_bonus_pct', 0)),
+            'stack_pair_cap': float(model.get('stack_pair_cap', 0)),
+            'stack_team_cap': float(model.get('stack_team_cap', 0)),
         }
 
     def run_best_ball_ilp_iteration_chunk(
@@ -1919,11 +2225,10 @@ class FootballSimulation:
         player_names = ppg_pred.player.values
         player_positions = ppg_pred.pos.values
         player_idx = {player: idx for idx, player in enumerate(player_names)}
-        sample_start_col = 2
 
         for _ in range(self.num_iters):
             predictions = ppg_pred_ny if (next_year_frac > 0 and np.random.random() < next_year_frac) else ppg_pred
-            score_matrix = predictions.iloc[:, sample_start_col:].values.astype(np.float32)
+            score_matrix = predictions[self.sample_value_columns(predictions)].values.astype(np.float32)
             week_cols = np.random.randint(0, score_matrix.shape[1], size=num_weeks)
             weekly_scores = score_matrix[:, week_cols]
 

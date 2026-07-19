@@ -1,0 +1,20 @@
+# Research Index
+
+Purpose: keep standalone app validation, calibration, and audit outputs in
+dated, reviewable bundles.
+
+## Layout
+- `studies/YYYY-MM-DD_<slug>/`: app-side investigations.
+
+## Study Rules
+- Each study should include a short `README.md`.
+- Durable outputs should live in `results/`.
+- Local scratch artifacts should live in `artifacts/local/` when needed.
+- Promote lasting conclusions into `Agent_Notes/DECISION_LOG.md` or the relevant
+  runbook.
+
+## Current Study Types
+- Template residual blend calibration.
+- X-pruning availability leakage checks.
+- ADP/name join audits.
+- ILP runtime/performance checks.

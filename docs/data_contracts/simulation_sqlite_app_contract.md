@@ -1,0 +1,99 @@
+# Simulation SQLite App Contract
+
+Last updated: 2026-07-13
+
+## Owner
+
+`Fantasy_Football` owns source generation of `Simulation.sqlite3`.
+
+## Consumer
+
+This app consumes:
+
+```text
+app/Simulation.sqlite3
+```
+
+The file is generated/copied from the modeling repo and should not be hand-edited
+as a durable fix.
+
+## Best-Ball Weekly Tables
+
+### `Best_Ball_Weekly_Player_Map`
+
+Used for current-player projection and template-pool context.
+
+Expected columns include:
+- `player`, `pos`, `team`, `year`, `version`, `dataset`
+- `pred_fp_per_game`
+- residual quantile columns prefixed `pred_resid_`
+- `avg_pick`
+- `template_pool_key`
+
+### `Best_Ball_Weekly_Template_Pools`
+
+Used to select historical weekly templates for current players.
+
+Expected columns include:
+- `template_pool_key`
+- `template_id`
+- `pool_version`, `pool_dataset`
+- `template_league`
+- `template_distance`
+- `match_rank`
+- `template_sample_prob`
+
+The app should sample with `template_sample_prob` when the column exists.
+The intended behavior is to use all selected templates while giving closer
+matches higher prevalence.
+
+### `Best_Ball_Weekly_Templates`
+
+Used to turn sampled season outcomes into week-level scores.
+
+Expected columns include:
+- `league`
+- `template_id`
+- `template_local_id`
+- `player`, `pos`, `season`
+- `active_games`, `played_games`, `active_ppg`, `season_points`, `profile_total`
+- `active_ppg_resid`
+- `week_1` through `week_16`
+- `managed_week_1` through `managed_week_16`
+- `played_week_1` through `played_week_16`
+
+The `played_week_*` fields are additive 0/1 source-observation masks owned by
+the modeling build. The Snake app does not currently use them for best-ball
+scoring, and its weekly multiplier loader must continue selecting only columns
+whose names begin with `week_`.
+Their row sum equals `played_games`, which can exceed `active_games` for QBs
+because short appearances are retained as participation evidence while the
+existing greater-than-15-play performance-profile filter remains in place.
+The `managed_week_*` fields retain those short-QB score profiles for the auction
+app. Snake must continue selecting only columns whose names begin exactly with
+`week_`, so neither `managed_week_*` nor `played_week_*` changes best-ball
+scoring.
+
+### `Best_Ball_ADP_Audit`
+
+Optional review table for identifying draftable players with suspicious missing
+or fallback ADP context.
+
+## Runtime Rules
+
+- Preserve `template_pool_key` joins across player map, pools, and templates.
+- When `Best_Ball_Weekly_Templates.league` exists, join pools to templates on
+  both `template_id` and league context (`pool_version` to `league`).
+- Best-ball table builds should preserve other league slices already present in
+  `Simulation.sqlite3`.
+- Treat `week_1` through `week_16` as multipliers.
+- Do not reinterpret `played_week_*` as score multipliers. A value of `1`
+  means the source weekly table contained a qualifying player-week row, not
+  that the player necessarily had comprehensive snap-count coverage.
+- Center and scale template residuals in app sampling before blending them with
+  model residuals.
+- Keep the model residual draw as the calibrated season-distribution anchor.
+- Use template residuals as contextual dependence with the sampled weekly
+  profile, not as an uncentered mean shift.
+- Keep app logic tolerant of older DBs when practical, but update this contract
+  when new columns become required.

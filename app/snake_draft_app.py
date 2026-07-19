@@ -16,11 +16,37 @@ pred_vers = 'final_ensemble'
 # Helper Functions
 #-----------------
 
-def get_conn(filename):
+def get_db_path(filename):
     from pathlib import Path
-    filepath = Path(__file__).parents[0] / filename
-    conn = sqlite3.connect(filepath)
+    return Path(__file__).parents[0] / filename
+
+def get_conn(filename):
+    conn = sqlite3.connect(get_db_path(filename))
     return conn
+
+@st.cache_data(show_spinner=False)
+def load_cached_weekly_template_profiles(filename, year, league, pred_vers, db_mtime):
+    conn = get_conn(filename)
+    try:
+        return FootballSimulation.read_weekly_template_profile_cache(
+            conn,
+            year,
+            league,
+            pred_vers,
+        )
+    finally:
+        conn.close()
+
+def hydrate_weekly_template_profiles(sim, filename, year, league, pred_vers):
+    db_mtime = os.path.getmtime(get_db_path(filename))
+    cache = load_cached_weekly_template_profiles(
+        filename,
+        year,
+        league,
+        pred_vers,
+        db_mtime,
+    )
+    return sim.set_weekly_template_profile_cache(*cache)
 
 def get_prediction_options(filename, pred_vers):
     """Return available year/league combinations from residual predictions."""
@@ -39,7 +65,21 @@ def get_prediction_options(filename, pred_vers):
 
     return options
 
-def init_sim(filename, pred_vers, year, league, num_teams, num_rounds, my_pick_position, pos_require, position_ranges=None):
+def init_sim(
+    filename,
+    pred_vers,
+    year,
+    league,
+    num_teams,
+    num_rounds,
+    my_pick_position,
+    pos_require,
+    position_ranges=None,
+    use_stack_bonus=False,
+    stack_bonus_pct=0.25,
+    stack_pair_cap=12.0,
+    stack_team_cap=18.0,
+):
     conn = get_conn(filename)
     sim = FootballSimulation(
         conn=conn, 
@@ -52,6 +92,10 @@ def init_sim(filename, pred_vers, year, league, num_teams, num_rounds, my_pick_p
         league=league, 
         use_ownership=0,
         position_ranges=position_ranges,
+        use_stack_bonus=use_stack_bonus,
+        stack_bonus_pct=stack_bonus_pct,
+        stack_pair_cap=stack_pair_cap,
+        stack_team_cap=stack_team_cap,
     )
     return sim
 
@@ -61,7 +105,7 @@ def get_player_data(sim):
     
     # Select and rename relevant columns
     player_data = player_data[[
-        'player', 'pos', 'years_of_experience', 'pred_fp_per_game', 'pred_p10', 'pred_p90',
+        'player', 'pos', 'team', 'years_of_experience', 'pred_fp_per_game', 'pred_p10', 'pred_p90',
         'avg_pick', 'adp_std_dev', 'adp_min_pick', 'adp_max_pick'
     ]]
     
@@ -69,6 +113,7 @@ def get_player_data(sim):
     player_data = player_data.rename(columns={
         'player': 'Player',
         'pos': 'Pos', 
+        'team': 'NFLTeam',
         'avg_pick': 'ADP',
         'pred_fp_per_game': 'PredPPG',
         'pred_p10': 'PredP10',
@@ -97,7 +142,7 @@ def get_player_data(sim):
     
     # Reorder columns
     player_data = player_data[[
-        'Player', 'Pos', 'Years_Exp', 'MyTeam', 'OtherTeam', 'ADP',
+        'Player', 'Pos', 'NFLTeam', 'Years_Exp', 'MyTeam', 'OtherTeam', 'ADP',
         'PredPPG', 'PredP10', 'PredP90', 'ADP_StdDev', 'ADP_Min', 'ADP_Max'
     ]]
     
@@ -142,7 +187,7 @@ def create_interactive_grid(data, key_suffix=""):
 
         },
         use_container_width=True,
-        disabled=["Player", "Pos", "ADP", "PredPPG", "PredP10", "PredP90"],
+        disabled=["Player", "Pos", "NFLTeam", "ADP", "PredPPG", "PredP10", "PredP90"],
         hide_index=True,
         height=500
     )
@@ -246,6 +291,14 @@ def render_timing_summary(results):
             )
         if model.get('start_var_count', 0):
             st.caption(f"Weekly start vars: {int(model.get('start_var_count', 0)):,}")
+        if model.get('stack_bonus_pct', 0) > 0:
+            st.caption(
+                f"Stack bonus: {model.get('stack_bonus_pct', 0) * 100:.0f}% "
+                f"(pairs {int(model.get('stack_pair_count', 0)):,}, "
+                f"capped score vars {int(model.get('stack_score_count', 0)):,}, "
+                f"pair cap {model.get('stack_pair_cap', 0):.1f}, "
+                f"QB/team cap {model.get('stack_team_cap', 0):.1f})"
+            )
         if len(timing_df) > 0:
             st.dataframe(
                 timing_df,
@@ -410,6 +463,10 @@ def save_draft_state(selected_data, settings):
         'ParallelWorkers': settings.get('parallel_workers', 1),
         'CurrentPickEV': settings.get('current_pick_ev', False),
         'EVShortlistSize': settings.get('ev_shortlist_size', 8),
+        'UseStackBonus': settings.get('use_stack_bonus', False),
+        'StackBonusPct': settings.get('stack_bonus_pct', 0.25) * 100,
+        'StackPairCap': settings.get('stack_pair_cap', 12.0),
+        'StackTeamCap': settings.get('stack_team_cap', 18.0),
         'SavedDate': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     }])
     
@@ -488,6 +545,17 @@ def get_setting_bool(settings, key, default):
 
     return bool(value)
 
+def get_setting_float(settings, key, default):
+    """Read a float setting from a loaded CSV row with backward-compatible defaults."""
+    if settings is None or key not in settings:
+        return default
+
+    value = settings.get(key, default)
+    if pd.isna(value):
+        return default
+
+    return float(value)
+
 #------------------
 # App Components
 #------------------
@@ -565,6 +633,10 @@ def sidebar_controls(prediction_options):
         default_parallel_workers = get_setting_int(loaded_settings, 'ParallelWorkers', min(4, max(1, (os.cpu_count() or 2) - 1)))
         default_current_pick_ev = get_setting_bool(loaded_settings, 'CurrentPickEV', False)
         default_ev_shortlist_size = get_setting_int(loaded_settings, 'EVShortlistSize', 8)
+        default_use_stack_bonus = get_setting_bool(loaded_settings, 'UseStackBonus', True)
+        default_stack_bonus_pct = get_setting_float(loaded_settings, 'StackBonusPct', 25.0)
+        default_stack_pair_cap = get_setting_float(loaded_settings, 'StackPairCap', 12.0)
+        default_stack_team_cap = get_setting_float(loaded_settings, 'StackTeamCap', 18.0)
         default_scoring_mode = str(loaded_settings.get('ScoringMode', 'best_ball_ilp'))
         default_weekly_score_mode = str(loaded_settings.get('WeeklyScoreMode', 'template'))
         if default_scoring_mode == 'best_ball_marginal':
@@ -590,6 +662,10 @@ def sidebar_controls(prediction_options):
         default_parallel_workers = min(4, max(1, (os.cpu_count() or 2) - 1))
         default_current_pick_ev = False
         default_ev_shortlist_size = 8
+        default_use_stack_bonus = True
+        default_stack_bonus_pct = 25.0
+        default_stack_pair_cap = 12.0
+        default_stack_team_cap = 18.0
         default_scoring_mode = 'best_ball_ilp'
         default_weekly_score_mode = 'template'
         default_position_ranges = default_ilp_ranges
@@ -673,6 +749,10 @@ def sidebar_controls(prediction_options):
     weekly_score_mode = 'residual'
     current_pick_ev = False
     ev_shortlist_size = default_ev_shortlist_size
+    use_stack_bonus = False
+    stack_bonus_pct = min(max(default_stack_bonus_pct, 0.0), 50.0) / 100.0
+    stack_pair_cap = default_stack_pair_cap
+    stack_team_cap = default_stack_team_cap
     if scoring_mode == 'best_ball_ilp':
         weekly_score_options = {
             'Weekly templates': 'template',
@@ -691,11 +771,30 @@ def sidebar_controls(prediction_options):
             index=weekly_score_index,
             help=(
                 'Weekly templates draw a season PPG from residuals, then apply a sampled '
-                'historical 16-week best-ball profile. Residual weeks preserves the prior '
-                'independent weekly sampling behavior.'
+                'historical 16-week best-ball profile, weighted by template similarity, '
+                'with a centered, variance-preserving 0.30 template residual blend. '
+                'Residual weeks preserves the prior independent weekly sampling behavior.'
             ),
         )
         weekly_score_mode = weekly_score_options[weekly_score_label]
+
+        use_stack_bonus = st.sidebar.checkbox(
+            'QB Stack Bonus',
+            value=default_use_stack_bonus,
+            help='Adds a capped roster-level bonus for same-team QB plus WR/TE stacks.',
+        )
+        if use_stack_bonus:
+            stack_bonus_pct = (
+                st.sidebar.slider(
+                    'Stack Bonus %',
+                    min_value=0.0,
+                    max_value=50.0,
+                    value=min(max(default_stack_bonus_pct, 0.0), 50.0),
+                    step=5.0,
+                    help='Pair bonus is this percent of combined QB plus WR/TE projected PPG, capped per pair and per QB/team.',
+                )
+                / 100.0
+            )
 
         current_pick_ev = st.sidebar.checkbox(
             'Current Pick EV Ranking',
@@ -858,6 +957,10 @@ def sidebar_controls(prediction_options):
         'parallel_workers': parallel_workers,
         'scoring_mode': scoring_mode,
         'weekly_score_mode': weekly_score_mode,
+        'use_stack_bonus': use_stack_bonus,
+        'stack_bonus_pct': stack_bonus_pct,
+        'stack_pair_cap': stack_pair_cap,
+        'stack_team_cap': stack_team_cap,
         'current_pick_ev': current_pick_ev,
         'ev_shortlist_size': ev_shortlist_size,
         'save_button_placeholder': save_button_placeholder
@@ -923,6 +1026,10 @@ def main():
             settings['my_pick_position'],
             settings['pos_require'],
             settings['position_ranges'],
+            settings['use_stack_bonus'],
+            settings['stack_bonus_pct'],
+            settings['stack_pair_cap'],
+            settings['stack_team_cap'],
         )
         
         # Reset the flag after initialization
@@ -988,6 +1095,18 @@ def main():
                     st.info("All picks completed! No more recommendations needed.")
                 else:
                     with st.spinner("Running simulation..."):
+                        if (
+                            settings['scoring_mode'] == 'best_ball_ilp'
+                            and settings['weekly_score_mode'] == 'template'
+                        ):
+                            hydrate_weekly_template_profiles(
+                                sim,
+                                db_name,
+                                settings['year'],
+                                settings['league'],
+                                pred_vers,
+                            )
+
                         results = run_simulation(
                             sim, 
                             selected_data, 
