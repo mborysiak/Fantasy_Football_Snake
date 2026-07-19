@@ -24,11 +24,18 @@ used to score those decisions:
    conditional survival to the next pick.
 6. Score every completed roster on a separate 64-season evaluation bank.
 
-Construction and evaluation draw unique PPG scenario columns from explicitly
-disjoint subsets of the 1,000 prediction columns. The engine asserts that the
-column intersection is empty. Template/profile draws also use separate seeds.
-`evaluation_seed` is independent of the construction/draft seed; changing it
-changes holdout scores but not the candidate screen or any rollout path.
+Release studies may additionally rescore the pilot top four on a 128-season
+confirmation bank. Its PPG columns are unique and disjoint from both adaptive
+banks. Confirmation is diagnostic only: changing its seed cannot change the
+candidate screen, rollout paths, pilot ranking, or the downstream draft state
+used by the study.
+
+Construction, evaluation, and optional confirmation draw unique PPG scenario
+columns from explicitly disjoint subsets of the 1,000 prediction columns. The
+engine asserts that the intersections are empty. Template/profile draws also
+use separate seeds. `evaluation_seed` and `confirmation_seed` are independent
+of the construction/draft seed; changing either changes only its score bank,
+not the candidate screen or any rollout path.
 
 The evaluation bank is never passed to the rollout policy. Weekly best-ball
 lineup selection may use realized weekly scores because that is the contest's
@@ -62,8 +69,14 @@ The final cap is 16 candidates. The Milestone A study compared it with 32
 candidates in a physical slot-six state (five round-one opponent selections
 already removed) and a derived seventh-round state. In both observed states the
 best 16-candidate option matched the 32-candidate best and empirical omission
-regret was zero. This is evidence from the fixture suite, not a 99% inclusion
-claim.
+regret was zero.
+
+The broader release gate found three misses across 27 DK states. The largest
+was 10.71 points at slot 1/seed 2017/round 1 and exceeded the fixed 10-point
+gate; the others were 7.56 and 2.18 points. The screen is therefore acceptable
+for Beta use but has not cleared the default-promotion gate. The misses were
+concentrated at the opening pick, so follow-up work should first test targeted
+opening-screen coverage rather than increasing every late-round candidate set.
 
 The scarcity-aware and pure-greedy policies selected Jonathan Taylor in the
 physical opening fixture, but scarcity changed their future draft paths. The
@@ -87,6 +100,13 @@ simulation object; subsequent score-bank draws are vectorized and inexpensive.
 Roster legality is vectorized, and conditional next-pick survival is precomputed
 once per player/turn instead of recalculated inside every rollout.
 
+The broader 27-state DK release matrix produced a different depth-dependent
+result. Sequential was faster in all nine opening states (p50 5.17 seconds
+versus 5.88), but slower in all round-8 states (3.10 versus 1.97) and round-15
+states (1.39 versus 0.61). Its across-state p50 of 3.10 seconds versus 1.97 for
+legacy fails the fixed default-promotion runtime gate. The earlier optimization
+is still material; the remaining target is late-draft rollout overhead.
+
 ## Validation
 
 Run:
@@ -94,20 +114,28 @@ Run:
 ```powershell
 python research/studies/2026-07-19_sequential_best_ball_policy/verify_milestone_a.py
 python research/studies/2026-07-19_sequential_best_ball_policy/run_milestone_a.py
+python research/studies/2026-07-19_sequential_best_ball_release_gate/run_release_gate.py
 ```
 
 The verifier checks frozen legacy source hashes, tensor scoring parity,
 candidate-consistent availability, global player removal, unique/legal roster
-paths, the construction/evaluation information boundary, and a real-database
-smoke run.
+paths, mutual construction/evaluation/confirmation bank disjointness,
+evaluation- and confirmation-seed path invariance, and a real-database smoke
+run.
 
 ## Known Limitations
 
 - Opponents use noisy ADP priority, not roster-aware or opponent-specific
   behavior.
 - The scarcity weights are policy parameters, not learned causal effects.
-- Candidate selection and reported ranking use one evaluation bank in the Beta;
-  a fresh confirmation bank is required before making the engine the default.
+- Candidate selection and reported ranking use the 64-season evaluation bank in
+  the Beta. The independent 128-season release confirmation agreed exactly in
+  16 of 27 DK states; three opening states had more than 10 points of
+  confirmation regret. More stable pilot ranking is required before default
+  promotion.
+- The `beta` database slice has only 180 modeled players and cannot simulate a
+  legal 12-team, 20-round room from the tested opening states. The engine now
+  reports this coverage failure instead of exhausting the player pool.
 - The app deliberately uses fixed construction/draft and evaluation seeds so
   repeated clicks on an unchanged draft state are reproducible. The API exposes
   `evaluation_seed` for validation and research.
@@ -119,10 +147,10 @@ smoke run.
 
 ## Release Decision
 
-Milestone A showed zero observed shortlist regret in both physical studied
-states and cleared the repeated matched runtime gate. Scarcity materially
-improved paired completed-roster EV, so it remains enabled. Beam search and
-adaptive candidate allocation were not added: the measured screen did not
-justify their complexity or runtime cost.
-Keep the legacy option for at least one release and collect broader shadow/Beta
-comparisons before changing the default.
+Milestone A justified shipping the explicit Beta, retaining scarcity, and
+skipping beam search. The broader 54-state release gate did not justify a
+default flip: 27 DK states completed, 27 Beta states were unsupported, and DK
+failed shortlist, confirmation-stability, and across-state runtime gates.
+Legacy therefore remains the default. Re-run the same fixed matrix plus fresh
+confirmation seeds only after the documented pool, opening-ranking, and
+late-draft runtime issues are addressed.

@@ -35,8 +35,10 @@ outcomes, and solves roster recommendations with the ILP optimizer.
   snippets under `docs/runbooks/queries/`.
 - Keep the sequential policy on the explicit 16-week template horizon, with
   disjoint construction/evaluation banks and candidate-consistent room state.
-- Keep beam search and adaptive allocation out until broader Beta evidence shows
-  material regret from the 16-candidate greedy-plus-scarcity policy.
+- Keep beam search out, but revisit targeted opening candidate coverage: the
+  broader release gate found one 16-versus-32 omission above 10 points.
+- Keep legacy as the default until the Beta player-pool coverage,
+  opening-ranking stability, and late-draft runtime gates pass on a fresh run.
 
 ## Key Links
 
@@ -46,6 +48,7 @@ outcomes, and solves roster recommendations with the ILP optimizer.
 - App DB contract: `../docs/data_contracts/simulation_sqlite_app_contract.md`
 - ILP validation runbook: `../docs/runbooks/best_ball_ilp_validation.md`
 - Research index: `../research/README.md`
+- Sequential policy runbook: `../docs/runbooks/best_ball_sequential_policy.md`
 - Latest chronological log: `Session_Notes/2026-07.md`
 
 ## Working Defaults

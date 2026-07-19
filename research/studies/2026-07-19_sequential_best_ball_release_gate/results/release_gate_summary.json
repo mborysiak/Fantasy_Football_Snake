@@ -1,0 +1,72 @@
+{
+  "configuration": {
+    "leagues": [
+      "beta",
+      "dk"
+    ],
+    "slots": [
+      1,
+      6,
+      12
+    ],
+    "seeds": [
+      17,
+      1017,
+      2017
+    ],
+    "completed_pick_depths": [
+      0,
+      7,
+      14
+    ],
+    "rooms": 16,
+    "construction_samples": 16,
+    "evaluation_samples": 64,
+    "confirmation_samples": 128,
+    "confirmation_candidates": 4,
+    "regret_threshold": 10.0
+  },
+  "state_counts": {
+    "configured": 54,
+    "completed": 27,
+    "unsupported": 27,
+    "errors": 0
+  },
+  "gates": {
+    "all_formats_supported": false,
+    "no_execution_errors": true,
+    "zero_high_regret_shortlist_omissions": false,
+    "pilot_confirmation_stable": false,
+    "all_rooms_complete": true,
+    "runtime_p50_no_slower_than_legacy": false
+  },
+  "promotion_ready": false,
+  "by_league": {
+    "beta": {
+      "configured_states": 27,
+      "completed_states": 0,
+      "unsupported_states": 27,
+      "error_states": 0,
+      "promotion_ready": false
+    },
+    "dk": {
+      "configured_states": 27,
+      "completed_states": 27,
+      "unsupported_states": 0,
+      "error_states": 0,
+      "max_shortlist_omission_regret": 10.708740234375,
+      "max_pilot_confirmation_regret": 18.00537109375,
+      "confirmation_exact_agreement_rate": 0.5925925925925926,
+      "completion_rate": 1.0,
+      "policy_runtime_p50": 3.103046700009145,
+      "legacy_runtime_p50": 1.97485769999912,
+      "promotion_ready": false
+    }
+  },
+  "unsupported_reasons": [
+    "beta has 180 modeled undrafted players for 218 required picks at slot 12.",
+    "beta has 180 modeled undrafted players for 230 required picks at slot 6.",
+    "beta has 180 modeled undrafted players for 240 required picks at slot 1."
+  ],
+  "error_messages": []
+}

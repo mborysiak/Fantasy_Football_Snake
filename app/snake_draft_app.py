@@ -1187,16 +1187,20 @@ def main():
                                 pred_vers,
                             )
 
-                        results = run_simulation(
-                            sim, 
-                            selected_data, 
-                            settings['num_iters'], 
-                            settings['scoring_mode'],
-                            settings['current_pick_ev'],
-                            settings['ev_shortlist_size'],
-                            settings['weekly_score_mode'],
-                            settings['parallel_workers'],
-                        )
+                        try:
+                            results = run_simulation(
+                                sim,
+                                selected_data,
+                                settings['num_iters'],
+                                settings['scoring_mode'],
+                                settings['current_pick_ev'],
+                                settings['ev_shortlist_size'],
+                                settings['weekly_score_mode'],
+                                settings['parallel_workers'],
+                            )
+                        except ValueError as exc:
+                            st.error(str(exc))
+                            return
 
                     render_timing_summary(results)
                     

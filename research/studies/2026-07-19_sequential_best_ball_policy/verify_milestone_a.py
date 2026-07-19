@@ -223,6 +223,15 @@ def verify_disjoint_bank_columns() -> None:
     assert len(construction) == len(np.unique(construction)) == 16
     assert len(evaluation) == len(np.unique(evaluation)) == 64
     assert np.intersect1d(construction, evaluation).size == 0
+    confirmation = FootballSimulation.select_confirmation_ppg_columns(
+        1000,
+        np.concatenate([construction, evaluation]),
+        128,
+        confirmation_seed=421,
+    )
+    assert len(confirmation) == len(np.unique(confirmation)) == 128
+    assert np.intersect1d(construction, confirmation).size == 0
+    assert np.intersect1d(evaluation, confirmation).size == 0
 
     rng = np.random.default_rng(91)
     adp_matrix = rng.integers(1, 241, size=(25, 100))
@@ -321,9 +330,12 @@ def verify_real_database(db_path: Path) -> dict:
             num_iters=2,
             construction_samples=4,
             evaluation_samples=8,
+            confirmation_samples=12,
+            confirmation_candidate_count=3,
             candidate_pool_size=4,
             seed=17,
             evaluation_seed=1001,
+            confirmation_seed=3003,
         )
         alternate_evaluation = sim.run_sim_best_ball_policy(
             [],
@@ -331,10 +343,56 @@ def verify_real_database(db_path: Path) -> dict:
             num_iters=2,
             construction_samples=4,
             evaluation_samples=8,
+            confirmation_samples=12,
+            confirmation_candidate_count=3,
             candidate_pool_size=4,
             seed=17,
             evaluation_seed=2002,
+            confirmation_seed=3003,
         )
+        alternate_confirmation = sim.run_sim_best_ball_policy(
+            [],
+            [],
+            num_iters=2,
+            construction_samples=4,
+            evaluation_samples=8,
+            confirmation_samples=12,
+            confirmation_candidate_count=3,
+            candidate_pool_size=4,
+            seed=17,
+            evaluation_seed=1001,
+            confirmation_seed=4004,
+        )
+        beta_sim = FootballSimulation(
+            conn=conn,
+            set_year=2026,
+            pos_require_start={'QB': 3, 'RB': 7, 'WR': 9, 'TE': 3},
+            num_teams=12,
+            num_rounds=20,
+            my_pick_position=6,
+            pred_vers='final_ensemble',
+            league='beta',
+            position_ranges={
+                'QB': (2, 3),
+                'RB': (5, 7),
+                'WR': (7, 9),
+                'TE': (2, 3),
+            },
+        )
+        try:
+            beta_sim.run_sim_best_ball_policy(
+                [],
+                [],
+                num_iters=1,
+                construction_samples=2,
+                evaluation_samples=2,
+                candidate_pool_size=2,
+                seed=17,
+            )
+        except ValueError as exc:
+            assert "player pool is too small" in str(exc)
+        else:
+            raise AssertionError("Undersized player pool was not rejected.")
     finally:
         conn.close()
 
@@ -353,13 +411,49 @@ def verify_real_database(db_path: Path) -> dict:
         set(primary_banks['construction_ppg_columns'])
         & set(primary_banks['evaluation_ppg_columns'])
     )
+    assert not (
+        set(primary_banks['construction_ppg_columns'])
+        & set(primary_banks['confirmation_ppg_columns'])
+    )
+    assert not (
+        set(primary_banks['evaluation_ppg_columns'])
+        & set(primary_banks['confirmation_ppg_columns'])
+    )
     assert results.attrs['policy_paths'] == alternate_evaluation.attrs['policy_paths']
+    assert results.attrs['policy_paths'] == alternate_confirmation.attrs['policy_paths']
 
     primary_ev = results.set_index('player').CurrentPickEV.sort_index()
     alternate_ev = (
         alternate_evaluation.set_index('player').CurrentPickEV.sort_index()
     )
     assert not np.allclose(primary_ev, alternate_ev)
+    confirmation_banks = alternate_confirmation.attrs['scenario_banks']
+    assert primary_banks['construction_ppg_columns'] == (
+        confirmation_banks['construction_ppg_columns']
+    )
+    assert primary_banks['evaluation_ppg_columns'] == (
+        confirmation_banks['evaluation_ppg_columns']
+    )
+    assert primary_banks['confirmation_ppg_columns'] != (
+        confirmation_banks['confirmation_ppg_columns']
+    )
+    alternate_confirmation_pilot_ev = (
+        alternate_confirmation.set_index('player').CurrentPickEV.sort_index()
+    )
+    np.testing.assert_allclose(primary_ev, alternate_confirmation_pilot_ev)
+    assert results.player.tolist() == alternate_confirmation.player.tolist()
+    primary_confirmation = (
+        results.set_index('player').ConfirmationEV.dropna().sort_index()
+    )
+    alternate_confirmation_ev = (
+        alternate_confirmation.set_index('player')
+        .ConfirmationEV.dropna()
+        .sort_index()
+    )
+    assert not np.allclose(
+        primary_confirmation,
+        alternate_confirmation_ev,
+    )
     for root_player, room_paths in results.attrs['policy_paths'].items():
         assert len(room_paths) == 2
         for room_path in room_paths:
@@ -378,6 +472,8 @@ def verify_real_database(db_path: Path) -> dict:
         'completed_rooms_per_candidate': results.PolicyCompletedRooms.tolist(),
         'construction_evaluation_columns_disjoint': True,
         'evaluation_seed_path_invariance': True,
+        'confirmation_seed_path_invariance': True,
+        'undersized_player_pool_rejected': True,
         'total_seconds': results.attrs['timings']['sections']['total'],
     }
 
@@ -417,6 +513,8 @@ def main() -> None:
             'no_duplicate_or_cross-drafted_players',
             'legal_final_construction',
             'evaluation_seed_path_invariance',
+            'confirmation_seed_path_invariance',
+            'undersized_player_pool_rejected',
             'real_database_smoke',
         ],
         'real_database_smoke': smoke,

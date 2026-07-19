@@ -29,6 +29,7 @@ X_PICK_BUFFER = 6
 SEQUENTIAL_POLICY_HORIZON = 16
 SEQUENTIAL_CONSTRUCTION_SAMPLES = 16
 SEQUENTIAL_EVALUATION_SAMPLES = 64
+SEQUENTIAL_CONFIRMATION_CANDIDATES = 4
 SEQUENTIAL_DRAFT_ROOMS = 24
 SEQUENTIAL_CANDIDATE_POOL_SIZE = 16
 SEQUENTIAL_SCARCITY_WEIGHT = 0.50
@@ -2852,6 +2853,41 @@ class FootballSimulation:
             raise AssertionError("Construction and evaluation PPG columns overlap.")
         return construction_columns, evaluation_columns
 
+    @staticmethod
+    def select_confirmation_ppg_columns(
+        num_columns,
+        excluded_columns,
+        confirmation_samples,
+        confirmation_seed,
+    ):
+        """Select confirmation columns disjoint from all adaptive-stage columns."""
+        confirmation_samples = int(confirmation_samples)
+        if confirmation_samples <= 0:
+            return np.zeros(0, dtype=np.int64)
+
+        excluded_columns = np.unique(
+            np.asarray(excluded_columns, dtype=np.int64)
+        )
+        available_columns = np.setdiff1d(
+            np.arange(int(num_columns), dtype=np.int64),
+            excluded_columns,
+            assume_unique=True,
+        )
+        if confirmation_samples > len(available_columns):
+            raise ValueError(
+                "Confirmation samples exceed the prediction columns remaining "
+                "after construction/evaluation bank allocation."
+            )
+        rng = np.random.default_rng(confirmation_seed)
+        confirmation_columns = rng.choice(
+            available_columns,
+            size=confirmation_samples,
+            replace=False,
+        ).astype(np.int64)
+        if np.intersect1d(excluded_columns, confirmation_columns).size:
+            raise AssertionError("Confirmation PPG columns overlap an adaptive bank.")
+        return confirmation_columns
+
     def sample_sequential_policy_score_bank(
         self,
         ppg_pred,
@@ -3025,11 +3061,14 @@ class FootballSimulation:
         num_weeks=SEQUENTIAL_POLICY_HORIZON,
         construction_samples=SEQUENTIAL_CONSTRUCTION_SAMPLES,
         evaluation_samples=SEQUENTIAL_EVALUATION_SAMPLES,
+        confirmation_samples=0,
+        confirmation_candidate_count=SEQUENTIAL_CONFIRMATION_CANDIDATES,
         candidate_pool_size=SEQUENTIAL_CANDIDATE_POOL_SIZE,
         scarcity_weight=SEQUENTIAL_SCARCITY_WEIGHT,
         urgency_weight=SEQUENTIAL_URGENCY_WEIGHT,
         seed=SEQUENTIAL_POLICY_SEED,
         evaluation_seed=None,
+        confirmation_seed=None,
     ):
         """Beta sequential policy with candidate-consistent opponent availability."""
         total_start = time.perf_counter()
@@ -3040,6 +3079,16 @@ class FootballSimulation:
             int(seed) + 202
             if evaluation_seed is None
             else int(evaluation_seed)
+        )
+        confirmation_seed = (
+            int(seed) + 404
+            if confirmation_seed is None
+            else int(confirmation_seed)
+        )
+        confirmation_samples = max(0, int(confirmation_samples))
+        confirmation_candidate_count = max(
+            1,
+            int(confirmation_candidate_count),
         )
         to_add = list(dict.fromkeys(to_add))
         to_drop_set = set(to_drop) - set(to_add)
@@ -3107,6 +3156,18 @@ class FootballSimulation:
         )
         base_remaining = np.ones(len(player_names), dtype=bool)
         base_remaining[selected_indices] = False
+        required_undrafted_players = int(
+            adjusted_picks[-1] - adjusted_picks[0] + 1
+        )
+        available_undrafted_players = int(base_remaining.sum())
+        if available_undrafted_players < required_undrafted_players:
+            raise ValueError(
+                "Sequential policy player pool is too small to simulate every "
+                "pick through the user's final selection: "
+                f"{available_undrafted_players} modeled undrafted players for "
+                f"{required_undrafted_players} required picks. "
+                "Use a deeper league player pool or a smaller draft format."
+            )
 
         t0 = time.perf_counter()
         num_ppg_columns = len(self.sample_value_columns(ppg_pred))
@@ -3121,6 +3182,12 @@ class FootballSimulation:
         )
         if np.intersect1d(construction_columns, evaluation_columns).size:
             raise AssertionError("Sequential policy score banks are not disjoint.")
+        confirmation_columns = self.select_confirmation_ppg_columns(
+            num_ppg_columns,
+            np.concatenate([construction_columns, evaluation_columns]),
+            confirmation_samples,
+            confirmation_seed,
+        )
         construction_bank = self.sample_sequential_policy_score_bank(
             ppg_pred,
             ppg_pred_ny,
@@ -3202,10 +3269,12 @@ class FootballSimulation:
         records = []
         policy_paths = {}
         candidate_value_matrices = {}
+        candidate_rosters = {}
         t0 = time.perf_counter()
         for root_candidate_idx in root_candidates:
             room_values = []
             completed_room_indices = []
+            completed_rosters = []
             candidate_paths = []
             for room_idx in range(num_rooms):
                 roster, details, success = (
@@ -3234,6 +3303,7 @@ class FootballSimulation:
                     )
                 )
                 completed_room_indices.append(room_idx)
+                completed_rosters.append(roster.copy())
                 candidate_paths.append({
                     'room_idx': room_idx,
                     'path': player_names[details['path']].tolist(),
@@ -3272,6 +3342,14 @@ class FootballSimulation:
             candidate_value_matrices[player_names[candidate_idx]] = {
                 'rooms': np.asarray(completed_room_indices, dtype=np.int64),
                 'values': value_matrix,
+            }
+            candidate_rosters[player_names[candidate_idx]] = {
+                'rooms': np.asarray(completed_room_indices, dtype=np.int64),
+                'rosters': (
+                    np.stack(completed_rosters)
+                    if completed_rosters
+                    else np.empty((0, self.num_rounds), dtype=np.int64)
+                ),
             }
         timings['candidate_rollouts'] += time.perf_counter() - t0
 
@@ -3315,6 +3393,102 @@ class FootballSimulation:
                 ascending=False,
             ).reset_index(drop=True)
 
+        confirmation_value_matrices = {}
+        confirmation_top_player = None
+        if confirmation_samples > 0 and len(results) > 0:
+            t0 = time.perf_counter()
+            confirmation_bank = self.sample_sequential_policy_score_bank(
+                ppg_pred,
+                ppg_pred_ny,
+                confirmation_samples,
+                num_weeks,
+                confirmation_seed,
+                confirmation_columns,
+                next_year_frac=next_year_frac,
+            )
+            timings['confirmation_bank'] += time.perf_counter() - t0
+
+            t0 = time.perf_counter()
+            confirmation_candidates = results.head(
+                min(confirmation_candidate_count, len(results))
+            ).player.tolist()
+            results['ConfirmationEV'] = np.nan
+            results['ConfirmationEVVsBest'] = np.nan
+            results['ConfirmationPairedSEVsBest'] = np.nan
+            results['ConfirmationSamples'] = 0
+            for player in confirmation_candidates:
+                roster_data = candidate_rosters[player]
+                if len(roster_data['rosters']) == 0:
+                    continue
+                confirmation_values = np.stack([
+                    self.best_ball_roster_scores_bank(
+                        confirmation_bank,
+                        player_positions,
+                        roster,
+                    )
+                    for roster in roster_data['rosters']
+                ])
+                confirmation_value_matrices[player] = {
+                    'rooms': roster_data['rooms'],
+                    'values': confirmation_values,
+                }
+                player_mask = results.player == player
+                results.loc[player_mask, 'ConfirmationEV'] = float(
+                    confirmation_values.mean()
+                )
+                results.loc[player_mask, 'ConfirmationSamples'] = int(
+                    confirmation_values.size
+                )
+
+            confirmation_rows = results[results.ConfirmationEV.notna()]
+            if len(confirmation_rows) > 0:
+                confirmation_top_player = str(
+                    confirmation_rows.loc[
+                        confirmation_rows.ConfirmationEV.idxmax(),
+                        'player',
+                    ]
+                )
+                confirmation_best_ev = float(
+                    confirmation_rows.ConfirmationEV.max()
+                )
+                results.loc[
+                    results.ConfirmationEV.notna(),
+                    'ConfirmationEVVsBest',
+                ] = (
+                    results.loc[
+                        results.ConfirmationEV.notna(),
+                        'ConfirmationEV',
+                    ]
+                    - confirmation_best_ev
+                )
+                best_confirmation = confirmation_value_matrices[
+                    confirmation_top_player
+                ]
+                for player, candidate_confirmation in (
+                    confirmation_value_matrices.items()
+                ):
+                    common_rooms = np.intersect1d(
+                        candidate_confirmation['rooms'],
+                        best_confirmation['rooms'],
+                    )
+                    candidate_locs = np.searchsorted(
+                        candidate_confirmation['rooms'],
+                        common_rooms,
+                    )
+                    best_locs = np.searchsorted(
+                        best_confirmation['rooms'],
+                        common_rooms,
+                    )
+                    paired_differences = (
+                        candidate_confirmation['values'][candidate_locs]
+                        - best_confirmation['values'][best_locs]
+                    )
+                    results.loc[
+                        results.player == player,
+                        'ConfirmationPairedSEVsBest',
+                    ] = self.approximate_two_way_se(paired_differences)
+            timings['confirmation_scoring'] += time.perf_counter() - t0
+
         timings['total'] = time.perf_counter() - total_start
         results.attrs['timings'] = {
             'mode': 'best_ball_policy_sequential',
@@ -3328,20 +3502,28 @@ class FootballSimulation:
             'num_weeks': int(num_weeks),
             'construction_samples': int(construction_samples),
             'evaluation_samples': int(evaluation_samples),
+            'confirmation_samples': int(confirmation_samples),
+            'confirmation_candidate_count': int(confirmation_candidate_count),
             'draft_room_samples': int(num_rooms),
             'candidate_pool_size': int(candidate_pool_size),
             'scarcity_weight': float(scarcity_weight),
             'urgency_weight': float(urgency_weight),
             'seed': int(seed),
             'evaluation_seed': int(evaluation_seed),
+            'confirmation_seed': int(confirmation_seed),
             'deterministic_seed': True,
             'sections': dict(timings),
         }
         results.attrs['policy_paths'] = policy_paths
         results.attrs['candidate_value_matrices'] = candidate_value_matrices
+        results.attrs['confirmation_value_matrices'] = (
+            confirmation_value_matrices
+        )
+        results.attrs['confirmation_top_player'] = confirmation_top_player
         results.attrs['scenario_banks'] = {
             'construction_ppg_columns': construction_columns.tolist(),
             'evaluation_ppg_columns': evaluation_columns.tolist(),
+            'confirmation_ppg_columns': confirmation_columns.tolist(),
             'disjoint': True,
         }
         results.attrs['draft_room_adp_columns'] = adp_cols.tolist()

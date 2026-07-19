@@ -79,6 +79,20 @@ scoring.
 Optional review table for identifying draftable players with suspicious missing
 or fallback ADP context.
 
+## Sequential Player-Pool Coverage
+
+The sequential policy simulates every room pick from the user's current pick
+through the user's final pick. After already drafted players are removed, the
+projection and ADP inputs must therefore retain at least
+`last_adjusted_pick - current_adjusted_pick + 1` aligned players. The app
+rejects smaller pools rather than allowing an exhausted room to create missing
+or duplicated selections.
+
+The current 2026 `beta` slice has 180 aligned players and does not satisfy this
+contract for the tested 12-team, 20-round format. The durable fix belongs in
+the modeling repo: deepen that league slice or explicitly publish and validate
+a smaller supported draft format before enabling Sequential for it.
+
 ## Runtime Rules
 
 - Preserve `template_pool_key` joins across player map, pools, and templates.
@@ -97,3 +111,5 @@ or fallback ADP context.
   profile, not as an uncentered mean shift.
 - Keep app logic tolerant of older DBs when practical, but update this contract
   when new columns become required.
+- Preserve enough aligned projection/ADP rows for every supported sequential
+  draft format.

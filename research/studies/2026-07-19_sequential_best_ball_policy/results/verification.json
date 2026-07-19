@@ -15,6 +15,8 @@
     "no_duplicate_or_cross-drafted_players",
     "legal_final_construction",
     "evaluation_seed_path_invariance",
+    "confirmation_seed_path_invariance",
+    "undersized_player_pool_rejected",
     "real_database_smoke"
   ],
   "real_database_smoke": {
@@ -27,6 +29,8 @@
     ],
     "construction_evaluation_columns_disjoint": true,
     "evaluation_seed_path_invariance": true,
-    "total_seconds": 0.6259816000000011
+    "confirmation_seed_path_invariance": true,
+    "undersized_player_pool_rejected": true,
+    "total_seconds": 0.3323870000000002
   }
 }
