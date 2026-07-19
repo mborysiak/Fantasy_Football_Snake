@@ -4,10 +4,11 @@ Last updated: 2026-07-19
 
 ## Release Status
 
-`best_ball_policy` is a DK-only Preview scoring option. The legacy
-`best_ball_ilp` remains the default and fallback. The Preview is intentionally
-limited to the current-pick recommendation; it does not present future-round
-recommendations as if their players were fixed in advance.
+`best_ball_policy` is the DK-only default for field testing and remains labeled
+Preview. The legacy `best_ball_ilp` remains available as the fallback. The
+Preview is intentionally limited to the current-pick recommendation; it does
+not present future-round recommendations as if their players were fixed in
+advance.
 
 ## Methodology Boundary
 
@@ -148,6 +149,9 @@ physical draft states, and a real-database smoke run.
 
 Milestone A justified shipping the explicit Preview, retaining scarcity, and
 skipping beam search. The DK-only 24-candidate gate clears candidate coverage
-but not audit stability or matched runtime. Legacy therefore remains the
-default. Re-run the fixed matrix with fresh seeds only after a predeclared
-decision-stage change; the hidden audit bank must remain policy-inert.
+but not audit stability or matched runtime. On 2026-07-19 the app owner chose
+Preview as the fresh-session default for field testing despite those failed
+promotion gates; this is an explicit product choice, not a claim that the gate
+passed. Legacy remains available as fallback. Re-run the fixed matrix with
+fresh seeds only after a predeclared decision-stage change; the hidden audit
+bank must remain policy-inert.

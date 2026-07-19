@@ -738,7 +738,7 @@ def sidebar_controls(prediction_options):
         default_stack_bonus_pct = 25.0
         default_stack_pair_cap = 12.0
         default_stack_team_cap = 18.0
-        default_scoring_mode = 'best_ball_ilp'
+        default_scoring_mode = 'best_ball_policy'
         default_weekly_score_mode = 'template'
         default_position_ranges = default_ilp_ranges
     

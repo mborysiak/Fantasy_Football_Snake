@@ -9,8 +9,9 @@ workflow impractically slow?
 ## Scope
 
 Milestone A began as a shadow engine and passed its initial release gate. It is
-now exposed as an explicit DK-only Streamlit Preview while the existing GLPK path remains
-the default and fallback. The new engine:
+now exposed as the DK-only Streamlit default for field testing while remaining
+labeled Preview. The existing GLPK path remains available as fallback. The new
+engine:
 
 - samples a small construction bank of season outcomes and uses only its mean
   marginal values when making draft decisions;

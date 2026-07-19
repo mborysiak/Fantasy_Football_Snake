@@ -37,8 +37,9 @@ outcomes, and solves roster recommendations with the ILP optimizer.
   disjoint construction/evaluation banks and candidate-consistent room state.
 - Keep beam search out and retain 24 candidates throughout; the DK-only gate
   cleared the 24-versus-32 shortlist threshold.
-- Keep legacy as the default until decision/audit stability passes on fresh
-  opening states. Preview runtime is an accepted opt-in tradeoff.
+- Sequential Preview is the fresh-session default for owner-directed field
+  testing; Legacy remains available as fallback. The audit/runtime gate failures
+  remain documented and the Preview label stays visible.
 
 ## Key Links
 

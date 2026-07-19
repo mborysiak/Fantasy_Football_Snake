@@ -46,8 +46,9 @@ threshold is not changed after observing results.
 
 ## Observed Result
 
-The DK-only default-promotion gate still fails, so legacy remains the default.
-The requested Preview path is nevertheless suitable for opt-in testing.
+The DK-only default-promotion gate still fails. The app owner subsequently chose
+Preview as the fresh-session default for field testing, with Legacy retained as
+fallback. That product choice does not change the failed gate result.
 
 - All 27 physical states completed with no errors and every candidate-room
   rollout legal and complete.
