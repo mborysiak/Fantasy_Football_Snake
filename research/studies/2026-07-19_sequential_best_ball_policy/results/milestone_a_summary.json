@@ -1,0 +1,286 @@
+{
+  "configuration": {
+    "year": 2026,
+    "league": "dk",
+    "teams": 12,
+    "rounds": 20,
+    "pick_slot": 6,
+    "draft_rooms": 24,
+    "construction_samples": 16,
+    "evaluation_samples": 64,
+    "primary_pool": 16,
+    "wide_pool": 32,
+    "seed": 17,
+    "evaluation_seed": 219,
+    "runtime_repeats": 5
+  },
+  "fixture": {
+    "label": "physical_slot_6_round_1",
+    "initial_opponent_picks": [
+      "Bijan Robinson",
+      "Jahmyr Gibbs",
+      "Christian Mccaffrey",
+      "Puka Nacua",
+      "Ja'Marr Chase"
+    ],
+    "initial_opponent_pick_count": 5
+  },
+  "bank_invariants": {
+    "construction_evaluation_ppg_columns_disjoint": true,
+    "construction_ppg_column_count": 16,
+    "evaluation_ppg_column_count": 64
+  },
+  "early": {
+    "primary_vs_wide": {
+      "primary_top_player": "Jonathan Taylor",
+      "wide_top_player": "Jonathan Taylor",
+      "top_pick_agreement": true,
+      "wide_candidate_count": 32,
+      "primary_candidate_count": 16,
+      "wide_best_ev": 2150.02001953125,
+      "best_primary_candidate_ev_in_wide_run": 2150.02001953125,
+      "empirical_shortlist_omission_regret": 0.0,
+      "best_excluded_candidate_ev": 2144.142822265625,
+      "best_excluded_regret_vs_wide_best": 5.877197265625
+    },
+    "scarcity_top_player": "Jonathan Taylor",
+    "greedy_only_top_player": "Jonathan Taylor",
+    "scarcity_vs_greedy_top_agreement": true,
+    "scarcity_vs_greedy_paired": {
+      "primary_top_player": "Jonathan Taylor",
+      "comparator_top_player": "Jonathan Taylor",
+      "common_rooms": 24,
+      "evaluation_samples": 64,
+      "primary_policy_ev": 2150.02001953125,
+      "comparator_policy_ev": 2121.919921875,
+      "paired_ev_difference": 28.10019874572754,
+      "paired_se": 11.55272974972278
+    },
+    "primary_completion_rate": 1.0,
+    "timings": {
+      "primary": {
+        "mode": "best_ball_policy_sequential",
+        "release_stage": "beta",
+        "horizon_label": "sequential_template_16",
+        "requested_iters": 24,
+        "success_trials": 24,
+        "failed_exception_count": 0,
+        "num_weeks": 16,
+        "construction_samples": 16,
+        "evaluation_samples": 64,
+        "draft_room_samples": 24,
+        "candidate_pool_size": 16,
+        "scarcity_weight": 0.5,
+        "urgency_weight": 0.25,
+        "seed": 17,
+        "evaluation_seed": 219,
+        "deterministic_seed": true,
+        "sections": {
+          "prediction_adp_generation": 0.04441450000740588,
+          "score_banks": 0.2524912999942899,
+          "draft_rooms": 0.011449099984019995,
+          "root_screen": 0.0008136999676935375,
+          "candidate_rollouts": 2.943415699992329,
+          "total": 3.25598399998853
+        }
+      },
+      "greedy_only": {
+        "mode": "best_ball_policy_sequential",
+        "release_stage": "beta",
+        "horizon_label": "sequential_template_16",
+        "requested_iters": 24,
+        "success_trials": 24,
+        "failed_exception_count": 0,
+        "num_weeks": 16,
+        "construction_samples": 16,
+        "evaluation_samples": 64,
+        "draft_room_samples": 24,
+        "candidate_pool_size": 16,
+        "scarcity_weight": 0.0,
+        "urgency_weight": 0.0,
+        "seed": 17,
+        "evaluation_seed": 219,
+        "deterministic_seed": true,
+        "sections": {
+          "prediction_adp_generation": 0.034542999987024814,
+          "score_banks": 0.006849900004453957,
+          "draft_rooms": 0.011419399990700185,
+          "root_screen": 0.0007020999910309911,
+          "candidate_rollouts": 2.99757139995927,
+          "total": 3.0539660999784246
+        }
+      },
+      "wide": {
+        "mode": "best_ball_policy_sequential",
+        "release_stage": "beta",
+        "horizon_label": "sequential_template_16",
+        "requested_iters": 24,
+        "success_trials": 24,
+        "failed_exception_count": 0,
+        "num_weeks": 16,
+        "construction_samples": 16,
+        "evaluation_samples": 64,
+        "draft_room_samples": 24,
+        "candidate_pool_size": 32,
+        "scarcity_weight": 0.5,
+        "urgency_weight": 0.25,
+        "seed": 17,
+        "evaluation_seed": 219,
+        "deterministic_seed": true,
+        "sections": {
+          "prediction_adp_generation": 0.034630100009962916,
+          "score_banks": 0.006772299995645881,
+          "draft_rooms": 0.01040069997543469,
+          "root_screen": 0.000693799986038357,
+          "candidate_rollouts": 6.132089700025972,
+          "total": 6.188563000003342
+        }
+      }
+    }
+  },
+  "legacy": {
+    "horizon_label": "legacy_template_16",
+    "requested_iters": 24,
+    "timings": {
+      "mode": "best_ball_ilp",
+      "weekly_score_mode": "template",
+      "requested_iters": 24,
+      "success_trials": 24,
+      "failed_exception_count": 0,
+      "status_counts": {
+        "optimal": 24
+      },
+      "model": {
+        "num_players": 176,
+        "num_draftable": 176,
+        "num_rounds": 20,
+        "num_weeks": 16,
+        "num_vars": 4165,
+        "binary_vars": 1173,
+        "start_var_count": 2816,
+        "x_count": 1173,
+        "full_x_count": 3520,
+        "x_pruned_count": 2347,
+        "x_pick_buffer": 6,
+        "stack_pair_count": 0,
+        "stack_score_count": 0,
+        "stack_bonus_pct": 0.0,
+        "stack_pair_cap": 0.0,
+        "stack_team_cap": 0.0
+      },
+      "parallel_workers": 1,
+      "sections": {
+        "prediction_adp_generation": 0.04592839995166287,
+        "template_profile_load": 1.00000761449337e-06,
+        "pool_filter": 0.01841009996132925,
+        "model_build": 0.009422800038009882,
+        "weekly_score_sampling": 0.062265799613669515,
+        "opponent_draft_availability": 0.0030588001245632768,
+        "ilp_solve": 6.927234300004784,
+        "result_accounting": 0.01414800010388717,
+        "iteration_total": 7.006874100014102,
+        "final_results": 0.0066213000100106,
+        "total": 7.089872299984563
+      }
+    }
+  },
+  "matched_runtime": {
+    "policy_seconds": [
+      3.25598399998853,
+      3.123808900010772,
+      3.1161439000279643,
+      6.037297900009435,
+      6.9987967000342906
+    ],
+    "legacy_seconds": [
+      7.089872299984563,
+      4.661946399952285,
+      4.449484599987045,
+      8.935381399991456,
+      10.120590599952266
+    ],
+    "policy_p50_seconds": 3.25598399998853,
+    "legacy_p50_seconds": 7.089872299984563,
+    "policy_to_legacy_p50_ratio": 0.4592443787733129,
+    "runtime_gate_policy_no_slower_than_legacy": true
+  },
+  "mid": {
+    "to_add": [
+      "Jonathan Taylor",
+      "Josh Allen",
+      "Garrett Wilson",
+      "Tet Mcmillan",
+      "Bucky Irving",
+      "Marvin Harrison",
+      "Chuba Hubbard"
+    ],
+    "opponents_removed": 71,
+    "primary_vs_wide": {
+      "primary_top_player": "Rj Harvey",
+      "wide_top_player": "Rj Harvey",
+      "top_pick_agreement": true,
+      "wide_candidate_count": 32,
+      "primary_candidate_count": 16,
+      "wide_best_ev": 2182.188232421875,
+      "best_primary_candidate_ev_in_wide_run": 2182.188232421875,
+      "empirical_shortlist_omission_regret": 0.0,
+      "best_excluded_candidate_ev": 2170.604248046875,
+      "best_excluded_regret_vs_wide_best": 11.583984375
+    },
+    "primary_completion_rate": 1.0,
+    "timings": {
+      "primary": {
+        "mode": "best_ball_policy_sequential",
+        "release_stage": "beta",
+        "horizon_label": "sequential_template_16",
+        "requested_iters": 24,
+        "success_trials": 24,
+        "failed_exception_count": 0,
+        "num_weeks": 16,
+        "construction_samples": 16,
+        "evaluation_samples": 64,
+        "draft_room_samples": 24,
+        "candidate_pool_size": 16,
+        "scarcity_weight": 0.5,
+        "urgency_weight": 0.25,
+        "seed": 17,
+        "evaluation_seed": 219,
+        "deterministic_seed": true,
+        "sections": {
+          "prediction_adp_generation": 0.058660299982875586,
+          "score_banks": 0.009487300005275756,
+          "draft_rooms": 0.0071297999820671976,
+          "root_screen": 0.001422500004991889,
+          "candidate_rollouts": 4.483290900010616,
+          "total": 4.565049699973315
+        }
+      },
+      "wide": {
+        "mode": "best_ball_policy_sequential",
+        "release_stage": "beta",
+        "horizon_label": "sequential_template_16",
+        "requested_iters": 24,
+        "success_trials": 24,
+        "failed_exception_count": 0,
+        "num_weeks": 16,
+        "construction_samples": 16,
+        "evaluation_samples": 64,
+        "draft_room_samples": 24,
+        "candidate_pool_size": 32,
+        "scarcity_weight": 0.5,
+        "urgency_weight": 0.25,
+        "seed": 17,
+        "evaluation_seed": 219,
+        "deterministic_seed": true,
+        "sections": {
+          "prediction_adp_generation": 0.054754999990109354,
+          "score_banks": 0.01124690001597628,
+          "draft_rooms": 0.010028100048657507,
+          "root_screen": 0.0045990000362508,
+          "candidate_rollouts": 8.767376300005708,
+          "total": 8.854276400001254
+        }
+      }
+    }
+  }
+}

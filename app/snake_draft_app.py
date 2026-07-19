@@ -239,6 +239,10 @@ def render_timing_summary(results):
 
     section_labels = {
         'prediction_adp_generation': 'Prediction + ADP samples',
+        'score_banks': 'Construction + evaluation banks',
+        'draft_rooms': 'Opponent room sampling',
+        'root_screen': 'Current-candidate screen',
+        'candidate_rollouts': 'Candidate draft rollouts',
         'template_profile_load': 'Template profile load',
         'pool_filter': 'Pool filter',
         'model_build': 'ILP model build',
@@ -272,12 +276,17 @@ def render_timing_summary(results):
     with st.expander("Simulation timing", expanded=False):
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Total seconds", f"{total_sec:.1f}")
-        col2.metric("Successful sims", f"{success_trials}/{requested_iters}")
-        col3.metric("ILP vars", f"{int(model.get('num_vars', 0)):,}")
-        col4.metric("Binary vars", f"{int(model.get('binary_vars', 0)):,}")
+        if timings.get('mode') == 'best_ball_policy_sequential':
+            col2.metric("Completed rooms", f"{success_trials}/{requested_iters}")
+            col3.metric("Construction seasons", f"{int(timings.get('construction_samples', 0)):,}")
+            col4.metric("Evaluation seasons", f"{int(timings.get('evaluation_samples', 0)):,}")
+        else:
+            col2.metric("Successful sims", f"{success_trials}/{requested_iters}")
+            col3.metric("ILP vars", f"{int(model.get('num_vars', 0)):,}")
+            col4.metric("Binary vars", f"{int(model.get('binary_vars', 0)):,}")
 
         st.caption(
-            f"Mode: {timings.get('mode')} | Weekly scores: {timings.get('weekly_score_mode')} | "
+            f"Mode: {timings.get('mode')} | Horizon: {timings.get('horizon_label', timings.get('weekly_score_mode'))} | "
             f"Workers: {timings.get('parallel_workers', 1)} | "
             f"Status counts: {timings.get('status_counts', {})} | "
             f"Exceptions: {timings.get('failed_exception_count', 0)}"
@@ -327,6 +336,37 @@ def get_round_recommendations(results, sim, my_team_count, max_rounds=3):
     
     # Determine the rounds we care about
     current_round_num = my_team_count + 1
+    if (
+        'CurrentPickEV' in results.columns
+        and f'Round{current_round_num}Count' not in results.columns
+    ):
+        display_cols = [
+            'player',
+            'pos',
+            'CurrentPickEV',
+            'CurrentPickEVVsBest',
+            'PairedSEVsBest',
+            'SurviveNext',
+            'PolicyCompletedRooms',
+        ]
+        display_cols = [col for col in display_cols if col in results.columns]
+        current_picks = (
+            results.sort_values('CurrentPickEV', ascending=False)
+            .head(10)[display_cols]
+            .rename(columns={
+                'player': 'Player',
+                'pos': 'Pos',
+                'CurrentPickEV': 'EV',
+                'CurrentPickEVVsBest': 'EV vs Best',
+                'PairedSEVsBest': 'Paired SE',
+                'SurviveNext': 'Survive Next',
+                'PolicyCompletedRooms': 'Draft Rooms',
+            })
+        )
+        if 'Survive Next' in current_picks.columns:
+            current_picks['Survive Next'] *= 100
+        return adjusted_picks, {current_round_num: current_picks}
+
     rounds_to_show = []
     
     for i in range(min(max_rounds, len(adjusted_picks))):
@@ -708,27 +748,9 @@ def sidebar_controls(prediction_options):
     
     st.sidebar.header("Simulation Settings")
 
-    num_iters = st.sidebar.number_input(
-        'Number of Simulations', 
-        min_value=10, 
-        max_value=500, 
-        value=default_num_iters, 
-        step=10,
-        help='Best-ball ILP is more expensive than lookahead; 50-100 simulations is a practical starting range.'
-    )
-
-    max_workers = max(1, min(12, os.cpu_count() or 1))
-    parallel_workers = st.sidebar.number_input(
-        'Parallel Workers',
-        min_value=1,
-        max_value=max_workers,
-        value=min(max(default_parallel_workers, 1), max_workers),
-        step=1,
-        help='Best-ball ILP simulations can run across processes. Use 1 to disable parallel execution.',
-    )
-
     scoring_options = {
         'Best-ball ILP': 'best_ball_ilp',
+        'Sequential best-ball policy (Beta)': 'best_ball_policy',
         'Best-ball lookahead': 'best_ball_lookahead',
         'Total roster points': 'total_points',
     }
@@ -740,12 +762,60 @@ def sidebar_controls(prediction_options):
         options=scoring_labels,
         index=scoring_index,
         help=(
-            'Best-ball ILP solves the draft and weekly best-ball lineup simultaneously. '
+            'Sequential policy uses candidate-consistent opponent drafts and expected, '
+            'not realized, season outcomes. Best-ball ILP preserves the legacy optimizer. '
             'Best-ball lookahead is a faster heuristic that compares current picks by greedy full-draft completion. '
             'Total roster points preserves the older full-roster sum objective.'
         )
     )
     scoring_mode = scoring_options[scoring_label]
+
+    if scoring_mode == 'best_ball_policy':
+        policy_default = (
+            default_num_iters
+            if default_scoring_mode == 'best_ball_policy'
+            else 24
+        )
+        num_iters = st.sidebar.number_input(
+            'Draft-room Samples',
+            min_value=8,
+            max_value=64,
+            value=min(max(policy_default, 8), 64),
+            step=4,
+            help=(
+                'Each current candidate is completed through this many shared noisy-ADP '
+                'draft rooms. The default 24-room run is typically around 10 seconds.'
+            ),
+        )
+        parallel_workers = 1
+    else:
+        num_iters = st.sidebar.number_input(
+            'Number of Simulations',
+            min_value=10,
+            max_value=500,
+            value=default_num_iters,
+            step=10,
+            help=(
+                'Best-ball ILP is more expensive than lookahead; 50-100 simulations '
+                'is a practical starting range.'
+            ),
+        )
+        if scoring_mode == 'best_ball_ilp':
+            max_workers = max(1, min(12, os.cpu_count() or 1))
+            parallel_workers = st.sidebar.number_input(
+                'Parallel Workers',
+                min_value=1,
+                max_value=max_workers,
+                value=min(max(default_parallel_workers, 1), max_workers),
+                step=1,
+                help=(
+                    'Best-ball ILP simulations can run across processes. '
+                    'Use 1 to disable parallel execution.'
+                ),
+            )
+        else:
+            parallel_workers = 1
+
     weekly_score_mode = 'residual'
     current_pick_ev = False
     ev_shortlist_size = default_ev_shortlist_size
@@ -809,9 +879,16 @@ def sidebar_controls(prediction_options):
                 value=min(max(default_ev_shortlist_size, 3), 10),
                 step=1,
             )
+    elif scoring_mode == 'best_ball_policy':
+        weekly_score_mode = 'template'
+        st.sidebar.caption(
+            'Beta methodology: 16-week template outcomes, 16 current candidates, '
+            'candidate-consistent noisy-ADP rooms, and a separate 64-season evaluation bank. '
+            'Fixed common-random-number seeds keep repeat runs on the same draft state stable.'
+        )
 
     st.sidebar.header("Roster Construction")
-    if scoring_mode == 'best_ball_ilp':
+    if scoring_mode in ('best_ball_ilp', 'best_ball_policy'):
         position_ranges = {}
         for pos in ['QB', 'RB', 'WR', 'TE']:
             default_min, default_max = default_position_ranges[pos]
@@ -845,7 +922,7 @@ def sidebar_controls(prediction_options):
             max_value=max_total,
             value=default_total,
             step=1,
-            help='Best-ball ILP selects this many total players while staying inside the position ranges.',
+            help='Best-ball modes select this many total players while staying inside the position ranges.',
         )
         st.sidebar.caption(f"Range capacity: {min_total}-{max_total} players.")
         pos_require = {
@@ -1096,8 +1173,11 @@ def main():
                 else:
                     with st.spinner("Running simulation..."):
                         if (
-                            settings['scoring_mode'] == 'best_ball_ilp'
-                            and settings['weekly_score_mode'] == 'template'
+                            settings['weekly_score_mode'] == 'template'
+                            and settings['scoring_mode'] in (
+                                'best_ball_ilp',
+                                'best_ball_policy',
+                            )
                         ):
                             hydrate_weekly_template_profiles(
                                 sim,
@@ -1129,10 +1209,17 @@ def main():
                         st.write("**Top recommendations by round** (based on optimal draft simulations)")
                         
                         # Add explanation
-                        st.info(
-                            "🎯 **Current Round**: Available players are compared by full draft-path outcome\n\n"
-                            "📊 **Future Rounds**: Simulated from typical ADP patterns and availability"
-                        )
+                        if settings['scoring_mode'] == 'best_ball_policy':
+                            st.info(
+                                "**Beta sequential policy**: each current player is locked, "
+                                "opponents and future picks are removed from one shared draft-room "
+                                "state, and completed rosters are scored on a separate season bank."
+                            )
+                        else:
+                            st.info(
+                                "🎯 **Current Round**: Available players are compared by full draft-path outcome\n\n"
+                                "📊 **Future Rounds**: Simulated from typical ADP patterns and availability"
+                            )
                         
                         # Create tabs for each round
                         if len(round_recommendations) == 1:
@@ -1166,6 +1253,18 @@ def main():
                                         "EV Samples",
                                         help="Number of scenario solves used for this EV estimate",
                                         format="%d",
+                                    ),
+                                    "Paired SE": st.column_config.NumberColumn(
+                                        "Paired SE",
+                                        help="Approximate paired standard error of EV versus the observed best candidate",
+                                        format="%.1f",
+                                    ),
+                                    "Survive Next": st.column_config.ProgressColumn(
+                                        "Survive Next",
+                                        help="Conditional probability the player remains available at your next pick",
+                                        format="%.0f%%",
+                                        min_value=0.0,
+                                        max_value=100.0,
                                     ),
                                 },
                                 use_container_width=True,

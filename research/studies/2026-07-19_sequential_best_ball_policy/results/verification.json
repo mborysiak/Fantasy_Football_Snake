@@ -1,0 +1,32 @@
+{
+  "status": "pass",
+  "legacy_source_hashes": {
+    "sample_template_weekly_scores": "acddf80b795b8b90a133e23ff8d74f0836d98eded2f369036d72d67b76bc2ae7",
+    "simulate_opponent_draft_availability": "51f875b4dc9778c72b7fa8a9f9e6599949db9afa891d3b43664ccd4bc370c0eb",
+    "run_best_ball_ilp_iteration_chunk": "fed5ca53297fc044c7864b6aeb26205628107aab91a70bd23dc0997d05bc2a19",
+    "run_sim_best_ball_ilp": "ba7c7763b3aa8a266c59529009c344f32e9ede057d3e93d7568850e5fc7ab684"
+  },
+  "checks": [
+    "legacy_methods_frozen",
+    "tensor_scoring_parity",
+    "vectorized_legality_parity",
+    "construction_evaluation_columns_disjoint",
+    "candidate_consistent_availability",
+    "no_duplicate_or_cross-drafted_players",
+    "legal_final_construction",
+    "evaluation_seed_path_invariance",
+    "real_database_smoke"
+  ],
+  "real_database_smoke": {
+    "candidate_count": 4,
+    "completed_rooms_per_candidate": [
+      2,
+      2,
+      2,
+      2
+    ],
+    "construction_evaluation_columns_disjoint": true,
+    "evaluation_seed_path_invariance": true,
+    "total_seconds": 0.6259816000000011
+  }
+}

@@ -18,3 +18,4 @@ dated, reviewable bundles.
 - X-pruning availability leakage checks.
 - ADP/name join audits.
 - ILP runtime/performance checks.
+- Sequential best-ball policy correctness, shortlist regret, and runtime gates.

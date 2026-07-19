@@ -26,6 +26,14 @@ TEMPLATE_RESID_BLEND = 0.30
 MODEL_RESID_BLEND = np.sqrt(1 - TEMPLATE_RESID_BLEND**2)
 MIN_RESID_SD = 1e-6
 X_PICK_BUFFER = 6
+SEQUENTIAL_POLICY_HORIZON = 16
+SEQUENTIAL_CONSTRUCTION_SAMPLES = 16
+SEQUENTIAL_EVALUATION_SAMPLES = 64
+SEQUENTIAL_DRAFT_ROOMS = 24
+SEQUENTIAL_CANDIDATE_POOL_SIZE = 16
+SEQUENTIAL_SCARCITY_WEIGHT = 0.50
+SEQUENTIAL_URGENCY_WEIGHT = 0.25
+SEQUENTIAL_POLICY_SEED = 20260719
 
 class FootballSimulation:
 
@@ -57,6 +65,7 @@ class FootballSimulation:
         self.weekly_template_active_ppg_resids = None
         self.weekly_template_centered_active_ppg_resids = None
         self.weekly_template_active_ppg_resid_sds = None
+        self.weekly_template_tensor_cache = {}
 
         player_data = self.get_model_predictions()
 
@@ -526,6 +535,156 @@ class FootballSimulation:
 
         return weekly_scores
 
+    def _template_tensor_cache_entry(self, players, num_weeks):
+        """Pack ragged per-player template pools into arrays for fast sampling."""
+        template_weeks = self.load_weekly_template_profiles()
+        num_weeks = min(int(num_weeks), template_weeks)
+        player_key = tuple(players)
+        cache_key = (player_key, num_weeks)
+        cached = self.weekly_template_tensor_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        missing_players = [
+            player for player in players
+            if player not in self.weekly_template_profiles
+        ]
+        if missing_players:
+            missing_preview = ', '.join(missing_players[:10])
+            raise ValueError(
+                f"Missing weekly template profiles for {len(missing_players)} players: "
+                f"{missing_preview}"
+            )
+
+        num_players = len(players)
+        max_templates = max(
+            len(self.weekly_template_cum_probs[player]) for player in players
+        )
+        profiles = np.zeros(
+            (num_players, max_templates, num_weeks),
+            dtype=np.float32,
+        )
+        cum_probs = np.ones((num_players, max_templates), dtype=np.float64)
+        centered_resids = np.zeros(
+            (num_players, max_templates),
+            dtype=np.float32,
+        )
+        template_resid_sds = np.empty(num_players, dtype=np.float32)
+
+        for player_idx, player in enumerate(players):
+            player_profiles = np.asarray(
+                self.weekly_template_profiles[player],
+                dtype=np.float32,
+            )
+            player_cum_probs = np.asarray(
+                self.weekly_template_cum_probs[player],
+                dtype=np.float64,
+            )
+            player_resids = np.asarray(
+                self.weekly_template_centered_active_ppg_resids[player],
+                dtype=np.float32,
+            )
+            pool_size = len(player_cum_probs)
+            profiles[player_idx, :pool_size] = player_profiles[:, :num_weeks]
+            cum_probs[player_idx, :pool_size] = player_cum_probs
+            centered_resids[player_idx, :pool_size] = player_resids
+            template_resid_sds[player_idx] = (
+                self.weekly_template_active_ppg_resid_sds[player]
+            )
+
+        cached = (
+            profiles,
+            cum_probs,
+            centered_resids,
+            template_resid_sds,
+            num_weeks,
+        )
+        self.weekly_template_tensor_cache[cache_key] = cached
+        return cached
+
+    def sample_template_weekly_score_bank(
+        self,
+        predictions,
+        num_scenarios,
+        num_weeks=SEQUENTIAL_POLICY_HORIZON,
+        seed=None,
+        ppg_column_indices=None,
+    ):
+        """Sample common-random-number weekly scores as [scenario, player, week]."""
+        if num_scenarios <= 0:
+            raise ValueError("num_scenarios must be positive.")
+
+        players = predictions.player.to_numpy()
+        (
+            profiles,
+            cum_probs,
+            centered_resids,
+            template_resid_sds,
+            num_weeks,
+        ) = self._template_tensor_cache_entry(players, num_weeks)
+
+        score_matrix = predictions[
+            self.sample_value_columns(predictions)
+        ].to_numpy(dtype=np.float32)
+        if score_matrix.shape[1] == 0:
+            raise ValueError("Predictions contain no sampled score columns.")
+
+        rng = np.random.default_rng(seed)
+        if ppg_column_indices is None:
+            ppg_cols = rng.integers(
+                0,
+                score_matrix.shape[1],
+                size=num_scenarios,
+            )
+        else:
+            ppg_cols = np.asarray(ppg_column_indices, dtype=np.int64)
+            if len(ppg_cols) != num_scenarios:
+                raise ValueError(
+                    "ppg_column_indices must contain one index per scenario."
+                )
+            if np.any(ppg_cols < 0) or np.any(ppg_cols >= score_matrix.shape[1]):
+                raise ValueError("ppg_column_indices contains an out-of-range index.")
+        sampled_ppg = score_matrix[:, ppg_cols].T
+        if BASE_PRED_COL in predictions.columns:
+            base_ppg = predictions[BASE_PRED_COL].to_numpy(dtype=np.float32)
+        else:
+            base_ppg = score_matrix.mean(axis=1)
+        model_resid_sds = np.std(score_matrix - base_ppg[:, None], axis=1)
+
+        template_draws = rng.random((num_scenarios, len(players), 1))
+        template_indices = np.sum(
+            template_draws >= cum_probs[None, :, :],
+            axis=2,
+        )
+        player_indices = np.arange(len(players))[None, :]
+        sampled_profiles = profiles[player_indices, template_indices]
+        sampled_template_resids = centered_resids[
+            player_indices,
+            template_indices,
+        ]
+
+        scale_is_valid = (
+            np.isfinite(template_resid_sds)
+            & np.isfinite(model_resid_sds)
+            & (template_resid_sds > MIN_RESID_SD)
+            & (model_resid_sds > MIN_RESID_SD)
+        )
+        resid_scales = np.zeros(len(players), dtype=np.float32)
+        resid_scales[scale_is_valid] = (
+            model_resid_sds[scale_is_valid]
+            / template_resid_sds[scale_is_valid]
+        )
+        scaled_template_resids = sampled_template_resids * resid_scales[None, :]
+        model_resids = sampled_ppg - base_ppg[None, :]
+        blended_ppg = (
+            base_ppg[None, :]
+            + (MODEL_RESID_BLEND * model_resids)
+            + (TEMPLATE_RESID_BLEND * scaled_template_resids)
+        )
+        blended_ppg = np.maximum(blended_ppg, 0).astype(np.float32)
+
+        return sampled_profiles * blended_ppg[:, :, None]
+
     def sample_ilp_weekly_scores(self, predictions, num_weeks, weekly_score_mode='residual'):
         if weekly_score_mode == 'template':
             return self.sample_template_weekly_scores(predictions, num_weeks)
@@ -820,6 +979,458 @@ class FootballSimulation:
             values[pos_mask] = weekly_delta.mean(axis=1)
 
         return values
+
+    @staticmethod
+    def _bank_pos_lineup_state(
+        pos_scores,
+        num_starters,
+        num_scenarios,
+        num_weeks,
+    ):
+        """Return lineup totals, starter threshold, and next-best for a score bank."""
+        if pos_scores.shape[1] == 0 or num_starters <= 0:
+            zeros = np.zeros((num_scenarios, num_weeks), dtype=np.float32)
+            return zeros, zeros, zeros
+
+        num_players = pos_scores.shape[1]
+        k = min(num_starters, num_players)
+        top_k = np.partition(pos_scores, -k, axis=1)[:, -k:, :]
+        top_sum = top_k.sum(axis=1).astype(np.float32)
+
+        if num_players >= num_starters:
+            starter_threshold = top_k.min(axis=1).astype(np.float32)
+        else:
+            starter_threshold = np.zeros(
+                (num_scenarios, num_weeks),
+                dtype=np.float32,
+            )
+
+        if num_players > num_starters:
+            next_best = np.partition(
+                pos_scores,
+                -num_starters - 1,
+                axis=1,
+            )[:, -num_starters - 1, :].astype(np.float32)
+        else:
+            next_best = np.zeros(
+                (num_scenarios, num_weeks),
+                dtype=np.float32,
+            )
+
+        return top_sum, starter_threshold, next_best
+
+    @classmethod
+    def marginal_best_ball_values_bank(
+        cls,
+        score_bank,
+        player_positions,
+        selected_indices,
+        candidate_indices,
+    ):
+        """Return scenario-level and mean marginal values for many candidates."""
+        score_bank = np.asarray(score_bank, dtype=np.float32)
+        player_positions = np.asarray(player_positions)
+        selected_indices = np.asarray(selected_indices, dtype=np.int64)
+        candidate_indices = np.asarray(candidate_indices, dtype=np.int64)
+        if score_bank.ndim != 3:
+            raise ValueError("score_bank must have shape [scenario, player, week].")
+
+        num_scenarios, _, num_weeks = score_bank.shape
+        if len(candidate_indices) == 0:
+            empty = np.zeros((num_scenarios, 0), dtype=np.float32)
+            return empty, np.zeros(0, dtype=np.float32)
+
+        starter_counts = {'QB': 1, 'RB': 2, 'WR': 3, 'TE': 1}
+        states = {}
+        for pos, starter_count in starter_counts.items():
+            pos_selected = selected_indices[
+                player_positions[selected_indices] == pos
+            ]
+            pos_scores = score_bank[:, pos_selected, :]
+            states[pos] = cls._bank_pos_lineup_state(
+                pos_scores,
+                starter_count,
+                num_scenarios,
+                num_weeks,
+            )
+
+        rb_next = states['RB'][2]
+        wr_next = states['WR'][2]
+        te_next = states['TE'][2]
+        base_flex = np.maximum.reduce([rb_next, wr_next, te_next])
+
+        candidate_positions = player_positions[candidate_indices]
+        scenario_values = np.zeros(
+            (num_scenarios, len(candidate_indices)),
+            dtype=np.float32,
+        )
+        for pos in starter_counts:
+            candidate_locs = np.where(candidate_positions == pos)[0]
+            if len(candidate_locs) == 0:
+                continue
+
+            pos_candidates = candidate_indices[candidate_locs]
+            pos_scores = score_bank[:, pos_candidates, :]
+            _, pos_threshold, pos_next = states[pos]
+            starter_delta = np.maximum(
+                pos_scores - pos_threshold[:, None, :],
+                0,
+            )
+
+            if pos == 'QB':
+                weekly_delta = starter_delta
+            else:
+                new_pos_next = np.maximum(
+                    pos_next[:, None, :],
+                    np.minimum(pos_scores, pos_threshold[:, None, :]),
+                )
+                flex_rb = (
+                    new_pos_next
+                    if pos == 'RB'
+                    else np.broadcast_to(rb_next[:, None, :], pos_scores.shape)
+                )
+                flex_wr = (
+                    new_pos_next
+                    if pos == 'WR'
+                    else np.broadcast_to(wr_next[:, None, :], pos_scores.shape)
+                )
+                flex_te = (
+                    new_pos_next
+                    if pos == 'TE'
+                    else np.broadcast_to(te_next[:, None, :], pos_scores.shape)
+                )
+                new_flex = np.maximum.reduce([flex_rb, flex_wr, flex_te])
+                weekly_delta = (
+                    starter_delta
+                    + new_flex
+                    - base_flex[:, None, :]
+                )
+
+            scenario_values[:, candidate_locs] = weekly_delta.sum(axis=2)
+
+        return scenario_values, scenario_values.mean(axis=0)
+
+    @classmethod
+    def best_ball_roster_scores_bank(
+        cls,
+        score_bank,
+        player_positions,
+        selected_indices,
+    ):
+        """Score one roster in every season scenario from a weekly score bank."""
+        score_bank = np.asarray(score_bank, dtype=np.float32)
+        player_positions = np.asarray(player_positions)
+        selected_indices = np.asarray(selected_indices, dtype=np.int64)
+        if score_bank.ndim != 3:
+            raise ValueError("score_bank must have shape [scenario, player, week].")
+
+        num_scenarios, _, num_weeks = score_bank.shape
+        weekly_score = np.zeros(
+            (num_scenarios, num_weeks),
+            dtype=np.float32,
+        )
+        starter_counts = {'QB': 1, 'RB': 2, 'WR': 3, 'TE': 1}
+        states = {}
+        for pos, starter_count in starter_counts.items():
+            pos_selected = selected_indices[
+                player_positions[selected_indices] == pos
+            ]
+            state = cls._bank_pos_lineup_state(
+                score_bank[:, pos_selected, :],
+                starter_count,
+                num_scenarios,
+                num_weeks,
+            )
+            states[pos] = state
+            weekly_score += state[0]
+
+        weekly_score += np.maximum.reduce([
+            states['RB'][2],
+            states['WR'][2],
+            states['TE'][2],
+        ])
+        return weekly_score.sum(axis=1)
+
+    def sequential_legal_candidate_indices(
+        self,
+        remaining,
+        player_positions,
+        selected_indices,
+        picks_left,
+        pos_ranges=None,
+    ):
+        """Candidates that can still lead to a legal final roster construction."""
+        remaining = np.asarray(remaining, dtype=bool)
+        player_positions = np.asarray(player_positions)
+        selected_indices = np.asarray(selected_indices, dtype=np.int64)
+        if picks_left <= 0:
+            return np.zeros(0, dtype=np.int64)
+
+        if pos_ranges is None:
+            selected_mask = np.zeros(len(player_positions), dtype=bool)
+            selected_mask[selected_indices] = True
+            pos_ranges = self.best_ball_position_ranges(
+                player_positions,
+                selected_mask,
+            )
+
+        candidate_indices = np.flatnonzero(remaining)
+        if len(candidate_indices) == 0:
+            return np.zeros(0, dtype=np.int64)
+
+        positions = np.asarray(tuple(pos_ranges), dtype=object)
+        minimums = np.asarray(
+            [pos_ranges[pos][0] for pos in positions],
+            dtype=np.int64,
+        )
+        maximums = np.asarray(
+            [pos_ranges[pos][1] for pos in positions],
+            dtype=np.int64,
+        )
+        selected_positions = player_positions[selected_indices]
+        current_counts = np.sum(
+            selected_positions[:, None] == positions[None, :],
+            axis=0,
+        ).astype(np.int64)
+        candidate_position_matrix = (
+            player_positions[candidate_indices, None] == positions[None, :]
+        )
+        recognized_positions = candidate_position_matrix.any(axis=1)
+        candidate_counts = (
+            current_counts[None, :]
+            + candidate_position_matrix.astype(np.int64)
+        )
+        future_slots = picks_left - 1
+        minimum_deficits = np.maximum(
+            minimums[None, :] - candidate_counts,
+            0,
+        ).sum(axis=1)
+        maximum_capacity = np.maximum(
+            maximums[None, :] - candidate_counts,
+            0,
+        ).sum(axis=1)
+        legal_mask = (
+            recognized_positions
+            & np.all(candidate_counts <= maximums[None, :], axis=1)
+            & (minimum_deficits <= future_slots)
+            & (future_slots <= maximum_capacity)
+        )
+        return candidate_indices[legal_mask]
+
+    @staticmethod
+    def build_sequential_draft_orders(
+        adp_matrix,
+        num_rooms,
+        seed=None,
+    ):
+        """Sample noisy-ADP opponent priority orders shared by all root candidates."""
+        adp_matrix = np.asarray(adp_matrix, dtype=np.float64)
+        if adp_matrix.ndim != 2 or adp_matrix.shape[1] == 0:
+            raise ValueError("adp_matrix must have shape [player, sample].")
+        if num_rooms <= 0:
+            raise ValueError("num_rooms must be positive.")
+
+        rng = np.random.default_rng(seed)
+        adp_cols = rng.integers(0, adp_matrix.shape[1], size=num_rooms)
+        orders = np.empty((num_rooms, adp_matrix.shape[0]), dtype=np.int64)
+        for room_idx, adp_col in enumerate(adp_cols):
+            noisy_adp = (
+                np.maximum(adp_matrix[:, adp_col], 1.0)
+                + rng.uniform(-0.01, 0.01, size=adp_matrix.shape[0])
+            )
+            orders[room_idx] = np.argsort(noisy_adp, kind='mergesort')
+        return orders, adp_cols
+
+    @staticmethod
+    def advance_sequential_opponents(
+        remaining,
+        draft_order,
+        order_pointer,
+        num_opponent_picks,
+    ):
+        """Remove the next available players from one opponent priority order."""
+        drafted = []
+        for _ in range(max(0, int(num_opponent_picks))):
+            while (
+                order_pointer < len(draft_order)
+                and not remaining[draft_order[order_pointer]]
+            ):
+                order_pointer += 1
+            if order_pointer >= len(draft_order):
+                break
+
+            chosen_idx = int(draft_order[order_pointer])
+            remaining[chosen_idx] = False
+            drafted.append(chosen_idx)
+            order_pointer += 1
+
+        return order_pointer, np.asarray(drafted, dtype=np.int64)
+
+    @staticmethod
+    def sequential_survival_probabilities(
+        candidate_indices,
+        adp_matrix,
+        current_pick,
+        next_pick,
+    ):
+        if next_pick is None:
+            return np.ones(len(candidate_indices), dtype=np.float32)
+        candidate_adp = adp_matrix[candidate_indices]
+        survives_current = np.sum(candidate_adp >= current_pick, axis=1)
+        survives_next = np.sum(candidate_adp >= next_pick, axis=1)
+        return np.divide(
+            survives_next,
+            survives_current,
+            out=np.zeros(len(candidate_indices), dtype=np.float32),
+            where=survives_current > 0,
+        ).astype(np.float32)
+
+    @classmethod
+    def build_sequential_survival_table(cls, adp_matrix, adjusted_picks):
+        """Precompute conditional next-pick survival for every player and turn."""
+        adp_matrix = np.asarray(adp_matrix)
+        survival_table = np.ones(
+            (len(adjusted_picks), adp_matrix.shape[0]),
+            dtype=np.float32,
+        )
+        for pick_idx in range(len(adjusted_picks) - 1):
+            all_players = np.arange(adp_matrix.shape[0], dtype=np.int64)
+            survival_table[pick_idx] = cls.sequential_survival_probabilities(
+                all_players,
+                adp_matrix,
+                adjusted_picks[pick_idx],
+                adjusted_picks[pick_idx + 1],
+            )
+        return survival_table
+
+    @classmethod
+    def sequential_policy_scores(
+        cls,
+        candidate_indices,
+        immediate_values,
+        player_positions,
+        adp_matrix,
+        current_pick,
+        next_pick,
+        scarcity_weight=SEQUENTIAL_SCARCITY_WEIGHT,
+        urgency_weight=SEQUENTIAL_URGENCY_WEIGHT,
+        survival_probabilities=None,
+    ):
+        """Combine expected marginal value with the cost of waiting one turn."""
+        candidate_indices = np.asarray(candidate_indices, dtype=np.int64)
+        immediate_values = np.asarray(immediate_values, dtype=np.float32)
+        if survival_probabilities is None:
+            survival = cls.sequential_survival_probabilities(
+                candidate_indices,
+                adp_matrix,
+                current_pick,
+                next_pick,
+            )
+        else:
+            survival = np.asarray(
+                survival_probabilities,
+                dtype=np.float32,
+            )[candidate_indices]
+        urgency = immediate_values * (1.0 - survival)
+        future_opportunity = immediate_values * survival
+        scarcity_cliff = np.zeros(len(candidate_indices), dtype=np.float32)
+        candidate_positions = player_positions[candidate_indices]
+
+        for pos in ('QB', 'RB', 'WR', 'TE'):
+            pos_locs = np.where(candidate_positions == pos)[0]
+            if len(pos_locs) == 0:
+                continue
+            best_future = float(np.max(future_opportunity[pos_locs]))
+            scarcity_cliff[pos_locs] = np.maximum(
+                immediate_values[pos_locs] - best_future,
+                0,
+            )
+
+        policy_score = (
+            immediate_values
+            + (float(scarcity_weight) * scarcity_cliff)
+            + (float(urgency_weight) * urgency)
+        )
+        return policy_score, survival, scarcity_cliff, urgency
+
+    @staticmethod
+    def select_sequential_root_candidates(
+        candidate_indices,
+        immediate_values,
+        policy_scores,
+        survival,
+        player_positions,
+        candidate_pool_size,
+    ):
+        """Build a broad, position-diverse root set without evaluating every player."""
+        candidate_indices = np.asarray(candidate_indices, dtype=np.int64)
+        candidate_pool_size = min(
+            max(1, int(candidate_pool_size)),
+            len(candidate_indices),
+        )
+        if len(candidate_indices) <= candidate_pool_size:
+            return candidate_indices, {
+                int(idx): ('all_legal',) for idx in candidate_indices
+            }
+
+        reason_sets = {int(idx): set() for idx in candidate_indices}
+        quota = max(4, candidate_pool_size // 3)
+        rankings = {
+            'top_immediate': np.argsort(-immediate_values),
+            'top_screen': np.argsort(-policy_scores),
+            'low_survival': np.argsort(survival),
+        }
+        for reason, ranking in rankings.items():
+            for loc in ranking[:quota]:
+                reason_sets[int(candidate_indices[loc])].add(reason)
+
+        candidate_positions = player_positions[candidate_indices]
+        protected = []
+        for pos in ('QB', 'RB', 'WR', 'TE'):
+            pos_locs = np.where(candidate_positions == pos)[0]
+            if len(pos_locs) == 0:
+                continue
+            best_locs = pos_locs[np.argsort(-policy_scores[pos_locs])[:2]]
+            for loc in best_locs:
+                idx = int(candidate_indices[loc])
+                protected.append(idx)
+                reason_sets[idx].add(f'top_{pos.lower()}')
+
+        loc_by_idx = {
+            int(candidate_idx): loc
+            for loc, candidate_idx in enumerate(candidate_indices)
+        }
+        chosen = []
+        for candidate_idx in protected:
+            if candidate_idx not in chosen and len(chosen) < candidate_pool_size:
+                chosen.append(candidate_idx)
+
+        reason_candidates = [
+            int(candidate_idx)
+            for candidate_idx in candidate_indices
+            if reason_sets[int(candidate_idx)]
+        ]
+        reason_candidates.sort(
+            key=lambda idx: policy_scores[loc_by_idx[idx]],
+            reverse=True,
+        )
+        for candidate_idx in reason_candidates:
+            if candidate_idx not in chosen and len(chosen) < candidate_pool_size:
+                chosen.append(candidate_idx)
+
+        if len(chosen) < candidate_pool_size:
+            for loc in np.argsort(-policy_scores):
+                candidate_idx = int(candidate_indices[loc])
+                if candidate_idx not in chosen:
+                    chosen.append(candidate_idx)
+                if len(chosen) == candidate_pool_size:
+                    break
+
+        reasons = {
+            candidate_idx: tuple(sorted(reason_sets[candidate_idx]))
+            for candidate_idx in chosen
+        }
+        return np.asarray(chosen, dtype=np.int64), reasons
 
     @classmethod
     def best_ball_total_score(cls, selected_indices, weekly_scores, player_positions):
@@ -2200,6 +2811,542 @@ class FootballSimulation:
         }
         return results
 
+    @staticmethod
+    def select_disjoint_policy_ppg_columns(
+        num_columns,
+        construction_samples,
+        evaluation_samples,
+        construction_seed,
+        evaluation_seed,
+    ):
+        """Select unique PPG columns for two banks with an enforced empty overlap."""
+        num_columns = int(num_columns)
+        construction_samples = int(construction_samples)
+        evaluation_samples = int(evaluation_samples)
+        if construction_samples <= 0 or evaluation_samples <= 0:
+            raise ValueError("Policy bank sample counts must be positive.")
+        if construction_samples + evaluation_samples > num_columns:
+            raise ValueError(
+                "Construction and evaluation samples exceed the available "
+                "prediction columns required for disjoint banks."
+            )
+
+        construction_rng = np.random.default_rng(construction_seed)
+        construction_columns = construction_rng.choice(
+            num_columns,
+            size=construction_samples,
+            replace=False,
+        ).astype(np.int64)
+        evaluation_pool = np.setdiff1d(
+            np.arange(num_columns, dtype=np.int64),
+            construction_columns,
+            assume_unique=True,
+        )
+        evaluation_rng = np.random.default_rng(evaluation_seed)
+        evaluation_columns = evaluation_rng.choice(
+            evaluation_pool,
+            size=evaluation_samples,
+            replace=False,
+        ).astype(np.int64)
+        if np.intersect1d(construction_columns, evaluation_columns).size:
+            raise AssertionError("Construction and evaluation PPG columns overlap.")
+        return construction_columns, evaluation_columns
+
+    def sample_sequential_policy_score_bank(
+        self,
+        ppg_pred,
+        ppg_pred_ny,
+        num_scenarios,
+        num_weeks,
+        seed,
+        ppg_column_indices,
+        next_year_frac=0,
+    ):
+        """Sample an ex-ante season bank, optionally mixing next-year predictions."""
+        score_bank = self.sample_template_weekly_score_bank(
+            ppg_pred,
+            num_scenarios,
+            num_weeks=num_weeks,
+            seed=seed,
+            ppg_column_indices=ppg_column_indices,
+        )
+        if ppg_pred_ny is None or next_year_frac <= 0:
+            return score_bank
+
+        next_year_bank = self.sample_template_weekly_score_bank(
+            ppg_pred_ny,
+            num_scenarios,
+            num_weeks=num_weeks,
+            seed=seed,
+            ppg_column_indices=ppg_column_indices,
+        )
+        rng = np.random.default_rng(seed + 1)
+        use_next_year = rng.random(num_scenarios) < next_year_frac
+        score_bank[use_next_year] = next_year_bank[use_next_year]
+        return score_bank
+
+    def complete_sequential_best_ball_rollout(
+        self,
+        initial_selected_indices,
+        root_candidate_idx,
+        adjusted_picks,
+        base_remaining,
+        draft_order,
+        construction_bank,
+        player_positions,
+        adp_matrix,
+        pos_ranges,
+        survival_table=None,
+        scarcity_weight=SEQUENTIAL_SCARCITY_WEIGHT,
+        urgency_weight=SEQUENTIAL_URGENCY_WEIGHT,
+    ):
+        """Complete one candidate-consistent draft room using ex-ante EV only."""
+        selected_indices = list(initial_selected_indices)
+        remaining = np.asarray(base_remaining, dtype=bool).copy()
+        path = []
+        available_by_pick = []
+        opponent_picks_by_turn = []
+        order_pointer = 0
+
+        root_candidate_idx = int(root_candidate_idx)
+        if not remaining[root_candidate_idx]:
+            return None, None, False
+        selected_indices.append(root_candidate_idx)
+        path.append(root_candidate_idx)
+        remaining[root_candidate_idx] = False
+
+        for pick_idx in range(1, len(adjusted_picks)):
+            opponent_pick_count = (
+                adjusted_picks[pick_idx]
+                - adjusted_picks[pick_idx - 1]
+                - 1
+            )
+            order_pointer, opponent_picks = self.advance_sequential_opponents(
+                remaining,
+                draft_order,
+                order_pointer,
+                opponent_pick_count,
+            )
+            opponent_picks_by_turn.append(opponent_picks)
+
+            picks_left = len(adjusted_picks) - pick_idx
+            legal_candidates = self.sequential_legal_candidate_indices(
+                remaining,
+                player_positions,
+                selected_indices,
+                picks_left,
+                pos_ranges=pos_ranges,
+            )
+            available_by_pick.append(legal_candidates.copy())
+            if len(legal_candidates) == 0:
+                return None, {
+                    'path': np.asarray(path, dtype=np.int64),
+                    'available_by_pick': available_by_pick,
+                    'opponent_picks_by_turn': opponent_picks_by_turn,
+                }, False
+
+            _, immediate_values = self.marginal_best_ball_values_bank(
+                construction_bank,
+                player_positions,
+                selected_indices,
+                legal_candidates,
+            )
+            next_pick = (
+                adjusted_picks[pick_idx + 1]
+                if pick_idx + 1 < len(adjusted_picks)
+                else None
+            )
+            policy_scores, _, _, _ = self.sequential_policy_scores(
+                legal_candidates,
+                immediate_values,
+                player_positions,
+                adp_matrix,
+                adjusted_picks[pick_idx],
+                next_pick,
+                scarcity_weight=scarcity_weight,
+                urgency_weight=urgency_weight,
+                survival_probabilities=(
+                    survival_table[pick_idx]
+                    if survival_table is not None
+                    else None
+                ),
+            )
+            chosen_idx = int(legal_candidates[int(np.argmax(policy_scores))])
+            selected_indices.append(chosen_idx)
+            path.append(chosen_idx)
+            remaining[chosen_idx] = False
+
+        selected_array = np.asarray(selected_indices, dtype=np.int64)
+        final_counts = Counter(player_positions[selected_array])
+        construction_is_legal = all(
+            min_count <= final_counts.get(pos, 0) <= max_count
+            for pos, (min_count, max_count) in pos_ranges.items()
+        )
+        success = (
+            len(selected_indices) == self.num_rounds
+            and len(set(selected_indices)) == len(selected_indices)
+            and construction_is_legal
+        )
+        details = {
+            'path': np.asarray(path, dtype=np.int64),
+            'available_by_pick': available_by_pick,
+            'opponent_picks_by_turn': opponent_picks_by_turn,
+        }
+        return selected_array if success else None, details, success
+
+    @staticmethod
+    def approximate_two_way_se(values):
+        """Approximate uncertainty with draft-room and season scenario components."""
+        values = np.asarray(values, dtype=np.float64)
+        if values.ndim != 2 or values.size == 0:
+            return np.nan
+
+        num_rooms, num_seasons = values.shape
+        room_component = 0.0
+        season_component = 0.0
+        if num_rooms > 1:
+            room_component = np.var(
+                values.mean(axis=1),
+                ddof=1,
+            ) / num_rooms
+        if num_seasons > 1:
+            season_component = np.var(
+                values.mean(axis=0),
+                ddof=1,
+            ) / num_seasons
+        return float(np.sqrt(room_component + season_component))
+
+    def run_sim_best_ball_policy(
+        self,
+        to_add,
+        to_drop,
+        num_iters=SEQUENTIAL_DRAFT_ROOMS,
+        next_year_frac=0,
+        num_weeks=SEQUENTIAL_POLICY_HORIZON,
+        construction_samples=SEQUENTIAL_CONSTRUCTION_SAMPLES,
+        evaluation_samples=SEQUENTIAL_EVALUATION_SAMPLES,
+        candidate_pool_size=SEQUENTIAL_CANDIDATE_POOL_SIZE,
+        scarcity_weight=SEQUENTIAL_SCARCITY_WEIGHT,
+        urgency_weight=SEQUENTIAL_URGENCY_WEIGHT,
+        seed=SEQUENTIAL_POLICY_SEED,
+        evaluation_seed=None,
+    ):
+        """Beta sequential policy with candidate-consistent opponent availability."""
+        total_start = time.perf_counter()
+        timings = Counter()
+        num_rooms = max(1, int(num_iters))
+        num_weeks = min(int(num_weeks), SEQUENTIAL_POLICY_HORIZON)
+        evaluation_seed = (
+            int(seed) + 202
+            if evaluation_seed is None
+            else int(evaluation_seed)
+        )
+        to_add = list(dict.fromkeys(to_add))
+        to_drop_set = set(to_drop) - set(to_add)
+
+        t0 = time.perf_counter()
+        with self.temp_seed(seed):
+            ppg_pred = self.drop_players(
+                self.get_predictions('pred_fp_per_game', num_options=1000),
+                to_drop_set,
+            )
+            ppg_pred_ny = None
+            if next_year_frac > 0:
+                ppg_pred_ny = self.drop_players(
+                    self.get_predictions(
+                        'pred_fp_per_game_ny',
+                        num_options=1000,
+                    ),
+                    to_drop_set,
+                )
+            adp_samples = self.drop_players(
+                self.get_adp_samples(num_options=1000),
+                to_drop_set,
+            )
+        timings['prediction_adp_generation'] += time.perf_counter() - t0
+
+        player_names = ppg_pred.player.to_numpy()
+        player_positions = ppg_pred.pos.to_numpy()
+        player_idx = {player: idx for idx, player in enumerate(player_names)}
+        missing_selected = [player for player in to_add if player not in player_idx]
+        if missing_selected:
+            raise ValueError(
+                "Selected players are absent from the sequential policy pool: "
+                + ', '.join(missing_selected)
+            )
+
+        if not np.array_equal(player_names, adp_samples.player.to_numpy()):
+            adp_samples = (
+                pd.DataFrame({'player': player_names})
+                .merge(adp_samples, how='left', on='player', validate='one_to_one')
+            )
+            if adp_samples.iloc[:, 2:].isna().any().any():
+                raise ValueError("Could not align ADP samples to prediction players.")
+        adp_matrix = adp_samples.iloc[:, 2:].to_numpy(dtype=np.float32)
+
+        adjusted_picks = self.calculate_adjusted_picks(len(to_add))
+        if len(adjusted_picks) == 0:
+            results = pd.DataFrame(columns=['player', 'CurrentPickEV'])
+            results.attrs['timings'] = {
+                'mode': 'best_ball_policy_sequential',
+                'release_stage': 'beta',
+                'horizon_label': 'sequential_template_16',
+                'sections': {'total': time.perf_counter() - total_start},
+            }
+            return results
+
+        selected_indices = np.asarray(
+            [player_idx[player] for player in to_add],
+            dtype=np.int64,
+        )
+        selected_mask = np.zeros(len(player_names), dtype=bool)
+        selected_mask[selected_indices] = True
+        pos_ranges = self.best_ball_position_ranges(
+            player_positions,
+            selected_mask,
+        )
+        base_remaining = np.ones(len(player_names), dtype=bool)
+        base_remaining[selected_indices] = False
+
+        t0 = time.perf_counter()
+        num_ppg_columns = len(self.sample_value_columns(ppg_pred))
+        construction_columns, evaluation_columns = (
+            self.select_disjoint_policy_ppg_columns(
+                num_ppg_columns,
+                construction_samples,
+                evaluation_samples,
+                construction_seed=seed + 101,
+                evaluation_seed=evaluation_seed,
+            )
+        )
+        if np.intersect1d(construction_columns, evaluation_columns).size:
+            raise AssertionError("Sequential policy score banks are not disjoint.")
+        construction_bank = self.sample_sequential_policy_score_bank(
+            ppg_pred,
+            ppg_pred_ny,
+            construction_samples,
+            num_weeks,
+            seed + 101,
+            construction_columns,
+            next_year_frac=next_year_frac,
+        )
+        evaluation_bank = self.sample_sequential_policy_score_bank(
+            ppg_pred,
+            ppg_pred_ny,
+            evaluation_samples,
+            num_weeks,
+            evaluation_seed,
+            evaluation_columns,
+            next_year_frac=next_year_frac,
+        )
+        timings['score_banks'] += time.perf_counter() - t0
+
+        t0 = time.perf_counter()
+        draft_orders, adp_cols = self.build_sequential_draft_orders(
+            adp_matrix,
+            num_rooms,
+            seed=seed + 303,
+        )
+        survival_table = self.build_sequential_survival_table(
+            adp_matrix,
+            adjusted_picks,
+        )
+        timings['draft_rooms'] += time.perf_counter() - t0
+
+        t0 = time.perf_counter()
+        current_candidates = self.sequential_legal_candidate_indices(
+            base_remaining,
+            player_positions,
+            selected_indices,
+            len(adjusted_picks),
+            pos_ranges=pos_ranges,
+        )
+        if len(current_candidates) == 0:
+            raise ValueError("No legal current-pick candidates remain.")
+        _, immediate_values = self.marginal_best_ball_values_bank(
+            construction_bank,
+            player_positions,
+            selected_indices,
+            current_candidates,
+        )
+        next_pick = adjusted_picks[1] if len(adjusted_picks) > 1 else None
+        screen_scores, survival, scarcity_cliffs, urgency = (
+            self.sequential_policy_scores(
+                current_candidates,
+                immediate_values,
+                player_positions,
+                adp_matrix,
+                adjusted_picks[0],
+                next_pick,
+                scarcity_weight=scarcity_weight,
+                urgency_weight=urgency_weight,
+                survival_probabilities=survival_table[0],
+            )
+        )
+        root_candidates, inclusion_reasons = (
+            self.select_sequential_root_candidates(
+                current_candidates,
+                immediate_values,
+                screen_scores,
+                survival,
+                player_positions,
+                candidate_pool_size,
+            )
+        )
+        timings['root_screen'] += time.perf_counter() - t0
+
+        current_loc = {
+            int(candidate_idx): loc
+            for loc, candidate_idx in enumerate(current_candidates)
+        }
+        records = []
+        policy_paths = {}
+        candidate_value_matrices = {}
+        t0 = time.perf_counter()
+        for root_candidate_idx in root_candidates:
+            room_values = []
+            completed_room_indices = []
+            candidate_paths = []
+            for room_idx in range(num_rooms):
+                roster, details, success = (
+                    self.complete_sequential_best_ball_rollout(
+                        selected_indices,
+                        root_candidate_idx,
+                        adjusted_picks,
+                        base_remaining,
+                        draft_orders[room_idx],
+                        construction_bank,
+                        player_positions,
+                        adp_matrix,
+                        pos_ranges,
+                        survival_table=survival_table,
+                        scarcity_weight=scarcity_weight,
+                        urgency_weight=urgency_weight,
+                    )
+                )
+                if not success:
+                    continue
+                room_values.append(
+                    self.best_ball_roster_scores_bank(
+                        evaluation_bank,
+                        player_positions,
+                        roster,
+                    )
+                )
+                completed_room_indices.append(room_idx)
+                candidate_paths.append({
+                    'room_idx': room_idx,
+                    'path': player_names[details['path']].tolist(),
+                    'opponent_picks_by_turn': [
+                        player_names[picks].tolist()
+                        for picks in details['opponent_picks_by_turn']
+                    ],
+                })
+
+            candidate_idx = int(root_candidate_idx)
+            loc = current_loc[candidate_idx]
+            value_matrix = (
+                np.stack(room_values)
+                if room_values
+                else np.empty((0, evaluation_samples), dtype=np.float32)
+            )
+            records.append({
+                'player': player_names[candidate_idx],
+                'pos': player_positions[candidate_idx],
+                'CurrentPickEV': (
+                    float(value_matrix.mean()) if value_matrix.size else np.nan
+                ),
+                'DraftRoomSamples': num_rooms,
+                'EvaluationSamples': int(evaluation_samples),
+                'PolicyCompletedRooms': int(value_matrix.shape[0]),
+                'CurrentPickEVSamples': int(value_matrix.size),
+                'ApproxSE': self.approximate_two_way_se(value_matrix),
+                'ImmediateValue': float(immediate_values[loc]),
+                'ScreenScore': float(screen_scores[loc]),
+                'SurviveNext': float(survival[loc]),
+                'ScarcityCliff': float(scarcity_cliffs[loc]),
+                'UrgencyValue': float(urgency[loc]),
+                'InclusionReasons': ','.join(inclusion_reasons[candidate_idx]),
+            })
+            policy_paths[player_names[candidate_idx]] = candidate_paths
+            candidate_value_matrices[player_names[candidate_idx]] = {
+                'rooms': np.asarray(completed_room_indices, dtype=np.int64),
+                'values': value_matrix,
+            }
+        timings['candidate_rollouts'] += time.perf_counter() - t0
+
+        results = pd.DataFrame(records)
+        if len(results) > 0:
+            best_ev = results.CurrentPickEV.max()
+            results['CurrentPickEVVsBest'] = results.CurrentPickEV - best_ev
+            best_player = results.loc[
+                results.CurrentPickEV.idxmax(),
+                'player',
+            ]
+            best_matrix = candidate_value_matrices[best_player]
+            paired_se = []
+            for player in results.player:
+                candidate_matrix = candidate_value_matrices[player]
+                common_rooms = np.intersect1d(
+                    candidate_matrix['rooms'],
+                    best_matrix['rooms'],
+                )
+                if len(common_rooms) == 0:
+                    paired_se.append(np.nan)
+                    continue
+                candidate_locs = np.searchsorted(
+                    candidate_matrix['rooms'],
+                    common_rooms,
+                )
+                best_locs = np.searchsorted(
+                    best_matrix['rooms'],
+                    common_rooms,
+                )
+                paired_differences = (
+                    candidate_matrix['values'][candidate_locs]
+                    - best_matrix['values'][best_locs]
+                )
+                paired_se.append(
+                    self.approximate_two_way_se(paired_differences)
+                )
+            results['PairedSEVsBest'] = paired_se
+            results = results.sort_values(
+                ['CurrentPickEV', 'ScreenScore'],
+                ascending=False,
+            ).reset_index(drop=True)
+
+        timings['total'] = time.perf_counter() - total_start
+        results.attrs['timings'] = {
+            'mode': 'best_ball_policy_sequential',
+            'release_stage': 'beta',
+            'horizon_label': 'sequential_template_16',
+            'requested_iters': int(num_rooms),
+            'success_trials': int(
+                results.PolicyCompletedRooms.min() if len(results) else 0
+            ),
+            'failed_exception_count': 0,
+            'num_weeks': int(num_weeks),
+            'construction_samples': int(construction_samples),
+            'evaluation_samples': int(evaluation_samples),
+            'draft_room_samples': int(num_rooms),
+            'candidate_pool_size': int(candidate_pool_size),
+            'scarcity_weight': float(scarcity_weight),
+            'urgency_weight': float(urgency_weight),
+            'seed': int(seed),
+            'evaluation_seed': int(evaluation_seed),
+            'deterministic_seed': True,
+            'sections': dict(timings),
+        }
+        results.attrs['policy_paths'] = policy_paths
+        results.attrs['candidate_value_matrices'] = candidate_value_matrices
+        results.attrs['scenario_banks'] = {
+            'construction_ppg_columns': construction_columns.tolist(),
+            'evaluation_ppg_columns': evaluation_columns.tolist(),
+            'disjoint': True,
+        }
+        results.attrs['draft_room_adp_columns'] = adp_cols.tolist()
+        return results
+
 
 
     def run_sim_best_ball_marginal(self, to_add, to_drop, num_iters, next_year_frac=0, num_weeks=17, candidate_pool_size=24):
@@ -2368,6 +3515,14 @@ class FootballSimulation:
                 ev_shortlist_size=ev_shortlist_size,
                 weekly_score_mode=weekly_score_mode,
                 parallel_workers=parallel_workers,
+            )
+
+        if scoring_mode == 'best_ball_policy':
+            return self.run_sim_best_ball_policy(
+                to_add,
+                to_drop,
+                num_iters=num_iters,
+                next_year_frac=next_year_frac,
             )
 
         if scoring_mode in ('best_ball_marginal', 'best_ball_lookahead'):

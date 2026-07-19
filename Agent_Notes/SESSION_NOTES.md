@@ -1,6 +1,6 @@
 # Session Notes Landing
 
-Last updated: 2026-07-06
+Last updated: 2026-07-19
 
 ## Project Objective
 
@@ -10,7 +10,8 @@ outcomes, and solves roster recommendations with the ILP optimizer.
 
 ## Current Focus
 
-- Current active workstream: best-ball weekly template sampling and ILP runtime.
+- Current active workstream: Beta rollout of the non-clairvoyant sequential
+  best-ball policy while preserving the legacy ILP fallback.
 - The app consumes `app/Simulation.sqlite3`, copied from the modeling repo.
 - Recent changes added weighted weekly-template sampling, centered
   variance-preserving template residual blending, broader x-pruning buffers,
@@ -32,6 +33,10 @@ outcomes, and solves roster recommendations with the ILP optimizer.
   app runs.
 - Store reusable audit CSV outputs under `research/studies/` and reusable SQL
   snippets under `docs/runbooks/queries/`.
+- Keep the sequential policy on the explicit 16-week template horizon, with
+  disjoint construction/evaluation banks and candidate-consistent room state.
+- Keep beam search and adaptive allocation out until broader Beta evidence shows
+  material regret from the 16-candidate greedy-plus-scarcity policy.
 
 ## Key Links
 

@@ -7,6 +7,8 @@ Last updated: 2026-07-07
 - `app/zSim_Helper.py`: data loading, sampling, optimizer setup, and ILP logic.
 - `app/snake_draft_app.py`: Streamlit UI and orchestration.
 - `app/Simulation.sqlite3`: generated database copied from the modeling repo.
+- `docs/runbooks/best_ball_sequential_policy.md`: Beta policy methodology,
+  validation gates, and limitations.
 
 ## Quick Syntax Check
 
@@ -28,6 +30,8 @@ Then confirm:
 - optimizer can run at least one recommendation
 - weekly template controls do not error
 - stack bonus controls render when enabled
+- the Sequential best-ball policy (Beta) renders current-pick EV, paired SE,
+  survival, and completed-room columns
 
 ## Best-Ball Runtime Checks
 
@@ -52,3 +56,9 @@ research/studies/YYYY-MM-DD_<slug>/results/
 ```
 
 Do not leave reusable audit CSVs in `app/`.
+
+For the non-clairvoyant policy checks, use:
+
+```text
+research/studies/2026-07-19_sequential_best_ball_policy/
+```
