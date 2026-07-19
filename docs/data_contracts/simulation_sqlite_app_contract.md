@@ -17,6 +17,10 @@ app/Simulation.sqlite3
 The file is generated/copied from the modeling repo and should not be hand-edited
 as a durable fix.
 
+The Snake app uses only the `dk` league slice. Other league/version slices in
+the shared database belong to separate applications and are out of scope for
+Snake release gates.
+
 ## Best-Ball Weekly Tables
 
 ### `Best_Ball_Weekly_Player_Map`
@@ -87,11 +91,6 @@ projection and ADP inputs must therefore retain at least
 `last_adjusted_pick - current_adjusted_pick + 1` aligned players. The app
 rejects smaller pools rather than allowing an exhausted room to create missing
 or duplicated selections.
-
-The current 2026 `beta` slice has 180 aligned players and does not satisfy this
-contract for the tested 12-team, 20-round format. The durable fix belongs in
-the modeling repo: deepen that league slice or explicitly publish and validate
-a smaller supported draft format before enabling Sequential for it.
 
 ## Runtime Rules
 

@@ -239,7 +239,11 @@ def render_timing_summary(results):
 
     section_labels = {
         'prediction_adp_generation': 'Prediction + ADP samples',
-        'score_banks': 'Construction + evaluation banks',
+        'score_banks': 'Construction + pilot banks',
+        'decision_bank': 'Decision bank sampling',
+        'decision_scoring': 'Top-four decision scoring',
+        'audit_bank': 'Hidden audit bank sampling',
+        'audit_scoring': 'Hidden audit scoring',
         'draft_rooms': 'Opponent room sampling',
         'root_screen': 'Current-candidate screen',
         'candidate_rollouts': 'Candidate draft rollouts',
@@ -278,8 +282,8 @@ def render_timing_summary(results):
         col1.metric("Total seconds", f"{total_sec:.1f}")
         if timings.get('mode') == 'best_ball_policy_sequential':
             col2.metric("Completed rooms", f"{success_trials}/{requested_iters}")
-            col3.metric("Construction seasons", f"{int(timings.get('construction_samples', 0)):,}")
-            col4.metric("Evaluation seasons", f"{int(timings.get('evaluation_samples', 0)):,}")
+            col3.metric("Pilot seasons", f"{int(timings.get('evaluation_samples', 0)):,}")
+            col4.metric("Decision seasons", f"{int(timings.get('decision_samples', 0)):,}")
         else:
             col2.metric("Successful sims", f"{success_trials}/{requested_iters}")
             col3.metric("ILP vars", f"{int(model.get('num_vars', 0)):,}")
@@ -340,20 +344,45 @@ def get_round_recommendations(results, sim, my_team_count, max_rounds=3):
         'CurrentPickEV' in results.columns
         and f'Round{current_round_num}Count' not in results.columns
     ):
-        display_cols = [
-            'player',
-            'pos',
-            'CurrentPickEV',
-            'CurrentPickEVVsBest',
-            'PairedSEVsBest',
-            'SurviveNext',
-            'PolicyCompletedRooms',
-        ]
-        display_cols = [col for col in display_cols if col in results.columns]
-        current_picks = (
-            results.sort_values('CurrentPickEV', ascending=False)
-            .head(10)[display_cols]
-            .rename(columns={
+        if 'DecisionEV' in results.columns:
+            results = results[results.DecisionEV.notna()].copy()
+            display_cols = [
+                'player',
+                'pos',
+                'DecisionEV',
+                'DecisionEVVsBest',
+                'DecisionPairedSEVsBest',
+                'DecisionSamples',
+                'CurrentPickEV',
+                'PilotRank',
+                'SurviveNext',
+                'PolicyCompletedRooms',
+            ]
+            sort_column = 'DecisionEV'
+            rename_columns = {
+                'player': 'Player',
+                'pos': 'Pos',
+                'DecisionEV': 'EV',
+                'DecisionEVVsBest': 'EV vs Best',
+                'DecisionPairedSEVsBest': 'Paired SE',
+                'DecisionSamples': 'Decision Samples',
+                'CurrentPickEV': 'Pilot EV',
+                'PilotRank': 'Pilot Rank',
+                'SurviveNext': 'Survive Next',
+                'PolicyCompletedRooms': 'Draft Rooms',
+            }
+        else:
+            display_cols = [
+                'player',
+                'pos',
+                'CurrentPickEV',
+                'CurrentPickEVVsBest',
+                'PairedSEVsBest',
+                'SurviveNext',
+                'PolicyCompletedRooms',
+            ]
+            sort_column = 'CurrentPickEV'
+            rename_columns = {
                 'player': 'Player',
                 'pos': 'Pos',
                 'CurrentPickEV': 'EV',
@@ -361,7 +390,12 @@ def get_round_recommendations(results, sim, my_team_count, max_rounds=3):
                 'PairedSEVsBest': 'Paired SE',
                 'SurviveNext': 'Survive Next',
                 'PolicyCompletedRooms': 'Draft Rooms',
-            })
+            }
+        display_cols = [col for col in display_cols if col in results.columns]
+        current_picks = (
+            results.sort_values(sort_column, ascending=False)
+            .head(10)[display_cols]
+            .rename(columns=rename_columns)
         )
         if 'Survive Next' in current_picks.columns:
             current_picks['Survive Next'] *= 100
@@ -661,7 +695,6 @@ def sidebar_controls(prediction_options):
     default_ilp_ranges = FootballSimulation.default_best_ball_position_ranges()
     if loaded_settings is not None:
         default_year = get_setting_int(loaded_settings, 'Year', int(prediction_options.year.max()))
-        default_league = str(loaded_settings.get('League', 'dk')).lower()
         default_num_teams = get_setting_int(loaded_settings, 'NumTeams', 12)
         default_my_pick = get_setting_int(loaded_settings, 'MyPickPosition', 1)
         default_qb = get_setting_int(loaded_settings, 'QB', 3)
@@ -690,7 +723,6 @@ def sidebar_controls(prediction_options):
         }
     else:
         default_year = int(prediction_options.year.max())
-        default_league = 'dk'
         default_num_teams = 12
         default_my_pick = 1
         default_qb = 3
@@ -710,7 +742,13 @@ def sidebar_controls(prediction_options):
         default_weekly_score_mode = 'template'
         default_position_ranges = default_ilp_ranges
     
-    year_options = sorted(prediction_options.year.unique(), reverse=True)
+    dk_prediction_options = prediction_options[
+        prediction_options.version.astype(str).str.lower() == 'dk'
+    ]
+    if len(dk_prediction_options) == 0:
+        st.error("No DK prediction slice is available in Simulation.sqlite3.")
+        st.stop()
+    year_options = sorted(dk_prediction_options.year.unique(), reverse=True)
     year_index = year_options.index(default_year) if default_year in year_options else 0
     year = st.sidebar.selectbox(
         'Prediction Year',
@@ -719,14 +757,14 @@ def sidebar_controls(prediction_options):
         help="Select the prediction year from Final_Predictions_Resid"
     )
 
-    # League selection
-    league_options = sorted(prediction_options[prediction_options.year == year].version.unique())
-    league_index = league_options.index(default_league) if default_league in league_options else 0
-    league = st.sidebar.selectbox(
+    # This Snake app consumes only the DK league slice. The separate `beta`
+    # slice belongs to the auction application.
+    league = 'dk'
+    st.sidebar.text_input(
         'League Type',
-        options=league_options,
-        index=league_index,
-        help="Select the league type for predictions and ADP data"
+        value=league,
+        disabled=True,
+        help="The Snake app uses the DK prediction and ADP slice."
     )
     
     # League settings
@@ -750,7 +788,7 @@ def sidebar_controls(prediction_options):
 
     scoring_options = {
         'Best-ball ILP': 'best_ball_ilp',
-        'Sequential best-ball policy (Beta)': 'best_ball_policy',
+        'Sequential best-ball policy (Preview)': 'best_ball_policy',
         'Best-ball lookahead': 'best_ball_lookahead',
         'Total roster points': 'total_points',
     }
@@ -784,7 +822,8 @@ def sidebar_controls(prediction_options):
             step=4,
             help=(
                 'Each current candidate is completed through this many shared noisy-ADP '
-                'draft rooms. The default 24-room run is typically around 10 seconds.'
+                'draft rooms. The default 24-room Preview commonly takes several seconds '
+                'and can approach 10-12 seconds near the opening pick, depending on the machine.'
             ),
         )
         parallel_workers = 1
@@ -882,9 +921,10 @@ def sidebar_controls(prediction_options):
     elif scoring_mode == 'best_ball_policy':
         weekly_score_mode = 'template'
         st.sidebar.caption(
-            'Beta methodology: 16-week template outcomes, 16 current candidates, '
-            'candidate-consistent noisy-ADP rooms, and a separate 64-season evaluation bank. '
-            'Fixed common-random-number seeds keep repeat runs on the same draft state stable.'
+            'Preview methodology: 16-week template outcomes, 24 current candidates, '
+            'candidate-consistent noisy-ADP rooms, a 64-season pilot, and a separate '
+            '128-season top-four decision bank. Fixed common-random-number seeds keep '
+            'repeat runs on the same draft state stable.'
         )
 
     st.sidebar.header("Roster Construction")
@@ -1215,9 +1255,10 @@ def main():
                         # Add explanation
                         if settings['scoring_mode'] == 'best_ball_policy':
                             st.info(
-                                "**Beta sequential policy**: each current player is locked, "
+                                "**Sequential Preview**: each current player is locked, "
                                 "opponents and future picks are removed from one shared draft-room "
-                                "state, and completed rosters are scored on a separate season bank."
+                                "state, 24 candidates receive a pilot score, and the pilot top four "
+                                "are ranked on a separate 128-season decision bank."
                             )
                         else:
                             st.info(

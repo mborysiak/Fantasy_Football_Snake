@@ -19,5 +19,5 @@ dated, reviewable bundles.
 - ADP/name join audits.
 - ILP runtime/performance checks.
 - Sequential best-ball policy correctness, shortlist regret, and runtime gates.
-- Sequential default-promotion studies with independent confirmation banks and
-  physical cross-slot/cross-round fixtures.
+- Sequential default-promotion studies with operational decision banks,
+  policy-inert audit banks, and physical cross-slot/cross-round fixtures.

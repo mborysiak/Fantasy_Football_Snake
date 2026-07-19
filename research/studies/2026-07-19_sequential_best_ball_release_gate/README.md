@@ -2,35 +2,37 @@
 
 ## Purpose
 
-Exercise the Beta across physical draft states before considering a default
-flip. This study adds an independent confirmation stage after the adaptive
-pilot ranking and tests player-pool coverage, shortlist regret, confirmation
-stability, completion, and matched runtime.
+Exercise the DK-only Sequential Preview across physical draft states before
+considering a default flip. The operational policy uses a 64-season pilot to
+select four finalists and a disjoint 128-season decision bank to rank them. A
+fourth 128-season audit bank is available only to this study and cannot change
+recommendations or draft paths.
 
 ## Default Matrix
 
-- League slices: `dk`, `beta`
+- League slice: `dk`
 - Draft slots: 1, 6, 12
 - Seeds: 17, 1017, 2017
 - Completed user picks: 0, 7, 14 (current rounds 1, 8, 15)
-- Primary/wide candidate pools: 16/32
+- Preview/benchmark candidate pools: 24/32
 - Draft rooms: 16
-- Season banks: 16 construction, 64 pilot, 128 confirmation
-- Confirmation candidates: pilot top 4
+- Season banks: 16 construction, 64 pilot, 128 decision, 128 audit
+- Decision candidates: pilot top 4
 
-All construction, pilot, and confirmation PPG columns are unique and mutually
-disjoint. Physical fixtures include every opponent selection before the user's
-current pick.
+All four PPG-column banks are unique and mutually disjoint. Physical fixtures
+include every opponent selection before the user's current pick. Later fixtures
+follow the decision-stage winner; the hidden audit winner never selects a draft
+path or a downstream validation state.
 
 ## Gates
 
-- No observed primary-shortlist omission regret above 10 points versus 32
+- No observed 24-candidate shortlist omission regret above 10 points versus 32
   candidates.
-- Pilot winner confirmation regret no greater than 10 points.
-- Every requested candidate-room rollout completes legally.
-- Sequential runtime p50 no slower than matched legacy template ILP.
-- Every configured league/format has enough modeled players to simulate every
-  pick through the user's final selection.
+- Decision-winner regret on the hidden audit bank no greater than 10 points.
+- Every candidate-room rollout completes legally.
+- App-equivalent Sequential runtime p50 no slower than matched legacy template
+  ILP. Hidden audit time is excluded; decision-stage time is included.
+- The DK pool can simulate every room pick through the user's final selection.
 
 Run:
 
@@ -39,41 +41,36 @@ python research/studies/2026-07-19_sequential_best_ball_release_gate/run_release
 ```
 
 Outputs are written to `results/state_metrics.csv` and
-`results/release_gate_summary.json`. A failed gate is evidence to retain Beta
-status, not a reason to weaken the threshold after observing results.
+`results/release_gate_summary.json`. A failed gate retains Preview status; its
+threshold is not changed after observing results.
 
 ## Observed Result
 
-The default-promotion gate failed, so legacy remains the default.
+The DK-only default-promotion gate still fails, so legacy remains the default.
+The requested Preview path is nevertheless suitable for opt-in testing.
 
-- DK completed all 27 physical states with no execution errors and every
-  candidate-room rollout legal and complete.
-- The 16-player screen missed three 32-player winners. Regret was 10.71 points
-  at slot 1/seed 2017/round 1, 7.56 at slot 12/seed 1017/round 1, and 2.18 at
-  slot 12/seed 17/round 15. Only the first exceeded the fixed 10-point gate.
-- Pilot and confirmation winners agreed in 16 of 27 states. Three opening
-  states exceeded the 10-point confirmation-regret gate, with a maximum of
-  18.01 points. All round-8 and round-15 states were within 10 points.
-- Sequential was faster in all nine opening states (p50 5.17 seconds versus
-  5.88 for legacy), but slower in every round-8 and round-15 state. Across all
-  DK states its p50 was 3.10 seconds versus 1.97 for legacy.
-- The `beta` slice has 180 modeled players. A 12-team, 20-round room needs 218
-  to 240 still-available players at the tested opening picks, so all 27 Beta
-  states were recorded as unsupported rather than simulated with missing
-  players.
-
-Downstream fixtures follow the pilot winner—the recommendation visible to the
-deployed policy. The hidden confirmation winner is never allowed to select a
-draft path or later validation state.
+- All 27 physical states completed with no errors and every candidate-room
+  rollout legal and complete.
+- The 24-player screen cleared the shortlist gate. Its only observed miss was
+  7.56 points at slot 12/seed 1017/round 1, down from the previous 16-player
+  screen's 10.71-point maximum.
+- Decision and hidden-audit winners agreed in 18 of 27 states, up from the old
+  pilot/confirmation comparison's 16 of 27. Two opening states exceeded the
+  fixed 10-point audit-regret gate: 15.59 points at slot 6/seed 1017 and 15.39
+  at slot 12/seed 1017. Every round-8 and round-15 state stayed within 10.
+- Keeping 24 candidates throughout has the accepted runtime cost. App-equivalent
+  p50 was 7.60 seconds in round 1, 4.48 in round 8, and 2.00 in round 15,
+  versus legacy at 5.96, 2.00, and 0.64. Across all states Preview was 4.48
+  seconds versus 2.00 for legacy.
+- Hidden audit work cost only about 0.12 seconds p50 per state and is not
+  included in the app path or its runtime measurements.
 
 ## Follow-up Gate Work
 
-1. Deepen the upstream `beta` player table or explicitly define and validate a
-   smaller Beta draft format.
-2. Diagnose the three opening shortlist/confirmation failures. Test more pilot
-   evaluation seasons and targeted position-screen coverage before simply
-   increasing every rollout candidate.
-3. Profile round-8 and round-15 rollouts; preserve the opening-round speed win
-   while bringing the across-state p50 below legacy.
-4. Repeat this frozen matrix with fresh seeds after changes. Do not promote on
-   the tuning matrix alone.
+1. Treat the four decision finalists as an uncertainty tier in the Preview UI;
+   the decision winner is not yet stable enough to justify a default flip.
+2. Test additional predeclared decision-season counts or repeated audit seeds
+   on a fresh tuning study before altering the fixed release gate.
+3. Improve the noisy-ADP opponent policy with roster-aware behavior before
+   adding more search complexity.
+4. Repeat the frozen DK matrix with fresh seeds after methodology changes.

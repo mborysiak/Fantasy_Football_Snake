@@ -223,15 +223,28 @@ def verify_disjoint_bank_columns() -> None:
     assert len(construction) == len(np.unique(construction)) == 16
     assert len(evaluation) == len(np.unique(evaluation)) == 64
     assert np.intersect1d(construction, evaluation).size == 0
-    confirmation = FootballSimulation.select_confirmation_ppg_columns(
+    decision = FootballSimulation.select_additional_policy_ppg_columns(
         1000,
         np.concatenate([construction, evaluation]),
         128,
-        confirmation_seed=421,
+        seed=421,
+        bank_name='Decision',
     )
-    assert len(confirmation) == len(np.unique(confirmation)) == 128
-    assert np.intersect1d(construction, confirmation).size == 0
-    assert np.intersect1d(evaluation, confirmation).size == 0
+    audit = FootballSimulation.select_additional_policy_ppg_columns(
+        1000,
+        np.concatenate([construction, evaluation, decision]),
+        128,
+        seed=522,
+        bank_name='Audit',
+    )
+    banks = [construction, evaluation, decision, audit]
+    assert all(len(bank) == len(np.unique(bank)) for bank in banks)
+    assert len(decision) == len(audit) == 128
+    assert all(
+        np.intersect1d(left, right).size == 0
+        for idx, left in enumerate(banks)
+        for right in banks[idx + 1:]
+    )
 
     rng = np.random.default_rng(91)
     adp_matrix = rng.integers(1, 241, size=(25, 100))
@@ -324,81 +337,81 @@ def verify_real_database(db_path: Path) -> dict:
                 'TE': (2, 3),
             },
         )
+        with sim.temp_seed(17):
+            sim.get_predictions('pred_fp_per_game', num_options=1000)
+            adp_samples = sim.get_adp_samples(num_options=1000)
+        adp_matrix = adp_samples.iloc[:, 2:].to_numpy(dtype=np.float32)
+        draft_orders, _ = sim.build_sequential_draft_orders(
+            adp_matrix,
+            1,
+            seed=320,
+        )
+        initial_opponents = adp_samples.player.to_numpy()[
+            draft_orders[0, :5]
+        ].tolist()
+
+        common = {
+            'to_add': [],
+            'to_drop': initial_opponents,
+            'num_iters': 2,
+            'construction_samples': 4,
+            'evaluation_samples': 8,
+            'decision_samples': 12,
+            'decision_candidate_count': 3,
+            'audit_samples': 10,
+            'candidate_pool_size': 4,
+            'seed': 17,
+        }
         results = sim.run_sim_best_ball_policy(
-            [],
-            [],
-            num_iters=2,
-            construction_samples=4,
-            evaluation_samples=8,
-            confirmation_samples=12,
-            confirmation_candidate_count=3,
-            candidate_pool_size=4,
-            seed=17,
+            **common,
             evaluation_seed=1001,
-            confirmation_seed=3003,
+            decision_seed=3003,
+            audit_seed=5005,
         )
         alternate_evaluation = sim.run_sim_best_ball_policy(
-            [],
-            [],
-            num_iters=2,
-            construction_samples=4,
-            evaluation_samples=8,
-            confirmation_samples=12,
-            confirmation_candidate_count=3,
-            candidate_pool_size=4,
-            seed=17,
+            **common,
             evaluation_seed=2002,
-            confirmation_seed=3003,
+            decision_seed=3003,
+            audit_seed=5005,
         )
-        alternate_confirmation = sim.run_sim_best_ball_policy(
-            [],
-            [],
-            num_iters=2,
-            construction_samples=4,
-            evaluation_samples=8,
-            confirmation_samples=12,
-            confirmation_candidate_count=3,
-            candidate_pool_size=4,
-            seed=17,
+        alternate_decision = sim.run_sim_best_ball_policy(
+            **common,
             evaluation_seed=1001,
-            confirmation_seed=4004,
+            decision_seed=4004,
+            audit_seed=5005,
         )
-        beta_sim = FootballSimulation(
-            conn=conn,
-            set_year=2026,
-            pos_require_start={'QB': 3, 'RB': 7, 'WR': 9, 'TE': 3},
-            num_teams=12,
-            num_rounds=20,
-            my_pick_position=6,
-            pred_vers='final_ensemble',
-            league='beta',
-            position_ranges={
-                'QB': (2, 3),
-                'RB': (5, 7),
-                'WR': (7, 9),
-                'TE': (2, 3),
-            },
+        alternate_audit = sim.run_sim_best_ball_policy(
+            **common,
+            evaluation_seed=1001,
+            decision_seed=3003,
+            audit_seed=6006,
         )
         try:
-            beta_sim.run_sim_best_ball_policy(
+            sim.run_sim_best_ball_policy(
                 [],
                 [],
                 num_iters=1,
                 construction_samples=2,
                 evaluation_samples=2,
+                decision_samples=2,
                 candidate_pool_size=2,
                 seed=17,
             )
         except ValueError as exc:
-            assert "player pool is too small" in str(exc)
+            assert "complete physical draft state" in str(exc)
         else:
-            raise AssertionError("Undersized player pool was not rejected.")
+            raise AssertionError("Incomplete physical draft state was accepted.")
     finally:
         conn.close()
 
     assert len(results) == 4
     assert (results.PolicyCompletedRooms == 2).all()
     assert results.attrs['timings']['horizon_label'] == 'sequential_template_16'
+    assert results.attrs['timings']['release_stage'] == 'preview'
+    assert int(results.DecisionCandidate.sum()) == 3
+    assert int(results.DecisionEV.notna().sum()) == 3
+    assert int(results.AuditEV.notna().sum()) == 3
+    assert results.iloc[0].player == results.attrs['decision_top_player']
     primary_banks = results.attrs['scenario_banks']
     alternate_banks = alternate_evaluation.attrs['scenario_banks']
     assert primary_banks['construction_ppg_columns'] == (
@@ -407,53 +420,78 @@ def verify_real_database(db_path: Path) -> dict:
     assert primary_banks['evaluation_ppg_columns'] != (
         alternate_banks['evaluation_ppg_columns']
     )
-    assert not (
-        set(primary_banks['construction_ppg_columns'])
-        & set(primary_banks['evaluation_ppg_columns'])
-    )
-    assert not (
-        set(primary_banks['construction_ppg_columns'])
-        & set(primary_banks['confirmation_ppg_columns'])
-    )
-    assert not (
-        set(primary_banks['evaluation_ppg_columns'])
-        & set(primary_banks['confirmation_ppg_columns'])
+    bank_names = [
+        'construction_ppg_columns',
+        'evaluation_ppg_columns',
+        'decision_ppg_columns',
+        'audit_ppg_columns',
+    ]
+    assert all(
+        not (set(primary_banks[left]) & set(primary_banks[right]))
+        for idx, left in enumerate(bank_names)
+        for right in bank_names[idx + 1:]
     )
     assert results.attrs['policy_paths'] == alternate_evaluation.attrs['policy_paths']
-    assert results.attrs['policy_paths'] == alternate_confirmation.attrs['policy_paths']
+    assert results.attrs['policy_paths'] == alternate_decision.attrs['policy_paths']
+    assert results.attrs['policy_paths'] == alternate_audit.attrs['policy_paths']
 
     primary_ev = results.set_index('player').CurrentPickEV.sort_index()
     alternate_ev = (
         alternate_evaluation.set_index('player').CurrentPickEV.sort_index()
     )
     assert not np.allclose(primary_ev, alternate_ev)
-    confirmation_banks = alternate_confirmation.attrs['scenario_banks']
+
+    decision_banks = alternate_decision.attrs['scenario_banks']
     assert primary_banks['construction_ppg_columns'] == (
-        confirmation_banks['construction_ppg_columns']
+        decision_banks['construction_ppg_columns']
     )
     assert primary_banks['evaluation_ppg_columns'] == (
-        confirmation_banks['evaluation_ppg_columns']
+        decision_banks['evaluation_ppg_columns']
     )
-    assert primary_banks['confirmation_ppg_columns'] != (
-        confirmation_banks['confirmation_ppg_columns']
+    assert primary_banks['decision_ppg_columns'] != (
+        decision_banks['decision_ppg_columns']
     )
-    alternate_confirmation_pilot_ev = (
-        alternate_confirmation.set_index('player').CurrentPickEV.sort_index()
+    alternate_decision_pilot_ev = (
+        alternate_decision.set_index('player').CurrentPickEV.sort_index()
     )
-    np.testing.assert_allclose(primary_ev, alternate_confirmation_pilot_ev)
-    assert results.player.tolist() == alternate_confirmation.player.tolist()
-    primary_confirmation = (
-        results.set_index('player').ConfirmationEV.dropna().sort_index()
+    np.testing.assert_allclose(primary_ev, alternate_decision_pilot_ev)
+    assert results.attrs['decision_candidates'] == (
+        alternate_decision.attrs['decision_candidates']
     )
-    alternate_confirmation_ev = (
-        alternate_confirmation.set_index('player')
-        .ConfirmationEV.dropna()
+    primary_decision = (
+        results.set_index('player').DecisionEV.dropna().sort_index()
+    )
+    alternate_decision_ev = (
+        alternate_decision.set_index('player')
+        .DecisionEV.dropna()
         .sort_index()
     )
-    assert not np.allclose(
-        primary_confirmation,
-        alternate_confirmation_ev,
+    assert not np.allclose(primary_decision, alternate_decision_ev)
+
+    audit_banks = alternate_audit.attrs['scenario_banks']
+    for bank_name in bank_names[:-1]:
+        assert primary_banks[bank_name] == audit_banks[bank_name]
+    assert primary_banks['audit_ppg_columns'] != (
+        audit_banks['audit_ppg_columns']
     )
+    alternate_audit_pilot = (
+        alternate_audit.set_index('player').CurrentPickEV.sort_index()
+    )
+    alternate_audit_decision = (
+        alternate_audit.set_index('player').DecisionEV.dropna().sort_index()
+    )
+    np.testing.assert_allclose(primary_ev, alternate_audit_pilot)
+    np.testing.assert_allclose(primary_decision, alternate_audit_decision)
+    assert results.player.tolist() == alternate_audit.player.tolist()
+    assert results.attrs['decision_top_player'] == (
+        alternate_audit.attrs['decision_top_player']
+    )
+    primary_audit = results.set_index('player').AuditEV.dropna().sort_index()
+    alternate_audit_ev = (
+        alternate_audit.set_index('player').AuditEV.dropna().sort_index()
+    )
+    assert not np.allclose(primary_audit, alternate_audit_ev)
+
     for root_player, room_paths in results.attrs['policy_paths'].items():
         assert len(room_paths) == 2
         for room_path in room_paths:
@@ -470,10 +508,11 @@ def verify_real_database(db_path: Path) -> dict:
     return {
         'candidate_count': len(results),
         'completed_rooms_per_candidate': results.PolicyCompletedRooms.tolist(),
-        'construction_evaluation_columns_disjoint': True,
+        'all_policy_bank_columns_disjoint': True,
         'evaluation_seed_path_invariance': True,
-        'confirmation_seed_path_invariance': True,
-        'undersized_player_pool_rejected': True,
+        'decision_seed_path_invariance': True,
+        'audit_seed_recommendation_invariance': True,
+        'incomplete_physical_state_rejected': True,
         'total_seconds': results.attrs['timings']['sections']['total'],
     }
 
@@ -508,13 +547,14 @@ def main() -> None:
             'legacy_methods_frozen',
             'tensor_scoring_parity',
             'vectorized_legality_parity',
-            'construction_evaluation_columns_disjoint',
+            'all_policy_bank_columns_disjoint',
             'candidate_consistent_availability',
             'no_duplicate_or_cross-drafted_players',
             'legal_final_construction',
             'evaluation_seed_path_invariance',
-            'confirmation_seed_path_invariance',
-            'undersized_player_pool_rejected',
+            'decision_seed_path_invariance',
+            'audit_seed_recommendation_invariance',
+            'incomplete_physical_state_rejected',
             'real_database_smoke',
         ],
         'real_database_smoke': smoke,

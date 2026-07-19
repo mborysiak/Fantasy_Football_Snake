@@ -10,7 +10,7 @@ outcomes, and solves roster recommendations with the ILP optimizer.
 
 ## Current Focus
 
-- Current active workstream: Beta rollout of the non-clairvoyant sequential
+- Current active workstream: DK-only Preview rollout of the non-clairvoyant sequential
   best-ball policy while preserving the legacy ILP fallback.
 - The app consumes `app/Simulation.sqlite3`, copied from the modeling repo.
 - Recent changes added weighted weekly-template sampling, centered
@@ -35,10 +35,10 @@ outcomes, and solves roster recommendations with the ILP optimizer.
   snippets under `docs/runbooks/queries/`.
 - Keep the sequential policy on the explicit 16-week template horizon, with
   disjoint construction/evaluation banks and candidate-consistent room state.
-- Keep beam search out, but revisit targeted opening candidate coverage: the
-  broader release gate found one 16-versus-32 omission above 10 points.
-- Keep legacy as the default until the Beta player-pool coverage,
-  opening-ranking stability, and late-draft runtime gates pass on a fresh run.
+- Keep beam search out and retain 24 candidates throughout; the DK-only gate
+  cleared the 24-versus-32 shortlist threshold.
+- Keep legacy as the default until decision/audit stability passes on fresh
+  opening states. Preview runtime is an accepted opt-in tradeoff.
 
 ## Key Links
 

@@ -78,19 +78,29 @@ def player_pool_coverage(sim, to_add, to_drop):
     return available_undrafted >= required, available_undrafted, required
 
 
-def run_policy(sim, args, to_add, to_drop, seed, candidate_pool_size):
+def run_policy(
+    sim,
+    args,
+    to_add,
+    to_drop,
+    seed,
+    candidate_pool_size,
+    include_audit,
+):
     return sim.run_sim_best_ball_policy(
         to_add,
         to_drop,
         num_iters=args.rooms,
         construction_samples=args.construction_samples,
         evaluation_samples=args.evaluation_samples,
-        confirmation_samples=args.confirmation_samples,
-        confirmation_candidate_count=args.confirmation_candidates,
+        decision_samples=args.decision_samples,
+        decision_candidate_count=args.decision_candidates,
+        audit_samples=args.audit_samples if include_audit else 0,
         candidate_pool_size=candidate_pool_size,
         seed=seed,
         evaluation_seed=seed + 202,
-        confirmation_seed=seed + 404,
+        decision_seed=seed + 404,
+        audit_seed=seed + 505,
     )
 
 
@@ -110,10 +120,9 @@ def run_legacy(sim, args, to_add, to_drop, seed):
 def derive_state(primary, initial_opponents, completed_picks):
     if completed_picks == 0:
         return [], list(initial_opponents)
-    # Later fixtures must follow the recommendation the deployed policy would
-    # make. The hidden confirmation bank is diagnostic only and cannot choose
-    # a draft path or a downstream validation state.
-    root_player = str(primary.iloc[0].player)
+    # Later fixtures follow the deployed decision-stage recommendation. The
+    # hidden audit bank cannot choose a path or downstream validation state.
+    root_player = str(primary.attrs['decision_top_player'])
     room_path = primary.attrs['policy_paths'][root_player][0]
     to_add = room_path['path'][:completed_picks]
     later_opponents = [
@@ -134,31 +143,37 @@ def shortlist_metrics(primary, wide):
     wide_best = float(wide.CurrentPickEV.max())
     covered_best = float(covered.CurrentPickEV.max())
     return {
-        'primary_pilot_top': str(primary.iloc[0].player),
-        'wide_pilot_top': str(wide.iloc[0].player),
+        'primary_pilot_top': str(
+            primary.loc[primary.PilotRank.idxmin(), 'player']
+        ),
+        'wide_pilot_top': str(
+            wide.loc[wide.PilotRank.idxmin(), 'player']
+        ),
         'pilot_top_agreement': bool(
-            primary.iloc[0].player == wide.iloc[0].player
+            primary.loc[primary.PilotRank.idxmin(), 'player']
+            == wide.loc[wide.PilotRank.idxmin(), 'player']
         ),
         'shortlist_omission_regret': wide_best - covered_best,
     }
 
 
-def confirmation_metrics(primary, regret_threshold):
-    pilot_top = str(primary.iloc[0].player)
-    confirmation_top = primary.attrs.get('confirmation_top_player')
-    confirmation_rows = primary[primary.ConfirmationEV.notna()].set_index('player')
-    pilot_confirmation_ev = float(
-        confirmation_rows.loc[pilot_top, 'ConfirmationEV']
+def audit_metrics(primary, regret_threshold):
+    decision_top = str(primary.attrs['decision_top_player'])
+    audit_top = str(primary.attrs['audit_top_player'])
+    audit_rows = primary[primary.AuditEV.notna()].set_index('player')
+    decision_audit_ev = float(
+        audit_rows.loc[decision_top, 'AuditEV']
     )
-    best_confirmation_ev = float(confirmation_rows.ConfirmationEV.max())
-    regret = best_confirmation_ev - pilot_confirmation_ev
+    best_audit_ev = float(audit_rows.AuditEV.max())
+    regret = best_audit_ev - decision_audit_ev
     return {
-        'confirmation_top': str(confirmation_top),
-        'pilot_confirmation_exact_agreement': bool(
-            pilot_top == confirmation_top
+        'decision_top': decision_top,
+        'audit_top': audit_top,
+        'decision_audit_exact_agreement': bool(
+            decision_top == audit_top
         ),
-        'pilot_confirmation_regret': regret,
-        'pilot_confirmation_stable': bool(regret <= regret_threshold),
+        'decision_audit_regret': regret,
+        'decision_audit_stable': bool(regret <= regret_threshold),
     }
 
 
@@ -196,11 +211,11 @@ def summarize(records, args):
                 'max_shortlist_omission_regret': float(
                     league_completed.shortlist_omission_regret.max()
                 ),
-                'max_pilot_confirmation_regret': float(
-                    league_completed.pilot_confirmation_regret.max()
+                'max_decision_audit_regret': float(
+                    league_completed.decision_audit_regret.max()
                 ),
-                'confirmation_exact_agreement_rate': float(
-                    league_completed.pilot_confirmation_exact_agreement.mean()
+                'audit_exact_agreement_rate': float(
+                    league_completed.decision_audit_exact_agreement.mean()
                 ),
                 'completion_rate': float(
                     league_completed.completion_rate.mean()
@@ -216,7 +231,7 @@ def summarize(records, args):
             len(league_completed) == len(league_frame)
             and len(league_frame) > 0
             and (league_completed.shortlist_omission_regret <= args.regret_threshold).all()
-            and (league_completed.pilot_confirmation_regret <= args.regret_threshold).all()
+            and (league_completed.decision_audit_regret <= args.regret_threshold).all()
             and (league_completed.completion_rate == 1.0).all()
             and league_completed.policy_seconds.median()
             <= league_completed.legacy_seconds.median()
@@ -237,10 +252,10 @@ def summarize(records, args):
                 <= args.regret_threshold
             ).all()
         ),
-        'pilot_confirmation_stable': bool(
+        'decision_audit_stable': bool(
             len(completed) > 0
             and (
-                completed.pilot_confirmation_regret
+                completed.decision_audit_regret
                 <= args.regret_threshold
             ).all()
         ),
@@ -265,8 +280,9 @@ def summarize(records, args):
             'rooms': args.rooms,
             'construction_samples': args.construction_samples,
             'evaluation_samples': args.evaluation_samples,
-            'confirmation_samples': args.confirmation_samples,
-            'confirmation_candidates': args.confirmation_candidates,
+            'decision_samples': args.decision_samples,
+            'decision_candidates': args.decision_candidates,
+            'audit_samples': args.audit_samples,
             'regret_threshold': args.regret_threshold,
         },
         'state_counts': {
@@ -295,16 +311,17 @@ def main():
     parser.add_argument('--year', type=int, default=2026)
     parser.add_argument('--teams', type=int, default=12)
     parser.add_argument('--rounds', type=int, default=20)
-    parser.add_argument('--leagues', default='dk,beta')
+    parser.add_argument('--leagues', default='dk')
     parser.add_argument('--slots', default='1,6,12')
     parser.add_argument('--seeds', default='17,1017,2017')
     parser.add_argument('--completed-picks', default='0,7,14')
     parser.add_argument('--rooms', type=int, default=16)
     parser.add_argument('--construction-samples', type=int, default=16)
     parser.add_argument('--evaluation-samples', type=int, default=64)
-    parser.add_argument('--confirmation-samples', type=int, default=128)
-    parser.add_argument('--confirmation-candidates', type=int, default=4)
-    parser.add_argument('--primary-pool', type=int, default=16)
+    parser.add_argument('--decision-samples', type=int, default=128)
+    parser.add_argument('--decision-candidates', type=int, default=4)
+    parser.add_argument('--audit-samples', type=int, default=128)
+    parser.add_argument('--primary-pool', type=int, default=24)
     parser.add_argument('--wide-pool', type=int, default=32)
     parser.add_argument('--regret-threshold', type=float, default=10.0)
     parser.add_argument(
@@ -314,6 +331,8 @@ def main():
     )
     args = parser.parse_args()
     leagues = parse_csv_values(args.leagues)
+    if leagues != ['dk']:
+        parser.error("The Snake release gate supports only the DK league slice.")
     slots = parse_csv_values(args.slots, int)
     seeds = parse_csv_values(args.seeds, int)
     completed_depths = parse_csv_values(args.completed_picks, int)
@@ -387,6 +406,7 @@ def main():
                                 to_drop,
                                 seed,
                                 args.primary_pool,
+                                True,
                             )
                             if completed_picks == 0:
                                 early_primary = primary
@@ -397,6 +417,7 @@ def main():
                                 to_drop,
                                 seed,
                                 args.wide_pool,
+                                False,
                             )
                             legacy = run_legacy(
                                 sim,
@@ -407,10 +428,15 @@ def main():
                             )
                             metrics = shortlist_metrics(primary, wide)
                             metrics.update(
-                                confirmation_metrics(
+                                audit_metrics(
                                     primary,
                                     args.regret_threshold,
                                 )
+                            )
+                            primary_sections = primary.attrs['timings']['sections']
+                            audit_seconds = float(
+                                primary_sections.get('audit_bank', 0)
+                                + primary_sections.get('audit_scoring', 0)
                             )
                             records.append({
                                 'league': league,
@@ -428,7 +454,11 @@ def main():
                                     / (len(primary) * args.rooms)
                                 ),
                                 'policy_seconds': float(
-                                    primary.attrs['timings']['sections']['total']
+                                    primary_sections['total'] - audit_seconds
+                                ),
+                                'audit_seconds': audit_seconds,
+                                'study_policy_seconds': float(
+                                    primary_sections['total']
                                 ),
                                 'wide_seconds': float(
                                     wide.attrs['timings']['sections']['total']

@@ -1,55 +1,28 @@
-league,pick_slot,seed,completed_picks,current_round,status,message,to_add_count,to_drop_count,physical_state_valid,completion_rate,policy_seconds,wide_seconds,legacy_seconds,state_wall_seconds,primary_pilot_top,wide_pilot_top,pilot_top_agreement,shortlist_omission_regret,confirmation_top,pilot_confirmation_exact_agreement,pilot_confirmation_regret,pilot_confirmation_stable
-dk,1,17,0,1,complete,,0.0,0.0,True,1.0,3.5822490000282414,9.227582800027449,6.042477199982386,19.38780869997572,Bijan Robinson,Bijan Robinson,True,0.0,Ja'Marr Chase,False,5.170166015625,True
-dk,1,17,7,8,complete,,7.0,88.0,True,1.0,3.0559379999758676,5.8663925000000745,2.267408700019587,11.566927499952726,Travis Kelce,Travis Kelce,True,0.0,Kyle Pitts,False,2.670654296875,True
-dk,1,17,14,15,complete,,14.0,154.0,True,1.0,1.3878210000111721,2.545478500018362,0.6598772000288591,4.795322599995416,Oronde Gadsden,Oronde Gadsden,True,0.0,Dylan Sampson,False,8.44140625,True
-dk,1,1017,0,1,complete,,0.0,0.0,True,1.0,5.2439795000245795,9.287080299982335,5.860297100036405,20.91118739999365,Jahmyr Gibbs,Jahmyr Gibbs,True,0.0,Jahmyr Gibbs,True,0.0,True
-dk,1,1017,7,8,complete,,7.0,88.0,True,1.0,3.103046700009145,6.302273800014518,1.8079068000079133,11.610180899966508,Travis Kelce,Travis Kelce,True,0.0,Brock Purdy,False,9.57421875,True
-dk,1,1017,14,15,complete,,14.0,154.0,True,1.0,1.3929952000034973,2.5728967000031844,0.6804205999942496,4.833081299962942,Omar Cooper,Omar Cooper,True,0.0,Omar Cooper,True,0.0,True
-dk,1,2017,0,1,complete,,0.0,0.0,True,1.0,5.141668699972797,9.435549399990123,5.485901599982753,20.548695200006478,Ja'Marr Chase,Bijan Robinson,False,10.708740234375,Puka Nacua,False,1.925537109375,True
-dk,1,2017,7,8,complete,,7.0,88.0,True,1.0,3.1303768000216223,5.945386100036558,1.8803515999461524,11.303984900005162,George Kittle,George Kittle,True,0.0,George Kittle,True,0.0,True
-dk,1,2017,14,15,complete,,14.0,154.0,True,1.0,1.403766600007657,2.654038999986369,0.7460146000375971,5.016767699969932,Dylan Sampson,Dylan Sampson,True,0.0,Dylan Sampson,True,0.0,True
-dk,6,17,0,1,complete,,0.0,5.0,True,1.0,5.214999300020281,9.268768200010527,9.267510399979074,24.31932779995259,Jonathan Taylor,Jonathan Taylor,True,0.0,Jaxon Smith Njigba,False,12.261474609375,False
-dk,6,17,7,8,complete,,7.0,83.0,True,1.0,2.950753999990411,5.887742000049911,2.333992699976079,11.542870700010099,Rj Harvey,Rj Harvey,True,0.0,Rj Harvey,True,0.0,True
-dk,6,17,14,15,complete,,14.0,159.0,True,1.0,1.3403615000424907,2.492161500034854,0.5309064000030048,4.600030799978413,Denzel Boston,Denzel Boston,True,0.0,Denzel Boston,True,0.0,True
-dk,6,1017,0,1,complete,,0.0,5.0,True,1.0,5.157885799999349,9.395742400025483,5.676701300020795,20.711066899995785,Jaxon Smith Njigba,Jaxon Smith Njigba,True,0.0,Jonathan Taylor,False,5.657470703125,True
-dk,6,1017,7,8,complete,,7.0,83.0,True,1.0,3.122186499997042,5.893486100016162,1.8224996000062674,11.190297100052703,Makai Lemon,Makai Lemon,True,0.0,Makai Lemon,True,0.0,True
-dk,6,1017,14,15,complete,,14.0,159.0,True,1.0,1.385931700002402,2.6491893000202253,0.6119185999850743,4.847738899989054,Omar Cooper,Omar Cooper,True,0.0,Omar Cooper,True,0.0,True
-dk,6,2017,0,1,complete,,0.0,5.0,True,1.0,5.177126800001133,9.408623099967372,5.327959899965208,20.449403600010555,Jaxon Smith Njigba,Jaxon Smith Njigba,True,0.0,Jaxon Smith Njigba,True,0.0,True
-dk,6,2017,7,8,complete,,7.0,83.0,True,1.0,3.1502225999720395,5.983798600034788,2.258558699977584,11.746216200001072,Makai Lemon,Makai Lemon,True,0.0,Makai Lemon,True,0.0,True
-dk,6,2017,14,15,complete,,14.0,159.0,True,1.0,1.399082499963697,2.665632199961692,0.6756292000063695,4.8998381000128575,Malik Washington,Malik Washington,True,0.0,Tj Hockenson,False,8.1103515625,True
-dk,12,17,0,1,complete,,0.0,11.0,True,1.0,5.238183099951129,9.296962100022938,6.074563100002706,21.086034599982668,Ashton Jeanty,Ashton Jeanty,True,0.0,Josh Allen,False,18.00537109375,False
-dk,12,17,7,8,complete,,7.0,77.0,True,1.0,3.038058700039983,5.92658659996232,2.010665700014215,11.312367900041863,Rj Harvey,Rj Harvey,True,0.0,Rj Harvey,True,0.0,True
-dk,12,17,14,15,complete,,14.0,165.0,True,1.0,1.4209309999714606,2.5295947999693453,0.5061145000508986,4.640669899992645,Adonai Mitchell,Mike Washington,False,2.1845703125,Adonai Mitchell,True,0.0,True
-dk,12,1017,0,1,complete,,0.0,11.0,True,1.0,5.173190800007433,9.215212300012354,7.358814000035636,22.2429673000006,Josh Allen,Devon Achane,False,7.56494140625,Saquon Barkley,False,16.15478515625,False
-dk,12,1017,7,8,complete,,7.0,77.0,True,1.0,2.9998355000279844,5.832014600047842,1.9260275000124238,11.100982700008899,Makai Lemon,Makai Lemon,True,0.0,Makai Lemon,True,0.0,True
-dk,12,1017,14,15,complete,,14.0,165.0,True,1.0,1.3474762000259943,2.526501700049266,0.4734694000217132,4.498560600040946,Ryan Flournoy,Ryan Flournoy,True,0.0,Ryan Flournoy,True,0.0,True
-dk,12,2017,0,1,complete,,0.0,11.0,True,1.0,5.1593173000146635,9.328850599995349,5.883297400025185,20.833266099973116,Ashton Jeanty,Ashton Jeanty,True,0.0,Ashton Jeanty,True,0.0,True
-dk,12,2017,7,8,complete,,7.0,77.0,True,1.0,3.144910200033337,5.845622599998023,1.97485769999912,11.324637200043071,Jalen Hurts,Jalen Hurts,True,0.0,Jalen Hurts,True,0.0,True
-dk,12,2017,14,15,complete,,14.0,165.0,True,1.0,1.3512362000183202,2.594380699971225,0.5743119999533519,4.6950720000313595,Malik Washington,Malik Washington,True,0.0,Denzel Boston,False,4.66455078125,True
-beta,1,17,0,1,unsupported,beta has 180 modeled undrafted players for 240 required picks at slot 1.,,,,,,,,,,,,,,,,
-beta,1,17,7,8,unsupported,beta has 180 modeled undrafted players for 240 required picks at slot 1.,,,,,,,,,,,,,,,,
-beta,1,17,14,15,unsupported,beta has 180 modeled undrafted players for 240 required picks at slot 1.,,,,,,,,,,,,,,,,
-beta,1,1017,0,1,unsupported,beta has 180 modeled undrafted players for 240 required picks at slot 1.,,,,,,,,,,,,,,,,
-beta,1,1017,7,8,unsupported,beta has 180 modeled undrafted players for 240 required picks at slot 1.,,,,,,,,,,,,,,,,
-beta,1,1017,14,15,unsupported,beta has 180 modeled undrafted players for 240 required picks at slot 1.,,,,,,,,,,,,,,,,
-beta,1,2017,0,1,unsupported,beta has 180 modeled undrafted players for 240 required picks at slot 1.,,,,,,,,,,,,,,,,
-beta,1,2017,7,8,unsupported,beta has 180 modeled undrafted players for 240 required picks at slot 1.,,,,,,,,,,,,,,,,
-beta,1,2017,14,15,unsupported,beta has 180 modeled undrafted players for 240 required picks at slot 1.,,,,,,,,,,,,,,,,
-beta,6,17,0,1,unsupported,beta has 180 modeled undrafted players for 230 required picks at slot 6.,,,,,,,,,,,,,,,,
-beta,6,17,7,8,unsupported,beta has 180 modeled undrafted players for 230 required picks at slot 6.,,,,,,,,,,,,,,,,
-beta,6,17,14,15,unsupported,beta has 180 modeled undrafted players for 230 required picks at slot 6.,,,,,,,,,,,,,,,,
-beta,6,1017,0,1,unsupported,beta has 180 modeled undrafted players for 230 required picks at slot 6.,,,,,,,,,,,,,,,,
-beta,6,1017,7,8,unsupported,beta has 180 modeled undrafted players for 230 required picks at slot 6.,,,,,,,,,,,,,,,,
-beta,6,1017,14,15,unsupported,beta has 180 modeled undrafted players for 230 required picks at slot 6.,,,,,,,,,,,,,,,,
-beta,6,2017,0,1,unsupported,beta has 180 modeled undrafted players for 230 required picks at slot 6.,,,,,,,,,,,,,,,,
-beta,6,2017,7,8,unsupported,beta has 180 modeled undrafted players for 230 required picks at slot 6.,,,,,,,,,,,,,,,,
-beta,6,2017,14,15,unsupported,beta has 180 modeled undrafted players for 230 required picks at slot 6.,,,,,,,,,,,,,,,,
-beta,12,17,0,1,unsupported,beta has 180 modeled undrafted players for 218 required picks at slot 12.,,,,,,,,,,,,,,,,
-beta,12,17,7,8,unsupported,beta has 180 modeled undrafted players for 218 required picks at slot 12.,,,,,,,,,,,,,,,,
-beta,12,17,14,15,unsupported,beta has 180 modeled undrafted players for 218 required picks at slot 12.,,,,,,,,,,,,,,,,
-beta,12,1017,0,1,unsupported,beta has 180 modeled undrafted players for 218 required picks at slot 12.,,,,,,,,,,,,,,,,
-beta,12,1017,7,8,unsupported,beta has 180 modeled undrafted players for 218 required picks at slot 12.,,,,,,,,,,,,,,,,
-beta,12,1017,14,15,unsupported,beta has 180 modeled undrafted players for 218 required picks at slot 12.,,,,,,,,,,,,,,,,
-beta,12,2017,0,1,unsupported,beta has 180 modeled undrafted players for 218 required picks at slot 12.,,,,,,,,,,,,,,,,
-beta,12,2017,7,8,unsupported,beta has 180 modeled undrafted players for 218 required picks at slot 12.,,,,,,,,,,,,,,,,
-beta,12,2017,14,15,unsupported,beta has 180 modeled undrafted players for 218 required picks at slot 12.,,,,,,,,,,,,,,,,
+league,pick_slot,seed,completed_picks,current_round,status,message,to_add_count,to_drop_count,physical_state_valid,completion_rate,policy_seconds,audit_seconds,study_policy_seconds,wide_seconds,legacy_seconds,state_wall_seconds,primary_pilot_top,wide_pilot_top,pilot_top_agreement,shortlist_omission_regret,decision_top,audit_top,decision_audit_exact_agreement,decision_audit_regret,decision_audit_stable
+dk,1,17,0,1,complete,,0,0,True,1.0,4.687849800044205,0.12763059994904324,4.815480399993248,9.285118700005114,5.962439399969298,20.630342499993276,Bijan Robinson,Bijan Robinson,True,0.0,Ja'Marr Chase,Bijan Robinson,False,0.6318359375,True
+dk,1,17,7,8,complete,,7,88,True,1.0,4.52669580001384,0.11599089996889234,4.6426866999827325,6.036675999988802,1.9936700999969617,13.039928199956194,Patrick Mahomes,Patrick Mahomes,True,0.0,Trevor Lawrence,Bo Nix,False,1.884521484375,True
+dk,1,17,14,15,complete,,14,154,True,1.0,2.1475475000333972,0.11915199999930337,2.2666995000327006,2.7512783999554813,0.7090400999877602,5.892296400037594,Oronde Gadsden,Oronde Gadsden,True,0.0,Denzel Boston,Denzel Boston,True,0.0,True
+dk,1,1017,0,1,complete,,0,0,True,1.0,7.634024999977555,0.12067909998586401,7.754704099963419,9.460621600039303,6.0800048999954015,23.92224519996671,Jahmyr Gibbs,Jahmyr Gibbs,True,0.0,Jahmyr Gibbs,Jahmyr Gibbs,True,0.0,True
+dk,1,1017,7,8,complete,,7,88,True,1.0,4.480869400082156,0.13568319991463795,4.616552599996794,6.050322800001595,1.7925265000085346,12.84825009998167,Travis Kelce,Travis Kelce,True,0.0,Brock Purdy,Brock Purdy,True,0.0,True
+dk,1,1017,14,15,complete,,14,154,True,1.0,2.003964699979406,0.11292030004551634,2.116885000024922,2.6057905000052415,0.7338160999934189,5.672495500009973,Omar Cooper,Omar Cooper,True,0.0,Omar Cooper,Omar Cooper,True,0.0,True
+dk,1,2017,0,1,complete,,0,0,True,1.0,7.521802900009789,0.12599089997820556,7.647793799987994,9.472907699993812,5.548762799997348,23.261043700040318,Bijan Robinson,Bijan Robinson,True,0.0,Bijan Robinson,Bijan Robinson,True,0.0,True
+dk,1,2017,7,8,complete,,7,88,True,1.0,4.649299399985466,0.1186331000062637,4.76793249999173,6.0522439000196755,2.3967343000113033,13.543337999959476,Patrick Mahomes,Patrick Mahomes,True,0.0,Patrick Mahomes,Harold Fannin,False,2.05078125,True
+dk,1,2017,14,15,complete,,14,154,True,1.0,2.0041728000505827,0.09562229993753135,2.099795099988114,2.6377929000300355,0.661130599968601,5.63561060000211,Malik Washington,Malik Washington,True,0.0,Tj Hockenson,Tj Hockenson,True,0.0,True
+dk,6,17,0,1,complete,,0,5,True,1.0,7.626027400023304,0.12538260000292212,7.751410000026226,9.440813299966976,9.528013800038025,27.37228640000103,Jonathan Taylor,Jonathan Taylor,True,0.0,Devon Achane,Jaxon Smith Njigba,False,9.3095703125,True
+dk,6,17,7,8,complete,,7,83,True,1.0,4.638454300002195,0.12535580003168434,4.763810100033879,6.019611100025941,2.226020200003404,13.388641500030644,Rj Harvey,Rj Harvey,True,0.0,Rj Harvey,Rj Harvey,True,0.0,True
+dk,6,17,14,15,complete,,14,159,True,1.0,2.0779506000108086,0.11642859998391941,2.194379199994728,2.721046300022863,0.641176600009203,5.764319200010505,Denzel Boston,Denzel Boston,True,0.0,Denzel Boston,Denzel Boston,True,0.0,True
+dk,6,1017,0,1,complete,,0,5,True,1.0,7.604130599938799,0.1419308000477031,7.746061399986502,9.633580999972764,5.7508530000341125,23.63843429996632,Jaxon Smith Njigba,Jaxon Smith Njigba,True,0.0,Jonathan Taylor,Jaxon Smith Njigba,False,15.58984375,False
+dk,6,1017,7,8,complete,,7,83,True,1.0,4.543198899948038,0.12137720006285235,4.6645761000108905,5.983461800031364,1.8481464000069536,12.878579100011848,Jared Goff,Jared Goff,True,0.0,Makai Lemon,Makai Lemon,True,0.0,True
+dk,6,1017,14,15,complete,,14,159,True,1.0,1.9830251000239514,0.11748099996475503,2.1005060999887064,2.63855189998867,0.5595423000049777,5.496048700006213,Omar Cooper,Omar Cooper,True,0.0,Omar Cooper,Omar Cooper,True,0.0,True
+dk,6,2017,0,1,complete,,0,5,True,1.0,7.726336400024593,0.1793132999446243,7.905649699969217,9.432882299995981,5.347640399995726,23.26288970001042,Jaxon Smith Njigba,Jaxon Smith Njigba,True,0.0,Jaxon Smith Njigba,Jaxon Smith Njigba,True,0.0,True
+dk,6,2017,7,8,complete,,7,83,True,1.0,4.4157227000105195,0.14439540001330897,4.5601181000238284,5.9426823000540026,2.3495471999631263,13.226557399961166,Makai Lemon,Makai Lemon,True,0.0,Makai Lemon,Jalen Hurts,False,3.043212890625,True
+dk,6,2017,14,15,complete,,14,159,True,1.0,2.120154600008391,0.1186030000098981,2.238757600018289,2.6223184000118636,0.7379894999903627,5.747609999962151,Malik Washington,Malik Washington,True,0.0,Tj Hockenson,Antonio Williams,False,0.344482421875,True
+dk,12,17,0,1,complete,,0,11,True,1.0,7.7559825999778695,0.11996360000921413,7.875946199987084,9.38750919996528,6.08805569994729,23.922296300006565,Ashton Jeanty,Ashton Jeanty,True,0.0,Josh Allen,Josh Allen,True,0.0,True
+dk,12,17,7,8,complete,,7,77,True,1.0,4.425809300038964,0.1218415999901481,4.547650900029112,5.963086900010239,2.035554800007958,12.944208800035994,Rj Harvey,Rj Harvey,True,0.0,Rj Harvey,Rj Harvey,True,0.0,True
+dk,12,17,14,15,complete,,14,165,True,1.0,1.9617632000590675,0.11877449997700751,2.080537700036075,2.48916569998255,0.5097839999943972,5.260763700003736,Mike Washington,Mike Washington,True,0.0,Mike Washington,Mike Washington,True,0.0,True
+dk,12,1017,0,1,complete,,0,11,True,1.0,7.3903882000013255,0.12111080001341179,7.511499000014737,9.331583699968178,7.307924399967305,24.710158600006253,Josh Allen,Devon Achane,False,7.56494140625,Chase Brown,Saquon Barkley,False,15.392333984375,False
+dk,12,1017,7,8,complete,,7,77,True,1.0,4.43161499989219,0.11481010005809367,4.546425099950284,5.879771099949721,1.7936340000014752,12.603752899973188,Makai Lemon,Makai Lemon,True,0.0,Sam Laporta,Sam Laporta,True,0.0,True
+dk,12,1017,14,15,complete,,14,165,True,1.0,1.9366096000303514,0.15595779998693615,2.0925674000172876,2.6487228000187315,0.6026104000047781,5.519571399956476,Ryan Flournoy,Ryan Flournoy,True,0.0,Ryan Flournoy,Ryan Flournoy,True,0.0,True
+dk,12,2017,0,1,complete,,0,11,True,1.0,7.510757399897557,0.12712070008274168,7.637878099980298,9.168234599987045,5.938871099962853,23.296704199980013,Ashton Jeanty,Ashton Jeanty,True,0.0,Ashton Jeanty,Ashton Jeanty,True,0.0,True
+dk,12,2017,7,8,complete,,7,77,True,1.0,4.480834899994079,0.11799459997564554,4.598829499969725,5.971164200047497,2.0013308000052348,12.936447399959434,Jalen Hurts,Jalen Hurts,True,0.0,Jalen Hurts,Jalen Hurts,True,0.0,True
+dk,12,2017,14,15,complete,,14,165,True,1.0,1.9797818000079133,0.11387760000070557,2.093659400008619,2.7136542999651283,0.5729141000192612,5.55948910000734,Malik Washington,Malik Washington,True,0.0,Denzel Boston,Tre Harris,False,1.06201171875,True

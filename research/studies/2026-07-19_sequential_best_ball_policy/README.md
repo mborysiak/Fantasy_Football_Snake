@@ -9,19 +9,20 @@ workflow impractically slow?
 ## Scope
 
 Milestone A began as a shadow engine and passed its initial release gate. It is
-now exposed as an explicit Streamlit Beta while the existing GLPK path remains
+now exposed as an explicit DK-only Streamlit Preview while the existing GLPK path remains
 the default and fallback. The new engine:
 
 - samples a small construction bank of season outcomes and uses only its mean
   marginal values when making draft decisions;
-- assigns construction and evaluation unique, explicitly disjoint PPG scenario
-  columns and exposes an independent evaluation seed;
+- assigns construction, pilot, decision, and optional audit unique, explicitly
+  disjoint PPG scenario columns and exposes independent seeds;
 - samples opponent priority orders from noisy ADP and removes every opponent
   and user pick from one shared room state;
 - locks each current-pick candidate, completes the remaining draft with a
   greedy expected-value plus scarcity policy, and evaluates completed rosters
   on a separate season bank;
-- uses the same draft rooms and evaluation seasons for all current candidates;
+- uses the same draft rooms and pilot seasons for all current candidates, then
+  ranks the pilot top four on a 128-season decision bank;
 - limits the primary horizon to the 16 weeks available in the weekly-template
   tables and labels it `sequential_template_16`.
 
@@ -53,7 +54,9 @@ All correctness checks must pass:
 - an owned or newly forced player cannot be selected by an opponent;
 - every drafted player is removed globally and paths contain no duplicates;
 - all completed rosters satisfy the configured construction ranges;
-- changing a hidden evaluation bank cannot change a rollout path;
+- changing pilot or decision outcomes cannot change a rollout path;
+- changing the hidden audit seed cannot change a recommendation;
+- incomplete physical draft states are rejected;
 - vectorized legality results match the frozen loop reference;
 - the real-database smoke run completes every requested room.
 
@@ -73,6 +76,11 @@ After vectorized legality and precomputed survival, five matched runs produced a
 3.26-second sequential p50 versus 7.09 seconds for legacy. Beam search and
 adaptive candidate allocation were not added because the measured gate did not
 justify their runtime cost.
+
+The subsequent DK-only release study keeps 24 candidates throughout. It reduced
+maximum observed 24-versus-32 omission regret to 7.56 points, clearing the
+fixed shortlist gate. The decision winner still exceeded 10 points of hidden
+audit regret in two opening states, so the method remains Preview-only.
 
 ## Known Limitation
 
