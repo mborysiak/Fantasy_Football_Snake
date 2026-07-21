@@ -17,7 +17,14 @@ STUDY_DIR = Path(__file__).resolve().parent
 REPO_ROOT = STUDY_DIR.parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
-from app.zSim_Helper import FootballSimulation  # noqa: E402
+from app.zSim_Helper import (  # noqa: E402
+    FootballSimulation,
+    SEQUENTIAL_CANDIDATE_POOL_SIZE,
+    SEQUENTIAL_DECISION_CANDIDATES,
+    SEQUENTIAL_STACK_BONUS_PCT,
+    SEQUENTIAL_STACK_PAIR_CAP,
+    SEQUENTIAL_STACK_TEAM_CAP,
+)
 
 
 FROZEN_LEGACY_SOURCE_HASHES = {
@@ -67,6 +74,10 @@ def make_sim_stub() -> FootballSimulation:
         'TE': (1, 1),
     }
     sim.num_rounds = 5
+    sim.use_stack_bonus = False
+    sim.stack_bonus_pct = SEQUENTIAL_STACK_BONUS_PCT
+    sim.stack_pair_cap = SEQUENTIAL_STACK_PAIR_CAP
+    sim.stack_team_cap = SEQUENTIAL_STACK_TEAM_CAP
     return sim
 
 
@@ -263,6 +274,98 @@ def verify_disjoint_bank_columns() -> None:
         np.testing.assert_allclose(survival_table[pick_idx], direct)
 
 
+def verify_empirical_replacement_scoring() -> None:
+    values = np.array([30.0, 20.0, 15.0, 10.0], dtype=np.float32)
+    positions = np.array(['QB', 'QB', 'RB', 'RB'])
+    survival = np.array([0.5, 1.0, 0.0, 1.0], dtype=np.float32)
+    replacement = FootballSimulation.expected_sequential_replacement_values(
+        values,
+        positions,
+        survival,
+    )
+    np.testing.assert_allclose(replacement, [25.0, 25.0, 10.0, 10.0])
+    (
+        policy_scores,
+        returned_survival,
+        scored_replacement,
+        draft_now_advantage,
+        _,
+    ) = FootballSimulation.sequential_policy_scores(
+        np.arange(4),
+        values,
+        positions,
+        np.zeros((4, 2), dtype=np.float32),
+        current_pick=1,
+        next_pick=2,
+        survival_probabilities=survival,
+    )
+    np.testing.assert_allclose(returned_survival, survival)
+    np.testing.assert_allclose(scored_replacement, replacement)
+    np.testing.assert_allclose(draft_now_advantage, [5.0, 0.0, 5.0, 0.0])
+    assert policy_scores[0] > 0 and policy_scores[1] == 0
+
+    player_positions = np.array(['QB'] * 40 + ['RB'] * 60 + ['WR'] * 80 + ['TE'] * 30)
+    quotas = FootballSimulation.sequential_root_position_quotas(
+        np.arange(len(player_positions)),
+        player_positions,
+        np.array([100]),
+        {
+            'QB': (2, 3),
+            'RB': (5, 7),
+            'WR': (7, 9),
+            'TE': (2, 3),
+        },
+        24,
+    )
+    assert quotas == {'QB': 3, 'RB': 8, 'WR': 10, 'TE': 3}
+    assert sum(quotas.values()) == 24
+
+
+def verify_sequential_stack_utility() -> None:
+    positions = np.array(['QB', 'QB', 'WR', 'WR', 'TE', 'RB', 'QB'])
+    teams = np.array(['A', 'B', 'A', 'B', 'A', 'A', 'A'])
+    ppg = np.array([20.0, 18.0, 15.0, 14.0, 8.0, 12.0, 10.0])
+    kwargs = {
+        'player_positions': positions,
+        'player_teams': teams,
+        'player_ppg': ppg,
+        'bonus_pct': SEQUENTIAL_STACK_BONUS_PCT,
+        'pair_cap': SEQUENTIAL_STACK_PAIR_CAP,
+        'team_cap': SEQUENTIAL_STACK_TEAM_CAP,
+    }
+
+    qb_after_catcher = FootballSimulation.sequential_stack_marginal_utilities(
+        [2],
+        [0],
+        **kwargs,
+    )
+    catcher_after_qb = FootballSimulation.sequential_stack_marginal_utilities(
+        [0],
+        [2],
+        **kwargs,
+    )
+    np.testing.assert_allclose(qb_after_catcher, [7.0])
+    np.testing.assert_allclose(catcher_after_qb, [7.0])
+
+    second_catcher = FootballSimulation.sequential_stack_marginal_utilities(
+        [0, 2],
+        [4, 3, 5],
+        **kwargs,
+    )
+    np.testing.assert_allclose(second_catcher, [5.0, 0.0, 0.0])
+    full_stack = FootballSimulation.sequential_stack_roster_utility(
+        [0, 2, 4],
+        **kwargs,
+    )
+    assert full_stack == SEQUENTIAL_STACK_TEAM_CAP
+    backup_qb = FootballSimulation.sequential_stack_marginal_utilities(
+        [0, 2],
+        [6],
+        **kwargs,
+    )
+    np.testing.assert_allclose(backup_qb, [0.0])
+
+
 def verify_rollout_boundaries() -> None:
     sim = make_sim_stub()
     positions = np.array([
@@ -336,6 +439,10 @@ def verify_real_database(db_path: Path) -> dict:
                 'WR': (7, 9),
                 'TE': (2, 3),
             },
+            use_stack_bonus=True,
+            stack_bonus_pct=SEQUENTIAL_STACK_BONUS_PCT,
+            stack_pair_cap=SEQUENTIAL_STACK_PAIR_CAP,
+            stack_team_cap=SEQUENTIAL_STACK_TEAM_CAP,
         )
         with sim.temp_seed(17):
             sim.get_predictions('pred_fp_per_game', num_options=1000)
@@ -357,7 +464,7 @@ def verify_real_database(db_path: Path) -> dict:
             'construction_samples': 4,
             'evaluation_samples': 8,
             'decision_samples': 12,
-            'decision_candidate_count': 3,
+            'decision_candidate_count': 4,
             'audit_samples': 10,
             'candidate_pool_size': 4,
             'seed': 17,
@@ -386,21 +493,21 @@ def verify_real_database(db_path: Path) -> dict:
             decision_seed=3003,
             audit_seed=6006,
         )
-        try:
-            sim.run_sim_best_ball_policy(
-                [],
-                [],
-                num_iters=1,
-                construction_samples=2,
-                evaluation_samples=2,
-                decision_samples=2,
-                candidate_pool_size=2,
-                seed=17,
-            )
-        except ValueError as exc:
-            assert "complete physical draft state" in str(exc)
-        else:
-            raise AssertionError("Incomplete physical draft state was accepted.")
+        incomplete_state = sim.run_sim_best_ball_policy(
+            [],
+            [],
+            num_iters=1,
+            construction_samples=2,
+            evaluation_samples=2,
+            decision_samples=2,
+            candidate_pool_size=2,
+            seed=17,
+        )
+        assert len(incomplete_state) == 2
+        incomplete_warnings = incomplete_state.attrs['warnings']
+        assert len(incomplete_warnings) == 1
+        assert "5 opponent picks should be marked" in incomplete_warnings[0]
+        assert "will continue" in incomplete_warnings[0]
     finally:
         conn.close()
 
@@ -408,9 +515,21 @@ def verify_real_database(db_path: Path) -> dict:
     assert (results.PolicyCompletedRooms == 2).all()
     assert results.attrs['timings']['horizon_label'] == 'sequential_template_16'
     assert results.attrs['timings']['release_stage'] == 'preview'
-    assert int(results.DecisionCandidate.sum()) == 3
-    assert int(results.DecisionEV.notna().sum()) == 3
-    assert int(results.AuditEV.notna().sum()) == 3
+    assert results.attrs['warnings'] == []
+    assert SEQUENTIAL_DECISION_CANDIDATES == SEQUENTIAL_CANDIDATE_POOL_SIZE == 24
+    assert int(results.DecisionCandidate.sum()) == len(results) == 4
+    assert int(results.DecisionEV.notna().sum()) == len(results)
+    assert int(results.AuditEV.notna().sum()) == len(results)
+    assert results.ExpectedReplacementValue.notna().all()
+    assert results.DraftNowAdvantage.notna().all()
+    assert results.AverageStackUtility.gt(0).all()
+    np.testing.assert_allclose(
+        results.StackAdjustedDecisionScore,
+        results.DecisionEV + results.AverageStackUtility,
+        atol=1e-3,
+    )
+    assert results.attrs['timings']['stack_bonus_enabled'] is True
+    assert sum(results.attrs['root_position_quotas'].values()) == len(results)
     assert results.iloc[0].player == results.attrs['decision_top_player']
     primary_banks = results.attrs['scenario_banks']
     alternate_banks = alternate_evaluation.attrs['scenario_banks']
@@ -512,7 +631,7 @@ def verify_real_database(db_path: Path) -> dict:
         'evaluation_seed_path_invariance': True,
         'decision_seed_path_invariance': True,
         'audit_seed_recommendation_invariance': True,
-        'incomplete_physical_state_rejected': True,
+        'incomplete_physical_state_warned': True,
         'total_seconds': results.attrs['timings']['sections']['total'],
     }
 
@@ -537,6 +656,8 @@ def main() -> None:
     verify_candidate_consistent_state()
     verify_vectorized_legality()
     verify_disjoint_bank_columns()
+    verify_empirical_replacement_scoring()
+    verify_sequential_stack_utility()
     verify_rollout_boundaries()
     smoke = verify_real_database(args.db)
 
@@ -548,13 +669,16 @@ def main() -> None:
             'tensor_scoring_parity',
             'vectorized_legality_parity',
             'all_policy_bank_columns_disjoint',
+            'empirical_replacement_value_scoring',
+            'roster_need_root_position_quotas',
+            'symmetric_sequential_stack_utility',
             'candidate_consistent_availability',
             'no_duplicate_or_cross-drafted_players',
             'legal_final_construction',
             'evaluation_seed_path_invariance',
             'decision_seed_path_invariance',
             'audit_seed_recommendation_invariance',
-            'incomplete_physical_state_rejected',
+            'incomplete_physical_state_warned',
             'real_database_smoke',
         ],
         'real_database_smoke': smoke,

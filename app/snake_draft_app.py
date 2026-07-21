@@ -3,13 +3,18 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import sqlite3
-from zSim_Helper import FootballSimulation
+from zSim_Helper import (
+    FootballSimulation,
+    SEQUENTIAL_STACK_BONUS_PCT,
+    SEQUENTIAL_STACK_PAIR_CAP,
+    SEQUENTIAL_STACK_TEAM_CAP,
+)
 import io
 import os
 from datetime import datetime
 
 # Configuration
-db_name = 'Simulation.sqlite3'
+db_name = os.environ.get('SNAKE_SIMULATION_DB', 'Simulation.sqlite3')
 pred_vers = 'final_ensemble'
 
 #-----------------
@@ -241,7 +246,7 @@ def render_timing_summary(results):
         'prediction_adp_generation': 'Prediction + ADP samples',
         'score_banks': 'Construction + pilot banks',
         'decision_bank': 'Decision bank sampling',
-        'decision_scoring': 'Top-four decision scoring',
+        'decision_scoring': 'Completed-candidate decision scoring',
         'audit_bank': 'Hidden audit bank sampling',
         'audit_scoring': 'Hidden audit scoring',
         'draft_rooms': 'Opponent room sampling',
@@ -295,6 +300,16 @@ def render_timing_summary(results):
             f"Status counts: {timings.get('status_counts', {})} | "
             f"Exceptions: {timings.get('failed_exception_count', 0)}"
         )
+        if (
+            timings.get('mode') == 'best_ball_policy_sequential'
+            and timings.get('stack_bonus_enabled')
+        ):
+            st.caption(
+                f"Sequential stack utility: {timings.get('stack_bonus_pct', 0) * 100:.0f}% "
+                f"(pair cap {timings.get('stack_pair_cap', 0):.1f}, "
+                f"QB/team cap {timings.get('stack_team_cap', 0):.1f}); "
+                "reported separately from raw EV."
+            )
         if model.get('full_x_count', 0):
             st.caption(
                 f"Player-round vars: {int(model.get('x_count', 0)):,}/"
@@ -349,26 +364,40 @@ def get_round_recommendations(results, sim, my_team_count, max_rounds=3):
             display_cols = [
                 'player',
                 'pos',
+                'StackAdjustedDecisionScore',
                 'DecisionEV',
-                'DecisionEVVsBest',
-                'DecisionPairedSEVsBest',
+                'AverageStackUtility',
+                'ImmediateStackUtility',
+                'StackAdjustedDecisionScoreVsBest',
+                'StackAdjustedDecisionScorePairedSEVsBest',
                 'DecisionSamples',
                 'CurrentPickEV',
                 'PilotRank',
                 'SurviveNext',
+                'ExpectedReplacementValue',
+                'DraftNowAdvantage',
                 'PolicyCompletedRooms',
             ]
-            sort_column = 'DecisionEV'
+            sort_column = (
+                'StackAdjustedDecisionScore'
+                if 'StackAdjustedDecisionScore' in results
+                else 'DecisionEV'
+            )
             rename_columns = {
                 'player': 'Player',
                 'pos': 'Pos',
-                'DecisionEV': 'EV',
-                'DecisionEVVsBest': 'EV vs Best',
-                'DecisionPairedSEVsBest': 'Paired SE',
+                'StackAdjustedDecisionScore': 'Decision Score',
+                'DecisionEV': 'Raw EV',
+                'AverageStackUtility': 'Roster Stack',
+                'ImmediateStackUtility': 'Stack Now',
+                'StackAdjustedDecisionScoreVsBest': 'Score vs Best',
+                'StackAdjustedDecisionScorePairedSEVsBest': 'Paired SE',
                 'DecisionSamples': 'Decision Samples',
                 'CurrentPickEV': 'Pilot EV',
                 'PilotRank': 'Pilot Rank',
                 'SurviveNext': 'Survive Next',
+                'ExpectedReplacementValue': 'Wait Replacement',
+                'DraftNowAdvantage': 'Draft-Now Edge',
                 'PolicyCompletedRooms': 'Draft Rooms',
             }
         else:
@@ -379,6 +408,8 @@ def get_round_recommendations(results, sim, my_team_count, max_rounds=3):
                 'CurrentPickEVVsBest',
                 'PairedSEVsBest',
                 'SurviveNext',
+                'ExpectedReplacementValue',
+                'DraftNowAdvantage',
                 'PolicyCompletedRooms',
             ]
             sort_column = 'CurrentPickEV'
@@ -389,6 +420,8 @@ def get_round_recommendations(results, sim, my_team_count, max_rounds=3):
                 'CurrentPickEVVsBest': 'EV vs Best',
                 'PairedSEVsBest': 'Paired SE',
                 'SurviveNext': 'Survive Next',
+                'ExpectedReplacementValue': 'Wait Replacement',
+                'DraftNowAdvantage': 'Draft-Now Edge',
                 'PolicyCompletedRooms': 'Draft Rooms',
             }
         display_cols = [col for col in display_cols if col in results.columns]
@@ -695,6 +728,7 @@ def sidebar_controls(prediction_options):
     default_ilp_ranges = FootballSimulation.default_best_ball_position_ranges()
     if loaded_settings is not None:
         default_year = get_setting_int(loaded_settings, 'Year', int(prediction_options.year.max()))
+        default_league = str(loaded_settings.get('League', 'dk')).strip().lower()
         default_num_teams = get_setting_int(loaded_settings, 'NumTeams', 12)
         default_my_pick = get_setting_int(loaded_settings, 'MyPickPosition', 1)
         default_qb = get_setting_int(loaded_settings, 'QB', 3)
@@ -723,6 +757,7 @@ def sidebar_controls(prediction_options):
         }
     else:
         default_year = int(prediction_options.year.max())
+        default_league = 'dk'
         default_num_teams = 12
         default_my_pick = 1
         default_qb = 3
@@ -742,13 +777,46 @@ def sidebar_controls(prediction_options):
         default_weekly_score_mode = 'template'
         default_position_ranges = default_ilp_ranges
     
-    dk_prediction_options = prediction_options[
-        prediction_options.version.astype(str).str.lower() == 'dk'
-    ]
-    if len(dk_prediction_options) == 0:
-        st.error("No DK prediction slice is available in Simulation.sqlite3.")
+    supported_leagues = {'dk', 'nffc'}
+    available_leagues = sorted(
+        {
+            str(version).strip().lower()
+            for version in prediction_options.version
+            if str(version).strip().lower() in supported_leagues
+        },
+        key=lambda value: (value != 'dk', value),
+    )
+    if len(available_leagues) == 0:
+        st.error("No DK or NFFC prediction slice is available in the app database.")
         st.stop()
-    year_options = sorted(dk_prediction_options.year.unique(), reverse=True)
+
+    league_index = (
+        available_leagues.index(default_league)
+        if default_league in available_leagues
+        else 0
+    )
+    league = st.sidebar.selectbox(
+        'League Type',
+        options=available_leagues,
+        index=league_index,
+        format_func=str.upper,
+        help=(
+            "DK is the production slice. NFFC is available for setup testing "
+            "when an NFFC-tagged projection/template slice is present."
+        ),
+    )
+    if league == 'nffc':
+        st.sidebar.caption(
+            "NFFC is in preview and uses Third Round Reversal: Rounds 2 and 3 "
+            "both run last-to-first. Confirm projection and weekly-template "
+            "provenance before using recommendations. This setup is not yet "
+            "the Championship's complete 30-round kicker/defense format."
+        )
+
+    league_prediction_options = prediction_options[
+        prediction_options.version.astype(str).str.lower() == league
+    ]
+    year_options = sorted(league_prediction_options.year.unique(), reverse=True)
     year_index = year_options.index(default_year) if default_year in year_options else 0
     year = st.sidebar.selectbox(
         'Prediction Year',
@@ -757,16 +825,6 @@ def sidebar_controls(prediction_options):
         help="Select the prediction year from Final_Predictions_Resid"
     )
 
-    # This Snake app consumes only the DK league slice. The separate `beta`
-    # slice belongs to the auction application.
-    league = 'dk'
-    st.sidebar.text_input(
-        'League Type',
-        value=league,
-        disabled=True,
-        help="The Snake app uses the DK prediction and ADP slice."
-    )
-    
     # League settings
     num_teams = st.sidebar.number_input(
         'Number of Teams', 
@@ -920,11 +978,53 @@ def sidebar_controls(prediction_options):
             )
     elif scoring_mode == 'best_ball_policy':
         weekly_score_mode = 'template'
+        loaded_policy_stack = (
+            loaded_settings is not None
+            and default_scoring_mode == 'best_ball_policy'
+        )
+        use_stack_bonus = st.sidebar.checkbox(
+            'Sequential Stack Preference',
+            value=(default_use_stack_bonus if loaded_policy_stack else True),
+            key='sequential_stack_preference',
+            help=(
+                'Adds separate tournament utility for same-team QB plus WR/TE '
+                'pairings during every sequential pick and final ranking.'
+            ),
+        )
+        stack_bonus_pct = SEQUENTIAL_STACK_BONUS_PCT
+        stack_pair_cap = SEQUENTIAL_STACK_PAIR_CAP
+        stack_team_cap = SEQUENTIAL_STACK_TEAM_CAP
+        if loaded_policy_stack:
+            stack_bonus_pct = min(max(default_stack_bonus_pct, 0.0), 50.0) / 100.0
+            stack_pair_cap = max(float(default_stack_pair_cap), 0.0)
+            stack_team_cap = max(float(default_stack_team_cap), 0.0)
+        if use_stack_bonus:
+            stack_bonus_pct = (
+                st.sidebar.slider(
+                    'Sequential Stack Utility %',
+                    min_value=0.0,
+                    max_value=40.0,
+                    value=float(stack_bonus_pct * 100),
+                    step=5.0,
+                    key='sequential_stack_utility_pct',
+                    help=(
+                        'Percent of combined QB and WR/TE projected PPG used as '
+                        'tournament utility; raw EV remains separate.'
+                    ),
+                )
+                / 100.0
+            )
+            st.sidebar.caption(
+                f'Stack utility caps: {stack_pair_cap:.0f} per pair and '
+                f'{stack_team_cap:.0f} per QB/team.'
+            )
         st.sidebar.caption(
             'Preview methodology: 16-week template outcomes, 24 current candidates, '
-            'candidate-consistent noisy-ADP rooms, a 64-season pilot, and a separate '
-            '128-season top-four decision bank. Fixed common-random-number seeds keep '
-            'repeat runs on the same draft state stable.'
+            'a roster-need-balanced root screen, empirical next-pick replacement value, '
+            'symmetric QB-pass catcher stack utility, candidate-consistent noisy-ADP '
+            'rooms, a 64-season pilot, and a separate 128-season decision score for '
+            'every completed candidate. Fixed common-random-number seeds keep repeat '
+            'runs on the same draft state stable.'
         )
 
     st.sidebar.header("Roster Construction")
@@ -1203,6 +1303,14 @@ def main():
             my_team_players = selected_data[selected_data['MyTeam'] == True]
             num_selected = len(my_team_players)
             adjusted_picks = sim.calculate_adjusted_picks(num_selected)
+
+            if settings['scoring_mode'] == 'best_ball_policy':
+                draft_state_warning = sim.sequential_draft_state_warning(
+                    current_my_team['Player'],
+                    current_other_team['Player'],
+                )
+                if draft_state_warning:
+                    st.warning(draft_state_warning)
             
             # Run simulation section
             st.header("2. Optimal Recommendations")
@@ -1257,8 +1365,10 @@ def main():
                             st.info(
                                 "**Sequential Preview**: each current player is locked, "
                                 "opponents and future picks are removed from one shared draft-room "
-                                "state, 24 candidates receive a pilot score, and the pilot top four "
-                                "are ranked on a separate 128-season decision bank."
+                                "state, future choices use the full empirical next-pick replacement "
+                                "distribution plus symmetric QB-pass catcher stack utility, and 24 "
+                                "completed candidates are ranked on raw EV and a separate stack-"
+                                "adjusted decision score."
                             )
                         else:
                             st.info(
@@ -1277,6 +1387,31 @@ def main():
                             st.dataframe(
                                 round_data,
                                 column_config={
+                                    "Decision Score": st.column_config.NumberColumn(
+                                        "Decision Score",
+                                        help="Raw completed-roster EV plus average QB-pass catcher stack utility",
+                                        format="%.1f",
+                                    ),
+                                    "Raw EV": st.column_config.NumberColumn(
+                                        "Raw EV",
+                                        help="Average completed-roster best-ball points without heuristic stack utility",
+                                        format="%.1f",
+                                    ),
+                                    "Roster Stack": st.column_config.NumberColumn(
+                                        "Roster Stack",
+                                        help="Average capped tournament utility from final-roster QB-WR/TE pairings",
+                                        format="%+.1f",
+                                    ),
+                                    "Stack Now": st.column_config.NumberColumn(
+                                        "Stack Now",
+                                        help="Incremental utility if this pick immediately completes a QB-WR/TE pairing already on your roster",
+                                        format="%+.1f",
+                                    ),
+                                    "Score vs Best": st.column_config.NumberColumn(
+                                        "Score vs Best",
+                                        help="Stack-adjusted decision-score gap versus the top recommendation",
+                                        format="%+.1f",
+                                    ),
                                     "Pct Selected": st.column_config.ProgressColumn(
                                         "Pct Selected",
                                         help="Percentage selected when available in this round",
@@ -1311,6 +1446,16 @@ def main():
                                         min_value=0.0,
                                         max_value=100.0,
                                     ),
+                                    "Wait Replacement": st.column_config.NumberColumn(
+                                        "Wait Replacement",
+                                        help="Expected stack-adjusted marginal utility of the best same-position option at your next pick",
+                                        format="%.1f",
+                                    ),
+                                    "Draft-Now Edge": st.column_config.NumberColumn(
+                                        "Draft-Now Edge",
+                                        help="Positive stack-adjusted utility lost by waiting until your next pick",
+                                        format="%.1f",
+                                    ),
                                 },
                                 use_container_width=True,
                                 hide_index=True,
@@ -1338,6 +1483,31 @@ def main():
                                     st.dataframe(
                                         round_data,
                                         column_config={
+                                            "Decision Score": st.column_config.NumberColumn(
+                                                "Decision Score",
+                                                help="Raw completed-roster EV plus average QB-pass catcher stack utility",
+                                                format="%.1f",
+                                            ),
+                                            "Raw EV": st.column_config.NumberColumn(
+                                                "Raw EV",
+                                                help="Average completed-roster best-ball points without heuristic stack utility",
+                                                format="%.1f",
+                                            ),
+                                            "Roster Stack": st.column_config.NumberColumn(
+                                                "Roster Stack",
+                                                help="Average capped tournament utility from final-roster QB-WR/TE pairings",
+                                                format="%+.1f",
+                                            ),
+                                            "Stack Now": st.column_config.NumberColumn(
+                                                "Stack Now",
+                                                help="Incremental utility if this pick immediately completes a QB-WR/TE pairing already on your roster",
+                                                format="%+.1f",
+                                            ),
+                                            "Score vs Best": st.column_config.NumberColumn(
+                                                "Score vs Best",
+                                                help="Stack-adjusted decision-score gap versus the top recommendation",
+                                                format="%+.1f",
+                                            ),
                                             "Pct Selected": st.column_config.ProgressColumn(
                                                 "Pct Selected",
                                                 help="Percentage selected when available in this round",
@@ -1359,6 +1529,16 @@ def main():
                                                 "EV Samples",
                                                 help="Number of scenario solves used for this EV estimate",
                                                 format="%d",
+                                            ),
+                                            "Wait Replacement": st.column_config.NumberColumn(
+                                                "Wait Replacement",
+                                                help="Expected stack-adjusted marginal utility of the best same-position option at your next pick",
+                                                format="%.1f",
+                                            ),
+                                            "Draft-Now Edge": st.column_config.NumberColumn(
+                                                "Draft-Now Edge",
+                                                help="Positive stack-adjusted utility lost by waiting until your next pick",
+                                                format="%.1f",
                                             ),
                                         },
                                         use_container_width=True,

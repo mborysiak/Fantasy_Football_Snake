@@ -19,11 +19,15 @@ engine:
   disjoint PPG scenario columns and exposes independent seeds;
 - samples opponent priority orders from noisy ADP and removes every opponent
   and user pick from one shared room state;
-- locks each current-pick candidate, completes the remaining draft with a
-  greedy expected-value plus scarcity policy, and evaluates completed rosters
-  on a separate season bank;
+- locks each current-pick candidate, completes the remaining draft with
+  empirical next-pick replacement value plus symmetric incremental QB-WR/TE
+  stack utility recalculated at every turn, and evaluates completed rosters on
+  a separate season bank;
+- allocates the 24-root screen across positions using remaining roster minimum
+  deficits and maximum capacity;
 - uses the same draft rooms and pilot seasons for all current candidates, then
-  ranks the pilot top four on a 128-season decision bank;
+  ranks every completed candidate on raw 128-season EV plus a separately
+  reported average final-roster stack utility;
 - limits the primary horizon to the 16 weeks available in the weekly-template
   tables and labels it `sequential_template_16`.
 
@@ -36,6 +40,7 @@ Run invariant and real-database smoke checks:
 
 ```powershell
 python research/studies/2026-07-19_sequential_best_ball_policy/verify_milestone_a.py
+python research/studies/2026-07-19_sequential_best_ball_policy/verify_replacement_policy.py
 ```
 
 Run the runtime and shortlist-quality study:
@@ -57,8 +62,14 @@ All correctness checks must pass:
 - all completed rosters satisfy the configured construction ranges;
 - changing pilot or decision outcomes cannot change a rollout path;
 - changing the hidden audit seed cannot change a recommendation;
-- incomplete physical draft states are rejected;
+- opponent-pick count mismatches emit an advisory warning and continue with the
+  marked availability state;
 - vectorized legality results match the frozen loop reference;
+- empirical replacement integration uses the full conditional survival
+  distribution rather than a hard availability cutoff;
+- root position quotas sum to the requested candidate pool;
+- stack utility is symmetric to whether the QB or pass catcher is drafted first,
+  respects pair/team caps, and remains separate from raw EV;
 - the real-database smoke run completes every requested room.
 
 The study reports rather than presupposes quality and runtime:
@@ -78,10 +89,16 @@ After vectorized legality and precomputed survival, five matched runs produced a
 adaptive candidate allocation were not added because the measured gate did not
 justify their runtime cost.
 
-The subsequent DK-only release study keeps 24 candidates throughout. It reduced
-maximum observed 24-versus-32 omission regret to 7.56 points, clearing the
-fixed shortlist gate. The decision winner still exceeded 10 points of hidden
-audit regret in two opening states, so the method remains Preview-only.
+The subsequent DK-only release study keeps 24 candidates throughout and gives
+all 24 completed roots the independent decision score. Replacement-aware draft
+timing and roster-need quotas reduced the focused Puka-only round-two root pool
+from 15 QBs to 3: Love ranked first, Rice second, Olave fourth, and the QBs
+ranked 20th/22nd/24th. The refreshed frozen matrix completed all 27 states and
+maximum 24-versus-32 omission regret was 8.25, clearing the fixed shortlist
+gate. Decision and hidden-audit winners agreed in 17 states; four states narrowly
+exceeded 10 points of audit regret and the maximum fell from 20.27 to 12.13.
+Candidate timing and coverage improved, while evaluation-bank stability remains
+a separate limitation.
 
 ## Known Limitation
 
@@ -89,3 +106,7 @@ Opponent behavior is a noisy-ADP priority model, not a calibrated model of each
 opponent's roster needs or correlated draft-room tactics. Milestone A fixes the
 state-transition and information-set errors; it does not claim a complete
 behavioral model of opponents.
+
+The stack term is also a tournament-utility proxy rather than a joint weekly
+forecast. It rewards correlated roster construction without claiming that the
+individual weekly template draws themselves are correlated.

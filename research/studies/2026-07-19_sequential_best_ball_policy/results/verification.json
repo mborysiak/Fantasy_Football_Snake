@@ -11,13 +11,16 @@
     "tensor_scoring_parity",
     "vectorized_legality_parity",
     "all_policy_bank_columns_disjoint",
+    "empirical_replacement_value_scoring",
+    "roster_need_root_position_quotas",
+    "symmetric_sequential_stack_utility",
     "candidate_consistent_availability",
     "no_duplicate_or_cross-drafted_players",
     "legal_final_construction",
     "evaluation_seed_path_invariance",
     "decision_seed_path_invariance",
     "audit_seed_recommendation_invariance",
-    "incomplete_physical_state_rejected",
+    "incomplete_physical_state_warned",
     "real_database_smoke"
   ],
   "real_database_smoke": {
@@ -32,7 +35,7 @@
     "evaluation_seed_path_invariance": true,
     "decision_seed_path_invariance": true,
     "audit_seed_recommendation_invariance": true,
-    "incomplete_physical_state_rejected": true,
-    "total_seconds": 0.32422770000994205
+    "incomplete_physical_state_warned": true,
+    "total_seconds": 0.3785866
   }
 }

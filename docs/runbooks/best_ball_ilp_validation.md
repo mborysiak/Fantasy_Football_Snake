@@ -1,6 +1,6 @@
 # Best-Ball ILP Validation Runbook
 
-Last updated: 2026-07-07
+Last updated: 2026-07-20
 
 ## Core Files
 
@@ -30,9 +30,9 @@ Then confirm:
 - optimizer can run at least one recommendation
 - weekly template controls do not error
 - stack bonus controls render when enabled
-- the DK-only Sequential best-ball policy (Preview) renders the four
-  decision-stage finalists with EV, paired SE, pilot context, survival, and
-  completed-room columns
+- the DK-only Sequential best-ball policy (Preview) renders all completed
+  decision candidates with raw EV, roster stack utility, immediate stack
+  utility, stack-adjusted decision score, paired SE, survival, and room coverage
 
 ## Best-Ball Runtime Checks
 
@@ -47,6 +47,9 @@ When changing template or residual logic, check:
 - weekly template profile reads still use the DB-mtime cache path
 - league-aware template joins do not duplicate template rows when multiple
   `Best_Ball_Weekly_Templates.league` slices exist
+- DK pick schedules remain straight serpentine
+- NFFC 12-team pick schedules use 3RR: slot 12 starts `12, 13, 25, 48` and
+  slot 1 starts `1, 24, 36, 37`
 
 ## Research Outputs
 

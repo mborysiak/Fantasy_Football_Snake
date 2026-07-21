@@ -1,6 +1,6 @@
 # Simulation SQLite App Contract
 
-Last updated: 2026-07-13
+Last updated: 2026-07-20
 
 ## Owner
 
@@ -17,9 +17,36 @@ app/Simulation.sqlite3
 The file is generated/copied from the modeling repo and should not be hand-edited
 as a durable fix.
 
-The Snake app uses only the `dk` league slice. Other league/version slices in
-the shared database belong to separate applications and are out of scope for
-Snake release gates.
+The production/default Snake workflow uses the `dk` league slice. The app may
+also expose an `nffc` slice when the selected database contains one, but NFFC
+remains a setup preview and is outside the DK sequential-policy release gates.
+Other league/version slices in the shared database belong to separate
+applications and remain out of scope.
+
+`SNAKE_SIMULATION_DB` may select an alternate database filename from the app
+directory (or an absolute path). The default remains `Simulation.sqlite3`.
+
+## NFFC Setup Preview
+
+`Fantasy_Football/Scripts/Modeling/create_snake_nffc_preview.py` creates
+`app/Simulation_nffc_preview.sqlite3` from the stable app database without
+modifying the modeling source database. It clones the DK runtime rows under
+NFFC-safe league keys and the reserved 3,000,000 template-ID range while
+retaining the real NFFC `Avg_ADPs` slice.
+
+The preview is valid for app wiring, selector, persistence, league-aware draft
+order, and partial draft-flow tests only. Its cloned projections and weekly
+profiles still reflect DK scoring/calibration. The 2026 NFFC Best Ball
+Championship is also a 30-round format with kicker and team-defense roster
+slots, which the current offense-only app does not yet model. Replace the cloned
+rows with normal NFFC s3/s4 outputs and add the complete roster contract before
+evaluating recommendation quality or using the app for a live NFFC draft.
+
+For the NFFC slice, `FootballSimulation.calculate_snake_picks()` uses Third
+Round Reversal: Round 1 is first-to-last, Rounds 2 and 3 are last-to-first,
+Round 4 is first-to-last, and the draft alternates thereafter. DK retains its
+existing straight serpentine schedule. The official contest reference is:
+https://nfc.shgn.com/rules/2680.
 
 ## Best-Ball Weekly Tables
 

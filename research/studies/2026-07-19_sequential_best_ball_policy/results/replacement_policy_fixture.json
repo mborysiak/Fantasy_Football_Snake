@@ -1,0 +1,205 @@
+{
+  "status": "pass",
+  "configuration": {
+    "year": 2026,
+    "league": "dk",
+    "pick_slot": 3,
+    "current_pick": 22,
+    "rooms": 50,
+    "my_team": [
+      "Puka Nacua"
+    ],
+    "opponent_picks": [
+      "Jahmyr Gibbs",
+      "Bijan Robinson",
+      "Ja'Marr Chase",
+      "Jaxon Smith Njigba",
+      "Christian Mccaffrey",
+      "Amon Ra St Brown",
+      "Jonathan Taylor",
+      "Justin Jefferson",
+      "Ceedee Lamb",
+      "James Cook",
+      "Ashton Jeanty",
+      "Saquon Barkley",
+      "Omarion Hampton",
+      "Kenneth Walker",
+      "Aj Brown",
+      "Chase Brown",
+      "Devon Achane",
+      "Derrick Henry",
+      "Drake London",
+      "Brock Bowers"
+    ]
+  },
+  "root_position_quotas": {
+    "QB": 3,
+    "RB": 8,
+    "WR": 10,
+    "TE": 3
+  },
+  "root_position_counts": {
+    "RB": 8,
+    "WR": 10,
+    "TE": 3,
+    "QB": 3
+  },
+  "top_recommendations": [
+    {
+      "rank": 1,
+      "player": "Jeremiyah Love",
+      "position": "RB",
+      "decision_ev": 2200.76611328125,
+      "decision_ev_vs_best": 0.0,
+      "survive_next": 0.6724941730499268,
+      "expected_replacement_value": 224.07321166992188,
+      "draft_now_advantage": 1.575439453125
+    },
+    {
+      "rank": 2,
+      "player": "Rashee Rice",
+      "position": "WR",
+      "decision_ev": 2197.527587890625,
+      "decision_ev_vs_best": -3.238525390625,
+      "survive_next": 0.5616246461868286,
+      "expected_replacement_value": 224.7783660888672,
+      "draft_now_advantage": 13.689544677734375
+    },
+    {
+      "rank": 3,
+      "player": "George Pickens",
+      "position": "WR",
+      "decision_ev": 2189.814697265625,
+      "decision_ev_vs_best": -10.951416015625,
+      "survive_next": 0.2939438819885254,
+      "expected_replacement_value": 224.7783660888672,
+      "draft_now_advantage": 0.0
+    },
+    {
+      "rank": 4,
+      "player": "Chris Olave",
+      "position": "WR",
+      "decision_ev": 2188.462158203125,
+      "decision_ev_vs_best": -12.303955078125,
+      "survive_next": 0.6925498247146606,
+      "expected_replacement_value": 224.7783660888672,
+      "draft_now_advantage": 0.0
+    },
+    {
+      "rank": 5,
+      "player": "Devonta Smith",
+      "position": "WR",
+      "decision_ev": 2182.60693359375,
+      "decision_ev_vs_best": -18.1591796875,
+      "survive_next": 0.7059524059295654,
+      "expected_replacement_value": 224.7783660888672,
+      "draft_now_advantage": 0.0
+    },
+    {
+      "rank": 6,
+      "player": "Josh Jacobs",
+      "position": "RB",
+      "decision_ev": 2182.5380859375,
+      "decision_ev_vs_best": -18.22802734375,
+      "survive_next": 0.9739999771118164,
+      "expected_replacement_value": 224.07321166992188,
+      "draft_now_advantage": 0.0
+    },
+    {
+      "rank": 7,
+      "player": "Kyren Williams",
+      "position": "RB",
+      "decision_ev": 2180.238037109375,
+      "decision_ev_vs_best": -20.528076171875,
+      "survive_next": 0.7678756713867188,
+      "expected_replacement_value": 224.07321166992188,
+      "draft_now_advantage": 0.0
+    },
+    {
+      "rank": 8,
+      "player": "Breece Hall",
+      "position": "RB",
+      "decision_ev": 2180.2255859375,
+      "decision_ev_vs_best": -20.54052734375,
+      "survive_next": 0.9350000023841858,
+      "expected_replacement_value": 224.07321166992188,
+      "draft_now_advantage": 0.0
+    },
+    {
+      "rank": 9,
+      "player": "Nico Collins",
+      "position": "WR",
+      "decision_ev": 2180.1982421875,
+      "decision_ev_vs_best": -20.56787109375,
+      "survive_next": 0.13658536970615387,
+      "expected_replacement_value": 224.7783660888672,
+      "draft_now_advantage": 0.0
+    },
+    {
+      "rank": 10,
+      "player": "Cam Skattebo",
+      "position": "RB",
+      "decision_ev": 2177.568359375,
+      "decision_ev_vs_best": -23.19775390625,
+      "survive_next": 1.0,
+      "expected_replacement_value": 224.07321166992188,
+      "draft_now_advantage": 0.0
+    }
+  ],
+  "quarterback_recommendations": [
+    {
+      "rank": 20,
+      "player": "Josh Allen",
+      "decision_ev": 2156.910888671875,
+      "decision_ev_vs_best": -43.855224609375,
+      "survive_next": 0.6347941756248474
+    },
+    {
+      "rank": 22,
+      "player": "Lamar Jackson",
+      "decision_ev": 2146.65771484375,
+      "decision_ev_vs_best": -54.1083984375,
+      "survive_next": 0.9850000143051147
+    },
+    {
+      "rank": 24,
+      "player": "Brock Purdy",
+      "decision_ev": 2138.3876953125,
+      "decision_ev_vs_best": -62.37841796875,
+      "survive_next": 1.0
+    }
+  ],
+  "next_pick_position_counts": {
+    "Jeremiyah Love": {
+      "WR": 28,
+      "RB": 22
+    },
+    "Rashee Rice": {
+      "RB": 50
+    },
+    "Chris Olave": {
+      "WR": 29,
+      "RB": 21
+    },
+    "Josh Allen": {
+      "RB": 23,
+      "WR": 27
+    }
+  },
+  "timings": {
+    "prediction_adp_generation": 0.02650730000000001,
+    "score_banks": 0.006848399999999977,
+    "draft_rooms": 0.007305999999999813,
+    "root_screen": 0.0023508999999999336,
+    "candidate_rollouts": 11.8553078,
+    "decision_bank": 0.005414099999999422,
+    "decision_scoring": 0.779838100000001,
+    "total": 12.6881988
+  },
+  "gates": {
+    "all_candidate_rooms_complete": true,
+    "root_screen_qbs_no_more_than_roster_max": true,
+    "top_two_are_love_and_rice": true,
+    "no_qb_in_top_five": true
+  }
+}

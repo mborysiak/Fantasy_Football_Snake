@@ -30,12 +30,15 @@ SEQUENTIAL_POLICY_HORIZON = 16
 SEQUENTIAL_CONSTRUCTION_SAMPLES = 16
 SEQUENTIAL_EVALUATION_SAMPLES = 64
 SEQUENTIAL_DECISION_SAMPLES = 128
-SEQUENTIAL_DECISION_CANDIDATES = 4
 SEQUENTIAL_DRAFT_ROOMS = 24
 SEQUENTIAL_CANDIDATE_POOL_SIZE = 24
+SEQUENTIAL_DECISION_CANDIDATES = SEQUENTIAL_CANDIDATE_POOL_SIZE
 SEQUENTIAL_SCARCITY_WEIGHT = 0.50
 SEQUENTIAL_URGENCY_WEIGHT = 0.25
 SEQUENTIAL_POLICY_SEED = 20260719
+SEQUENTIAL_STACK_BONUS_PCT = 0.20
+SEQUENTIAL_STACK_PAIR_CAP = 8.0
+SEQUENTIAL_STACK_TEAM_CAP = 12.0
 
 class FootballSimulation:
 
@@ -1305,6 +1308,221 @@ class FootballSimulation:
             )
         return survival_table
 
+    @staticmethod
+    def expected_sequential_replacement_values(
+        immediate_values,
+        candidate_positions,
+        survival_probabilities,
+    ):
+        """Expected best same-position option at the next user pick.
+
+        ADP samples are independent by player, so the empirical conditional
+        survival probabilities define a Bernoulli availability distribution.
+        Sorting candidates by current marginal value lets us integrate the
+        maximum available value exactly without a hard availability cutoff.
+        """
+        immediate_values = np.asarray(immediate_values, dtype=np.float32)
+        candidate_positions = np.asarray(candidate_positions)
+        survival = np.clip(
+            np.asarray(survival_probabilities, dtype=np.float32),
+            0.0,
+            1.0,
+        )
+        replacement_values = np.zeros(len(immediate_values), dtype=np.float32)
+
+        for pos in ('QB', 'RB', 'WR', 'TE'):
+            pos_locs = np.where(candidate_positions == pos)[0]
+            if len(pos_locs) == 0:
+                continue
+
+            ordered_locs = pos_locs[
+                np.argsort(-immediate_values[pos_locs], kind='stable')
+            ]
+            probability_no_better_option = 1.0
+            expected_best = 0.0
+            for loc in ordered_locs:
+                available_probability = float(survival[loc])
+                expected_best += (
+                    probability_no_better_option
+                    * available_probability
+                    * float(immediate_values[loc])
+                )
+                probability_no_better_option *= 1.0 - available_probability
+
+            replacement_values[pos_locs] = expected_best
+
+        return replacement_values
+
+    @staticmethod
+    def sequential_stack_roster_utility(
+        selected_indices,
+        player_positions,
+        player_teams,
+        player_ppg,
+        bonus_pct,
+        pair_cap,
+        team_cap,
+    ):
+        """Return capped QB-pass catcher tournament utility for one roster."""
+        if bonus_pct <= 0 or pair_cap <= 0 or team_cap <= 0:
+            return 0.0
+
+        selected_indices = np.unique(
+            np.asarray(selected_indices, dtype=np.int64)
+        )
+        if len(selected_indices) < 2:
+            return 0.0
+
+        player_positions = np.asarray(player_positions)
+        player_teams = np.asarray(player_teams, dtype=object)
+        player_ppg = np.asarray(player_ppg, dtype=np.float32)
+        selected_positions = player_positions[selected_indices]
+        qb_indices = selected_indices[selected_positions == 'QB']
+        catcher_indices = selected_indices[
+            np.isin(selected_positions, ('WR', 'TE'))
+        ]
+
+        utility_by_team = {}
+        for qb_idx in qb_indices:
+            qb_team = str(player_teams[qb_idx]).strip()
+            if not qb_team:
+                continue
+            same_team_catchers = catcher_indices[
+                player_teams[catcher_indices] == qb_team
+            ]
+            pair_utility = sum(
+                min(
+                    float(pair_cap),
+                    float(bonus_pct)
+                    * (float(player_ppg[qb_idx]) + float(player_ppg[catcher_idx])),
+                )
+                for catcher_idx in same_team_catchers
+            )
+            qb_utility = min(float(team_cap), pair_utility)
+            utility_by_team[qb_team] = max(
+                utility_by_team.get(qb_team, 0.0),
+                qb_utility,
+            )
+
+        return float(sum(utility_by_team.values()))
+
+    @classmethod
+    def sequential_stack_marginal_utilities(
+        cls,
+        selected_indices,
+        candidate_indices,
+        player_positions,
+        player_teams,
+        player_ppg,
+        bonus_pct,
+        pair_cap,
+        team_cap,
+    ):
+        """Incremental stack utility, symmetric to which side is drafted first."""
+        candidate_indices = np.asarray(candidate_indices, dtype=np.int64)
+        marginal = np.zeros(len(candidate_indices), dtype=np.float32)
+        if (
+            len(candidate_indices) == 0
+            or bonus_pct <= 0
+            or pair_cap <= 0
+            or team_cap <= 0
+        ):
+            return marginal
+
+        selected_indices = np.unique(
+            np.asarray(selected_indices, dtype=np.int64)
+        )
+        if len(selected_indices) == 0:
+            return marginal
+
+        player_positions = np.asarray(player_positions)
+        player_teams = np.asarray(player_teams, dtype=object)
+        player_ppg = np.asarray(player_ppg, dtype=np.float32)
+        selected_positions = player_positions[selected_indices]
+        selected_qbs = selected_indices[selected_positions == 'QB']
+        selected_catchers = selected_indices[
+            np.isin(selected_positions, ('WR', 'TE'))
+        ]
+        selected_set = set(selected_indices.tolist())
+
+        def pair_utility(qb_idx, catcher_idx):
+            return min(
+                float(pair_cap),
+                float(bonus_pct)
+                * (float(player_ppg[qb_idx]) + float(player_ppg[catcher_idx])),
+            )
+
+        qb_current_utility = {}
+        team_current_utility = {}
+        for qb_idx in selected_qbs:
+            qb_team = str(player_teams[qb_idx]).strip()
+            if not qb_team:
+                qb_current_utility[int(qb_idx)] = 0.0
+                continue
+            same_team_catchers = selected_catchers[
+                player_teams[selected_catchers] == qb_team
+            ]
+            qb_utility = min(
+                float(team_cap),
+                sum(
+                    pair_utility(qb_idx, catcher_idx)
+                    for catcher_idx in same_team_catchers
+                ),
+            )
+            qb_current_utility[int(qb_idx)] = qb_utility
+            team_current_utility[qb_team] = max(
+                team_current_utility.get(qb_team, 0.0),
+                qb_utility,
+            )
+
+        for loc, candidate_idx in enumerate(candidate_indices):
+            candidate_idx = int(candidate_idx)
+            if candidate_idx in selected_set:
+                continue
+            candidate_team = str(player_teams[candidate_idx]).strip()
+            if not candidate_team:
+                continue
+            candidate_pos = player_positions[candidate_idx]
+
+            if candidate_pos == 'QB':
+                same_team_catchers = selected_catchers[
+                    player_teams[selected_catchers] == candidate_team
+                ]
+                candidate_utility = min(
+                    float(team_cap),
+                    sum(
+                        pair_utility(candidate_idx, catcher_idx)
+                        for catcher_idx in same_team_catchers
+                    ),
+                )
+                marginal[loc] = max(
+                    team_current_utility.get(candidate_team, 0.0),
+                    candidate_utility,
+                ) - team_current_utility.get(candidate_team, 0.0)
+            elif candidate_pos in ('WR', 'TE'):
+                expanded_team_utility = team_current_utility.get(
+                    candidate_team,
+                    0.0,
+                )
+                for qb_idx in selected_qbs[
+                    player_teams[selected_qbs] == candidate_team
+                ]:
+                    current_utility = qb_current_utility[int(qb_idx)]
+                    expanded_utility = min(
+                        float(team_cap),
+                        current_utility + pair_utility(qb_idx, candidate_idx),
+                    )
+                    expanded_team_utility = max(
+                        expanded_team_utility,
+                        expanded_utility,
+                    )
+                marginal[loc] = (
+                    expanded_team_utility
+                    - team_current_utility.get(candidate_team, 0.0)
+                )
+
+        return marginal
+
     @classmethod
     def sequential_policy_scores(
         cls,
@@ -1318,7 +1536,7 @@ class FootballSimulation:
         urgency_weight=SEQUENTIAL_URGENCY_WEIGHT,
         survival_probabilities=None,
     ):
-        """Combine expected marginal value with the cost of waiting one turn."""
+        """Rank current actions by empirical value lost when waiting one turn."""
         candidate_indices = np.asarray(candidate_indices, dtype=np.int64)
         immediate_values = np.asarray(immediate_values, dtype=np.float32)
         if survival_probabilities is None:
@@ -1333,27 +1551,100 @@ class FootballSimulation:
                 survival_probabilities,
                 dtype=np.float32,
             )[candidate_indices]
-        urgency = immediate_values * (1.0 - survival)
-        future_opportunity = immediate_values * survival
-        scarcity_cliff = np.zeros(len(candidate_indices), dtype=np.float32)
         candidate_positions = player_positions[candidate_indices]
-
-        for pos in ('QB', 'RB', 'WR', 'TE'):
-            pos_locs = np.where(candidate_positions == pos)[0]
-            if len(pos_locs) == 0:
-                continue
-            best_future = float(np.max(future_opportunity[pos_locs]))
-            scarcity_cliff[pos_locs] = np.maximum(
-                immediate_values[pos_locs] - best_future,
-                0,
+        if next_pick is None:
+            replacement_values = np.zeros(len(candidate_indices), dtype=np.float32)
+        else:
+            replacement_values = cls.expected_sequential_replacement_values(
+                immediate_values,
+                candidate_positions,
+                survival,
             )
+        draft_now_advantage = np.maximum(
+            immediate_values - replacement_values,
+            0,
+        ).astype(np.float32)
+        urgency = draft_now_advantage * (1.0 - survival)
 
         policy_score = (
-            immediate_values
-            + (float(scarcity_weight) * scarcity_cliff)
+            draft_now_advantage
+            + (float(scarcity_weight) * draft_now_advantage)
             + (float(urgency_weight) * urgency)
         )
-        return policy_score, survival, scarcity_cliff, urgency
+        return (
+            policy_score,
+            survival,
+            replacement_values,
+            draft_now_advantage,
+            urgency,
+        )
+
+    @staticmethod
+    def sequential_root_position_quotas(
+        candidate_indices,
+        player_positions,
+        selected_indices,
+        pos_ranges,
+        candidate_pool_size,
+    ):
+        """Allocate the root screen across positions using remaining roster need."""
+        candidate_indices = np.asarray(candidate_indices, dtype=np.int64)
+        player_positions = np.asarray(player_positions)
+        selected_indices = np.asarray(selected_indices, dtype=np.int64)
+        pool_size = min(max(1, int(candidate_pool_size)), len(candidate_indices))
+        candidate_positions = player_positions[candidate_indices]
+        selected_positions = player_positions[selected_indices]
+
+        active_positions = [
+            pos for pos in ('QB', 'RB', 'WR', 'TE')
+            if np.any(candidate_positions == pos)
+        ]
+        quotas = {pos: 0 for pos in active_positions}
+        if not active_positions:
+            return quotas
+
+        # Preserve multiple alternatives at every open position before dividing
+        # remaining slots according to minimum deficits and maximum capacity.
+        for pos in active_positions:
+            available_count = int(np.sum(candidate_positions == pos))
+            quotas[pos] = min(2, available_count)
+
+        while sum(quotas.values()) > pool_size:
+            pos = max(quotas, key=lambda key: quotas[key])
+            quotas[pos] -= 1
+
+        weights = {}
+        capacities = {}
+        for pos in active_positions:
+            current_count = int(np.sum(selected_positions == pos))
+            minimum, maximum = pos_ranges[pos]
+            minimum_deficit = max(int(minimum) - current_count, 0)
+            remaining_capacity = max(int(maximum) - current_count, 0)
+            available_count = int(np.sum(candidate_positions == pos))
+            capacities[pos] = available_count
+            weights[pos] = max(minimum_deficit + remaining_capacity, 1)
+            quotas[pos] = min(quotas[pos], capacities[pos])
+
+        while sum(quotas.values()) < pool_size:
+            eligible = [
+                pos for pos in active_positions
+                if quotas[pos] < capacities[pos]
+            ]
+            if not eligible:
+                break
+            # Sequential proportional allocation avoids rounding drift and
+            # redistributes capacity from positions that are already full.
+            pos = max(
+                eligible,
+                key=lambda key: (
+                    weights[key] / float(quotas[key] + 1),
+                    weights[key],
+                    -active_positions.index(key),
+                ),
+            )
+            quotas[pos] += 1
+
+        return quotas
 
     @staticmethod
     def select_sequential_root_candidates(
@@ -1363,6 +1654,7 @@ class FootballSimulation:
         survival,
         player_positions,
         candidate_pool_size,
+        position_quotas=None,
     ):
         """Build a broad, position-diverse root set without evaluating every player."""
         candidate_indices = np.asarray(candidate_indices, dtype=np.int64)
@@ -1374,6 +1666,48 @@ class FootballSimulation:
             return candidate_indices, {
                 int(idx): ('all_legal',) for idx in candidate_indices
             }
+
+        if position_quotas:
+            candidate_positions = player_positions[candidate_indices]
+            chosen = []
+            reasons = {}
+            for pos in ('QB', 'RB', 'WR', 'TE'):
+                quota = int(position_quotas.get(pos, 0))
+                pos_locs = np.where(candidate_positions == pos)[0]
+                if quota <= 0 or len(pos_locs) == 0:
+                    continue
+                ordered_locs = pos_locs[np.lexsort((
+                    -immediate_values[pos_locs],
+                    survival[pos_locs],
+                    -policy_scores[pos_locs],
+                ))]
+                for loc in ordered_locs[:quota]:
+                    candidate_idx = int(candidate_indices[loc])
+                    chosen.append(candidate_idx)
+                    candidate_reasons = {'position_quota'}
+                    if loc in pos_locs[np.argsort(-policy_scores[pos_locs])[:2]]:
+                        candidate_reasons.add(f'top_{pos.lower()}')
+                    if loc in pos_locs[np.argsort(survival[pos_locs])[:2]]:
+                        candidate_reasons.add('low_survival')
+                    if loc in pos_locs[np.argsort(-immediate_values[pos_locs])[:2]]:
+                        candidate_reasons.add('top_immediate')
+                    reasons[candidate_idx] = tuple(sorted(candidate_reasons))
+
+            if len(chosen) < candidate_pool_size:
+                all_locs = np.lexsort((
+                    -immediate_values,
+                    survival,
+                    -policy_scores,
+                ))
+                for loc in all_locs:
+                    candidate_idx = int(candidate_indices[loc])
+                    if candidate_idx not in reasons:
+                        chosen.append(candidate_idx)
+                        reasons[candidate_idx] = ('redistributed_capacity',)
+                    if len(chosen) == candidate_pool_size:
+                        break
+
+            return np.asarray(chosen, dtype=np.int64), reasons
 
         reason_sets = {int(idx): set() for idx in candidate_indices}
         quota = max(4, candidate_pool_size // 3)
@@ -2937,6 +3271,8 @@ class FootballSimulation:
         survival_table=None,
         scarcity_weight=SEQUENTIAL_SCARCITY_WEIGHT,
         urgency_weight=SEQUENTIAL_URGENCY_WEIGHT,
+        player_teams=None,
+        player_ppg=None,
     ):
         """Complete one candidate-consistent draft room using ex-ante EV only."""
         selected_indices = list(initial_selected_indices)
@@ -2989,14 +3325,28 @@ class FootballSimulation:
                 selected_indices,
                 legal_candidates,
             )
+            if self.use_stack_bonus and player_teams is not None and player_ppg is not None:
+                stack_marginal_values = self.sequential_stack_marginal_utilities(
+                    selected_indices,
+                    legal_candidates,
+                    player_positions,
+                    player_teams,
+                    player_ppg,
+                    self.stack_bonus_pct,
+                    self.stack_pair_cap,
+                    self.stack_team_cap,
+                )
+                policy_immediate_values = immediate_values + stack_marginal_values
+            else:
+                policy_immediate_values = immediate_values
             next_pick = (
                 adjusted_picks[pick_idx + 1]
                 if pick_idx + 1 < len(adjusted_picks)
                 else None
             )
-            policy_scores, _, _, _ = self.sequential_policy_scores(
+            policy_scores, _, _, _, _ = self.sequential_policy_scores(
                 legal_candidates,
-                immediate_values,
+                policy_immediate_values,
                 player_positions,
                 adp_matrix,
                 adjusted_picks[pick_idx],
@@ -3122,15 +3472,10 @@ class FootballSimulation:
             }
             return results
 
-        expected_opponent_picks = int(adjusted_picks[0] - 1 - len(to_add))
-        actual_opponent_picks = len(to_drop_set)
-        if actual_opponent_picks != expected_opponent_picks:
-            raise ValueError(
-                "Sequential Preview requires a complete physical draft state "
-                "at the user's turn: "
-                f"{expected_opponent_picks} opponent picks should be marked, "
-                f"but {actual_opponent_picks} are marked."
-            )
+        draft_state_warning = self.sequential_draft_state_warning(
+            to_add,
+            to_drop_set,
+        )
 
         t0 = time.perf_counter()
         with self.temp_seed(seed):
@@ -3155,6 +3500,8 @@ class FootballSimulation:
 
         player_names = ppg_pred.player.to_numpy()
         player_positions = ppg_pred.pos.to_numpy()
+        player_teams = ppg_pred.team.fillna('').astype(str).str.strip().to_numpy()
+        player_ppg = ppg_pred[BASE_PRED_COL].to_numpy(dtype=np.float32)
         player_idx = {player: idx for idx, player in enumerate(player_names)}
         missing_selected = [player for player in to_add if player not in player_idx]
         if missing_selected:
@@ -3276,11 +3623,34 @@ class FootballSimulation:
             selected_indices,
             current_candidates,
         )
+        if self.use_stack_bonus:
+            stack_marginal_values = self.sequential_stack_marginal_utilities(
+                selected_indices,
+                current_candidates,
+                player_positions,
+                player_teams,
+                player_ppg,
+                self.stack_bonus_pct,
+                self.stack_pair_cap,
+                self.stack_team_cap,
+            )
+        else:
+            stack_marginal_values = np.zeros(
+                len(current_candidates),
+                dtype=np.float32,
+            )
+        stack_adjusted_immediate_values = immediate_values + stack_marginal_values
         next_pick = adjusted_picks[1] if len(adjusted_picks) > 1 else None
-        screen_scores, survival, scarcity_cliffs, urgency = (
+        (
+            screen_scores,
+            survival,
+            replacement_values,
+            draft_now_advantages,
+            urgency,
+        ) = (
             self.sequential_policy_scores(
                 current_candidates,
-                immediate_values,
+                stack_adjusted_immediate_values,
                 player_positions,
                 adp_matrix,
                 adjusted_picks[0],
@@ -3290,14 +3660,22 @@ class FootballSimulation:
                 survival_probabilities=survival_table[0],
             )
         )
+        root_position_quotas = self.sequential_root_position_quotas(
+            current_candidates,
+            player_positions,
+            selected_indices,
+            pos_ranges,
+            candidate_pool_size,
+        )
         root_candidates, inclusion_reasons = (
             self.select_sequential_root_candidates(
                 current_candidates,
-                immediate_values,
+                stack_adjusted_immediate_values,
                 screen_scores,
                 survival,
                 player_positions,
                 candidate_pool_size,
+                position_quotas=root_position_quotas,
             )
         )
         timings['root_screen'] += time.perf_counter() - t0
@@ -3313,6 +3691,7 @@ class FootballSimulation:
         t0 = time.perf_counter()
         for root_candidate_idx in root_candidates:
             room_values = []
+            room_stack_utilities = []
             completed_room_indices = []
             completed_rosters = []
             candidate_paths = []
@@ -3331,6 +3710,8 @@ class FootballSimulation:
                         survival_table=survival_table,
                         scarcity_weight=scarcity_weight,
                         urgency_weight=urgency_weight,
+                        player_teams=player_teams,
+                        player_ppg=player_ppg,
                     )
                 )
                 if not success:
@@ -3340,6 +3721,17 @@ class FootballSimulation:
                         evaluation_bank,
                         player_positions,
                         roster,
+                    )
+                )
+                room_stack_utilities.append(
+                    self.sequential_stack_roster_utility(
+                        roster,
+                        player_positions,
+                        player_teams,
+                        player_ppg,
+                        self.stack_bonus_pct if self.use_stack_bonus else 0.0,
+                        self.stack_pair_cap,
+                        self.stack_team_cap,
                     )
                 )
                 completed_room_indices.append(room_idx)
@@ -3360,11 +3752,25 @@ class FootballSimulation:
                 if room_values
                 else np.empty((0, evaluation_samples), dtype=np.float32)
             )
+            stack_utility_values = np.asarray(
+                room_stack_utilities,
+                dtype=np.float32,
+            )
+            average_stack_utility = (
+                float(stack_utility_values.mean())
+                if len(stack_utility_values)
+                else 0.0
+            )
+            current_pick_ev = (
+                float(value_matrix.mean()) if value_matrix.size else np.nan
+            )
             records.append({
                 'player': player_names[candidate_idx],
                 'pos': player_positions[candidate_idx],
-                'CurrentPickEV': (
-                    float(value_matrix.mean()) if value_matrix.size else np.nan
+                'CurrentPickEV': current_pick_ev,
+                'AverageStackUtility': average_stack_utility,
+                'StackAdjustedCurrentPickScore': (
+                    current_pick_ev + average_stack_utility
                 ),
                 'DraftRoomSamples': num_rooms,
                 'EvaluationSamples': int(evaluation_samples),
@@ -3372,9 +3778,16 @@ class FootballSimulation:
                 'CurrentPickEVSamples': int(value_matrix.size),
                 'ApproxSE': self.approximate_two_way_se(value_matrix),
                 'ImmediateValue': float(immediate_values[loc]),
+                'ImmediateStackUtility': float(stack_marginal_values[loc]),
+                'StackAdjustedImmediateValue': float(
+                    stack_adjusted_immediate_values[loc]
+                ),
                 'ScreenScore': float(screen_scores[loc]),
                 'SurviveNext': float(survival[loc]),
-                'ScarcityCliff': float(scarcity_cliffs[loc]),
+                'ExpectedReplacementValue': float(replacement_values[loc]),
+                'DraftNowAdvantage': float(draft_now_advantages[loc]),
+                # Retain the legacy diagnostic name for existing research CSVs.
+                'ScarcityCliff': float(draft_now_advantages[loc]),
                 'UrgencyValue': float(urgency[loc]),
                 'InclusionReasons': ','.join(inclusion_reasons[candidate_idx]),
             })
@@ -3382,6 +3795,7 @@ class FootballSimulation:
             candidate_value_matrices[player_names[candidate_idx]] = {
                 'rooms': np.asarray(completed_room_indices, dtype=np.int64),
                 'values': value_matrix,
+                'stack_utilities': stack_utility_values,
             }
             candidate_rosters[player_names[candidate_idx]] = {
                 'rooms': np.asarray(completed_room_indices, dtype=np.int64),
@@ -3390,6 +3804,7 @@ class FootballSimulation:
                     if completed_rosters
                     else np.empty((0, self.num_rounds), dtype=np.int64)
                 ),
+                'stack_utilities': stack_utility_values,
             }
         timings['candidate_rollouts'] += time.perf_counter() - t0
 
@@ -3428,8 +3843,12 @@ class FootballSimulation:
                     self.approximate_two_way_se(paired_differences)
                 )
             results['PairedSEVsBest'] = paired_se
+            adjusted_best_score = results.StackAdjustedCurrentPickScore.max()
+            results['StackAdjustedCurrentPickScoreVsBest'] = (
+                results.StackAdjustedCurrentPickScore - adjusted_best_score
+            )
             results = results.sort_values(
-                ['CurrentPickEV', 'ScreenScore'],
+                ['StackAdjustedCurrentPickScore', 'CurrentPickEV', 'ScreenScore'],
                 ascending=False,
             ).reset_index(drop=True)
 
@@ -3450,6 +3869,7 @@ class FootballSimulation:
                 value_matrices[player] = {
                     'rooms': roster_data['rooms'],
                     'values': values,
+                    'stack_utilities': roster_data['stack_utilities'],
                 }
             return value_matrices
 
@@ -3458,14 +3878,28 @@ class FootballSimulation:
             gap_col = f'{prefix}EVVsBest'
             se_col = f'{prefix}PairedSEVsBest'
             sample_col = f'{prefix}Samples'
+            adjusted_col = f'StackAdjusted{prefix}Score'
+            adjusted_gap_col = f'{adjusted_col}VsBest'
+            adjusted_se_col = f'{adjusted_col}PairedSEVsBest'
             results[ev_col] = np.nan
             results[gap_col] = np.nan
             results[se_col] = np.nan
             results[sample_col] = 0
+            results[adjusted_col] = np.nan
+            results[adjusted_gap_col] = np.nan
+            results[adjusted_se_col] = np.nan
             for player, matrix in value_matrices.items():
+                adjusted_values = (
+                    matrix['values']
+                    + matrix['stack_utilities'].reshape(-1, 1)
+                )
+                matrix['adjusted_values'] = adjusted_values
                 player_mask = results.player == player
                 results.loc[player_mask, ev_col] = float(
                     matrix['values'].mean()
+                )
+                results.loc[player_mask, adjusted_col] = float(
+                    adjusted_values.mean()
                 )
                 results.loc[player_mask, sample_col] = int(
                     matrix['values'].size
@@ -3473,33 +3907,63 @@ class FootballSimulation:
             scored = results[results[ev_col].notna()]
             if len(scored) == 0:
                 return None
-            top_player = str(
+            raw_top_player = str(
                 scored.loc[scored[ev_col].idxmax(), 'player']
             )
+            adjusted_top_player = str(
+                scored.loc[scored[adjusted_col].idxmax(), 'player']
+            )
             best_ev = float(scored[ev_col].max())
+            best_adjusted_score = float(scored[adjusted_col].max())
             results.loc[results[ev_col].notna(), gap_col] = (
                 results.loc[results[ev_col].notna(), ev_col] - best_ev
             )
-            best_matrix = value_matrices[top_player]
+            results.loc[results[adjusted_col].notna(), adjusted_gap_col] = (
+                results.loc[results[adjusted_col].notna(), adjusted_col]
+                - best_adjusted_score
+            )
+            raw_best_matrix = value_matrices[raw_top_player]
+            adjusted_best_matrix = value_matrices[adjusted_top_player]
             for player, matrix in value_matrices.items():
                 common_rooms = np.intersect1d(
                     matrix['rooms'],
-                    best_matrix['rooms'],
+                    raw_best_matrix['rooms'],
                 )
                 matrix_locs = np.searchsorted(matrix['rooms'], common_rooms)
                 best_locs = np.searchsorted(
-                    best_matrix['rooms'],
+                    raw_best_matrix['rooms'],
                     common_rooms,
                 )
                 paired_differences = (
                     matrix['values'][matrix_locs]
-                    - best_matrix['values'][best_locs]
+                    - raw_best_matrix['values'][best_locs]
                 )
                 results.loc[
                     results.player == player,
                     se_col,
                 ] = self.approximate_two_way_se(paired_differences)
-            return top_player
+
+                adjusted_common_rooms = np.intersect1d(
+                    matrix['rooms'],
+                    adjusted_best_matrix['rooms'],
+                )
+                adjusted_matrix_locs = np.searchsorted(
+                    matrix['rooms'],
+                    adjusted_common_rooms,
+                )
+                adjusted_best_locs = np.searchsorted(
+                    adjusted_best_matrix['rooms'],
+                    adjusted_common_rooms,
+                )
+                adjusted_differences = (
+                    matrix['adjusted_values'][adjusted_matrix_locs]
+                    - adjusted_best_matrix['adjusted_values'][adjusted_best_locs]
+                )
+                results.loc[
+                    results.player == player,
+                    adjusted_se_col,
+                ] = self.approximate_two_way_se(adjusted_differences)
+            return adjusted_top_player
 
         decision_candidates = []
         decision_value_matrices = {}
@@ -3540,6 +4004,7 @@ class FootballSimulation:
             results = results.sort_values(
                 [
                     'DecisionCandidate',
+                    'StackAdjustedDecisionScore',
                     'DecisionEV',
                     'CurrentPickEV',
                     'ScreenScore',
@@ -3599,6 +4064,16 @@ class FootballSimulation:
             'candidate_pool_size': int(candidate_pool_size),
             'scarcity_weight': float(scarcity_weight),
             'urgency_weight': float(urgency_weight),
+            'stack_bonus_enabled': bool(self.use_stack_bonus),
+            'stack_bonus_pct': float(
+                self.stack_bonus_pct if self.use_stack_bonus else 0.0
+            ),
+            'stack_pair_cap': float(
+                self.stack_pair_cap if self.use_stack_bonus else 0.0
+            ),
+            'stack_team_cap': float(
+                self.stack_team_cap if self.use_stack_bonus else 0.0
+            ),
             'seed': int(seed),
             'evaluation_seed': int(evaluation_seed),
             'decision_seed': int(decision_seed),
@@ -3609,6 +4084,7 @@ class FootballSimulation:
         results.attrs['policy_paths'] = policy_paths
         results.attrs['candidate_value_matrices'] = candidate_value_matrices
         results.attrs['decision_candidates'] = decision_candidates
+        results.attrs['root_position_quotas'] = root_position_quotas
         results.attrs['decision_value_matrices'] = decision_value_matrices
         results.attrs['decision_top_player'] = decision_top_player
         results.attrs['audit_value_matrices'] = audit_value_matrices
@@ -3621,6 +4097,9 @@ class FootballSimulation:
             'disjoint': True,
         }
         results.attrs['draft_room_adp_columns'] = adp_cols.tolist()
+        results.attrs['warnings'] = (
+            [draft_state_warning] if draft_state_warning else []
+        )
         return results
 
 
@@ -4028,6 +4507,29 @@ class FootballSimulation:
 
         return results
 
+    def sequential_draft_state_warning(self, to_add, to_drop):
+        """Describe a non-blocking mismatch in marked opponent picks."""
+        selected_count = len(set(to_add))
+        adjusted_picks = self.calculate_adjusted_picks(selected_count)
+        if len(adjusted_picks) == 0:
+            return None
+
+        expected_opponent_picks = int(
+            adjusted_picks[0] - 1 - selected_count
+        )
+        actual_opponent_picks = len(set(to_drop))
+        if actual_opponent_picks == expected_opponent_picks:
+            return None
+
+        return (
+            "Draft-state count mismatch: "
+            f"{expected_opponent_picks} opponent picks should be marked by your "
+            f"next turn, but {actual_opponent_picks} are marked. Sequential "
+            "Preview will continue with the players currently marked Other Team. "
+            "Any unmarked drafted player can still appear in the recommendations; "
+            "mark that player Other Team and rerun."
+        )
+
     def calculate_adjusted_picks(self, num_already_selected):
         """Calculate adjusted picks by removing the first N picks if N players are already selected"""
         if num_already_selected >= len(self.my_picks):
@@ -4035,13 +4537,24 @@ class FootballSimulation:
         return self.my_picks[num_already_selected:]
 
     def calculate_snake_picks(self):
-        """Calculate the pick numbers for snake draft based on position and rounds"""
+        """Calculate league-aware absolute pick numbers for the user's slot."""
         picks = []
+        uses_third_round_reversal = (
+            str(self.league).strip().lower() == 'nffc'
+        )
         for round_num in range(1, self.num_rounds + 1):
-            if round_num % 2 == 1:  # Odd rounds: normal order
-                pick = (round_num - 1) * self.num_teams + self.my_pick_position
-            else:  # Even rounds: reverse order
+            if uses_third_round_reversal:
+                reverse_round = (
+                    round_num == 2
+                    or (round_num >= 3 and round_num % 2 == 1)
+                )
+            else:
+                reverse_round = round_num % 2 == 0
+
+            if reverse_round:
                 pick = round_num * self.num_teams - self.my_pick_position + 1
+            else:
+                pick = (round_num - 1) * self.num_teams + self.my_pick_position
             picks.append(pick)
         return picks
 
