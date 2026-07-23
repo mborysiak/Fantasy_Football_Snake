@@ -22,8 +22,9 @@ import cvxopt
 cvxopt.glpk.options['msg_lev'] = 'GLP_MSG_OFF'
 
 BASE_PRED_COL = 'base_pred_fp_per_game'
-TEMPLATE_RESID_BLEND = 0.30
-MODEL_RESID_BLEND = np.sqrt(1 - TEMPLATE_RESID_BLEND**2)
+TEMPLATE_RESID_METHOD_VERSION = 'full_scaled_v1'
+TEMPLATE_RESID_BLEND = 1.00
+LEGACY_TEMPLATE_RESID_BLEND = 0.30
 MIN_RESID_SD = 1e-6
 X_PICK_BUFFER = 6
 SEQUENTIAL_POLICY_HORIZON = 16
@@ -45,7 +46,7 @@ class FootballSimulation:
     def __init__(self, conn, set_year, pos_require_start, num_teams, num_rounds, my_pick_position,
                  pred_vers='final_ensemble', league='dk', use_ownership=0, position_ranges=None,
                  use_stack_bonus=False, stack_bonus_pct=0.25, stack_pair_cap=12.0,
-                 stack_team_cap=18.0):
+                 stack_team_cap=18.0, template_resid_blend=TEMPLATE_RESID_BLEND):
 
         self.set_year = set_year
         self.pos_require_start = pos_require_start
@@ -57,6 +58,17 @@ class FootballSimulation:
         self.stack_bonus_pct = float(stack_bonus_pct or 0)
         self.stack_pair_cap = float(stack_pair_cap or 0)
         self.stack_team_cap = float(stack_team_cap or 0)
+        self.template_resid_blend = float(template_resid_blend)
+        if not 0 <= self.template_resid_blend <= 1:
+            raise ValueError("template_resid_blend must be between 0 and 1.")
+        self.model_resid_blend = float(
+            np.sqrt(max(1 - self.template_resid_blend**2, 0))
+        )
+        self.template_resid_method_version = (
+            TEMPLATE_RESID_METHOD_VERSION
+            if self.template_resid_blend == 1.0
+            else f"scaled_blend_{self.template_resid_blend:.2f}"
+        )
         self.conn = conn
         self.num_teams = num_teams
         self.num_rounds = num_rounds
@@ -533,8 +545,8 @@ class FootballSimulation:
                 )
             blended_ppg = (
                 base_ppg[idx]
-                + (MODEL_RESID_BLEND * model_resid)
-                + (TEMPLATE_RESID_BLEND * scaled_template_resid)
+                + (self.model_resid_blend * model_resid)
+                + (self.template_resid_blend * scaled_template_resid)
             )
             weekly_scores[idx] = max(blended_ppg, 0) * profiles[template_idx, :num_weeks]
 
@@ -683,8 +695,8 @@ class FootballSimulation:
         model_resids = sampled_ppg - base_ppg[None, :]
         blended_ppg = (
             base_ppg[None, :]
-            + (MODEL_RESID_BLEND * model_resids)
-            + (TEMPLATE_RESID_BLEND * scaled_template_resids)
+            + (self.model_resid_blend * model_resids)
+            + (self.template_resid_blend * scaled_template_resids)
         )
         blended_ppg = np.maximum(blended_ppg, 0).astype(np.float32)
 
@@ -2527,6 +2539,7 @@ class FootballSimulation:
             'stack_bonus_pct': self.stack_bonus_pct,
             'stack_pair_cap': self.stack_pair_cap,
             'stack_team_cap': self.stack_team_cap,
+            'template_resid_blend': self.template_resid_blend,
         }
 
     @staticmethod
@@ -2997,6 +3010,8 @@ class FootballSimulation:
             results.attrs['timings'] = {
                 'mode': 'best_ball_ilp',
                 'weekly_score_mode': weekly_score_mode,
+                'template_resid_method_version': self.template_resid_method_version,
+                'template_resid_blend': self.template_resid_blend,
                 'requested_iters': num_iters,
                 'success_trials': 0,
                 'failed_exception_count': 0,
@@ -3137,6 +3152,8 @@ class FootballSimulation:
         results.attrs['timings'] = {
             'mode': 'best_ball_ilp',
             'weekly_score_mode': weekly_score_mode,
+            'template_resid_method_version': self.template_resid_method_version,
+            'template_resid_blend': self.template_resid_blend,
             'requested_iters': int(num_iters),
             'success_trials': int(success_trials),
             'failed_exception_count': int(failed_exception_count),
@@ -3468,6 +3485,8 @@ class FootballSimulation:
                 'mode': 'best_ball_policy_sequential',
                 'release_stage': 'preview',
                 'horizon_label': 'sequential_template_16',
+                'template_resid_method_version': self.template_resid_method_version,
+                'template_resid_blend': self.template_resid_blend,
                 'sections': {'total': time.perf_counter() - total_start},
             }
             return results
@@ -4049,6 +4068,8 @@ class FootballSimulation:
             'mode': 'best_ball_policy_sequential',
             'release_stage': 'preview',
             'horizon_label': 'sequential_template_16',
+            'template_resid_method_version': self.template_resid_method_version,
+            'template_resid_blend': self.template_resid_blend,
             'requested_iters': int(num_rooms),
             'success_trials': int(
                 results.PolicyCompletedRooms.min() if len(results) else 0

@@ -1,0 +1,13 @@
+{
+  "default_template_resid_blend": 1.0,
+  "default_model_resid_blend": 0.0,
+  "method_version": "full_scaled_v1",
+  "legacy_template_resid_blend": 0.3,
+  "legacy_model_resid_blend": 0.9539392014169457,
+  "full_ignores_independent_model_draw": true,
+  "legacy_fallback_uses_independent_model_draw": true,
+  "worker_config_round_trip": true,
+  "invalid_blend_rejected": true,
+  "players_checked": 48,
+  "scenarios_checked": 128
+}

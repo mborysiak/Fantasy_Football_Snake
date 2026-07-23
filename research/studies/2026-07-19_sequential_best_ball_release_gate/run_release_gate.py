@@ -46,6 +46,7 @@ def make_sim(conn, args, league, pick_slot):
         pred_vers='final_ensemble',
         league=league,
         position_ranges=POSITION_RANGES,
+        template_resid_blend=args.template_resid_blend,
     )
 
 
@@ -283,6 +284,7 @@ def summarize(records, args):
             'decision_samples': args.decision_samples,
             'decision_candidates': args.decision_candidates,
             'audit_samples': args.audit_samples,
+            'template_resid_blend': args.template_resid_blend,
             'regret_threshold': args.regret_threshold,
         },
         'state_counts': {
@@ -323,6 +325,7 @@ def main():
     parser.add_argument('--audit-samples', type=int, default=128)
     parser.add_argument('--primary-pool', type=int, default=24)
     parser.add_argument('--wide-pool', type=int, default=32)
+    parser.add_argument('--template-resid-blend', type=float, default=1.0)
     parser.add_argument('--regret-threshold', type=float, default=10.0)
     parser.add_argument(
         '--output-dir',
@@ -444,6 +447,7 @@ def main():
                                 'seed': seed,
                                 'completed_picks': completed_picks,
                                 'current_round': completed_picks + 1,
+                                'template_resid_blend': args.template_resid_blend,
                                 'status': 'complete',
                                 'message': '',
                                 'to_add_count': len(to_add),
@@ -483,6 +487,7 @@ def main():
                                 'seed': seed,
                                 'completed_picks': completed_picks,
                                 'current_round': completed_picks + 1,
+                                'template_resid_blend': args.template_resid_blend,
                                 'status': 'error',
                                 'message': f"{type(exc).__name__}: {exc}",
                             })

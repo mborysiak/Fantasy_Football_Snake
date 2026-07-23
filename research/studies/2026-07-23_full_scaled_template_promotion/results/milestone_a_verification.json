@@ -1,0 +1,41 @@
+{
+  "status": "pass",
+  "legacy_source_hashes": {
+    "sample_template_weekly_scores": "6cb29a990899ff0ddf2e17b71bc16474bf5a14f10f392e5ef45e51588beb08fb",
+    "simulate_opponent_draft_availability": "51f875b4dc9778c72b7fa8a9f9e6599949db9afa891d3b43664ccd4bc370c0eb",
+    "run_best_ball_ilp_iteration_chunk": "fed5ca53297fc044c7864b6aeb26205628107aab91a70bd23dc0997d05bc2a19",
+    "run_sim_best_ball_ilp": "f95361163895acbfa2a4ca7959395599f0746bb0d03b66e98b41d37bdfacbd3a"
+  },
+  "checks": [
+    "legacy_methods_frozen",
+    "tensor_scoring_parity",
+    "vectorized_legality_parity",
+    "all_policy_bank_columns_disjoint",
+    "empirical_replacement_value_scoring",
+    "roster_need_root_position_quotas",
+    "symmetric_sequential_stack_utility",
+    "candidate_consistent_availability",
+    "no_duplicate_or_cross-drafted_players",
+    "legal_final_construction",
+    "evaluation_seed_path_invariance",
+    "decision_seed_path_invariance",
+    "audit_seed_recommendation_invariance",
+    "incomplete_physical_state_warned",
+    "real_database_smoke"
+  ],
+  "real_database_smoke": {
+    "candidate_count": 4,
+    "completed_rooms_per_candidate": [
+      2,
+      2,
+      2,
+      2
+    ],
+    "all_policy_bank_columns_disjoint": true,
+    "evaluation_seed_path_invariance": true,
+    "decision_seed_path_invariance": true,
+    "audit_seed_recommendation_invariance": true,
+    "incomplete_physical_state_warned": true,
+    "total_seconds": 0.39150240000000014
+  }
+}

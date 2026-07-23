@@ -1,0 +1,30 @@
+{
+  "league": "dk",
+  "origin_start": 2017,
+  "recent_start": 2020,
+  "max_season": 2025,
+  "rooms_per_origin": 12,
+  "teams_per_room": 12,
+  "roster_size": 20,
+  "scenarios": 384,
+  "target_players": 2696,
+  "rosters": 1296,
+  "prediction_rows": 11664,
+  "methods": [
+    "model_residual_profile",
+    "current_030_scaled",
+    "heavier_050_scaled",
+    "heavier_070_scaled",
+    "heavier_050_raw",
+    "heavier_070_raw",
+    "heavier_085_raw",
+    "template_100_scaled",
+    "template_100_raw"
+  ],
+  "missing_week_group_cutoffs": [
+    74.0,
+    86.0
+  ],
+  "future_donor_rows": 0,
+  "runtime_seconds": 98.02636029999849
+}

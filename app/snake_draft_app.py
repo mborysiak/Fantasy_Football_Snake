@@ -937,9 +937,10 @@ def sidebar_controls(prediction_options):
             options=weekly_score_labels,
             index=weekly_score_index,
             help=(
-                'Weekly templates draw a season PPG from residuals, then apply a sampled '
-                'historical 16-week best-ball profile, weighted by template similarity, '
-                'with a centered, variance-preserving 0.30 template residual blend. '
+                'Weekly templates draw one matched historical season, scale its centered '
+                'active-PPG residual to the current model residual spread, then apply that '
+                'same season’s 16-week best-ball profile. The default does not mix in an '
+                'independent model residual, preserving the donor’s joint outcome path. '
                 'Residual weeks preserves the prior independent weekly sampling behavior.'
             ),
         )

@@ -1,6 +1,6 @@
 # Session Notes Landing
 
-Last updated: 2026-07-19
+Last updated: 2026-07-23
 
 ## Project Objective
 
@@ -24,16 +24,20 @@ outcomes, and solves roster recommendations with the ILP optimizer.
   variance-preserving template residual blending, broader x-pruning buffers,
   Streamlit cache support for weekly templates, ADP audit support, and stack
   bonus controls.
+- The copied beta/DK pools now use source-owned adaptive absolute-distance
+  kernels with weak-match shrinkage and a 5% donor cap. Ordinary zero-active
+  seasons remain downside donors; Bell's 2018 holdout is the only declared
+  audit-only exclusion. Snake's existing residual blend is otherwise unchanged.
 
 ## Recent Durable Decisions
 
 - Sample weekly templates with `template_sample_prob` when available, preserving
   all selected templates while making closer matches more prevalent.
-- Blend season outcomes with both model and template residual context: model
-  residuals preserve calibrated distribution shape, while centered template
-  residuals add player-type context.
-- Keep template residual strength at `0.30` unless a follow-up calibration study
-  supports changing it.
+- Production weekly templates use `full_scaled_v1`: one sampled donor supplies
+  both the centered/scaled active-PPG residual and the 16-week availability and
+  scoring path. The independent model-residual draw has zero production weight.
+- Keep `template_resid_blend=0.30` callable as the legacy rollback and matched
+  validation comparator.
 - Use a wider x-pruning max-side buffer so sampled ADP rank inflation does not
   hide materially available fallers from the ILP.
 - Cache weekly template profile reads by DB modified time to improve repeated

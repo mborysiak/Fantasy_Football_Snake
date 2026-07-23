@@ -1,0 +1,60 @@
+{
+  "configuration": {
+    "leagues": [
+      "dk"
+    ],
+    "slots": [
+      1,
+      6,
+      12
+    ],
+    "seeds": [
+      17
+    ],
+    "completed_pick_depths": [
+      0,
+      7,
+      14
+    ],
+    "rooms": 16,
+    "construction_samples": 16,
+    "evaluation_samples": 64,
+    "decision_samples": 128,
+    "decision_candidates": 24,
+    "audit_samples": 128,
+    "template_resid_blend": 1.0,
+    "regret_threshold": 10.0
+  },
+  "state_counts": {
+    "configured": 9,
+    "completed": 9,
+    "unsupported": 0,
+    "errors": 0
+  },
+  "gates": {
+    "all_formats_supported": true,
+    "no_execution_errors": true,
+    "zero_high_regret_shortlist_omissions": true,
+    "decision_audit_stable": false,
+    "all_rooms_complete": true,
+    "runtime_p50_no_slower_than_legacy": false
+  },
+  "promotion_ready": false,
+  "by_league": {
+    "dk": {
+      "configured_states": 9,
+      "completed_states": 9,
+      "unsupported_states": 0,
+      "error_states": 0,
+      "max_shortlist_omission_regret": 0.0,
+      "max_decision_audit_regret": 10.819091796875,
+      "audit_exact_agreement_rate": 0.5555555555555556,
+      "completion_rate": 1.0,
+      "policy_runtime_p50": 4.772069099999996,
+      "legacy_runtime_p50": 2.3181337999999982,
+      "promotion_ready": false
+    }
+  },
+  "unsupported_reasons": [],
+  "error_messages": []
+}

@@ -1,6 +1,6 @@
 # Best-Ball ILP Validation Runbook
 
-Last updated: 2026-07-20
+Last updated: 2026-07-23
 
 ## Core Files
 
@@ -40,13 +40,26 @@ When changing template or residual logic, check:
 
 - `template_sample_prob` is used when available
 - sampled templates span the full pool but favor better matches
-- template residuals are centered by pool before blending
-- template residual strength remains documented in `Agent_Notes/DECISION_LOG.md`
+- no donor probability exceeds 5%, pool probabilities sum to one, and effective
+  sample sizes remain broad
+- declared structural exclusions have zero pool uses while ordinary zero-active
+  downside remains represented
+- template residuals are centered by pool and scaled to the current player's
+  model-residual standard deviation
+- production `full_scaled_v1` does not change when the unused independent
+  model-residual sample column changes
+- `template_resid_blend=0.30` still reproduces the legacy blend for rollback
+  and matched validation
+- the production template-residual method and fallback remain documented in
+  `Agent_Notes/DECISION_LOG.md`
 - x-pruning buffer does not hide materially available fallers
 - app text/help descriptions match current residual and template-sampling logic
 - weekly template profile reads still use the DB-mtime cache path
 - league-aware template joins do not duplicate template rows when multiple
   `Best_Ball_Weekly_Templates.league` slices exist
+- uncapped `year_exp` survives the database copy, values above ten remain in
+  player/template rows, and the app uses the persisted pool mapping without
+  re-capping tenure
 - DK pick schedules remain straight serpentine
 - NFFC 12-team pick schedules use 3RR: slot 12 starts `12, 13, 25, 48` and
   slot 1 starts `1, 24, 36, 37`

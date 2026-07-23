@@ -15,6 +15,10 @@ dated, reviewable bundles.
 
 ## Current Study Types
 - Template residual blend calibration.
+- Rolling best-ball roster calibration of current, heavier, and full joint
+  template residual use, including missed-week and zero-active exposure.
+- Full-scaled template production promotion checks, including the legacy 0.30
+  rollback and frozen sequential-state comparisons.
 - X-pruning availability leakage checks.
 - ADP/name join audits.
 - ILP runtime/performance checks.

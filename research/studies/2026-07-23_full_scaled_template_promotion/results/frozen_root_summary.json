@@ -1,0 +1,11 @@
+{
+  "states": 9,
+  "all_rooms_complete": true,
+  "top_exact_agreement_rate": 0.2222222222222222,
+  "mean_top_five_overlap": 3.4444444444444446,
+  "mean_candidate_jaccard": 0.7967239741952385,
+  "mean_recommendation_rank_spearman": 0.8365718864574699,
+  "mean_decision_ev_spearman": 0.8361611482828232,
+  "legacy_runtime_p50": 8.064210500000002,
+  "full_scaled_runtime_p50": 8.069119300000004
+}

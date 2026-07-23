@@ -1,6 +1,6 @@
 # Simulation SQLite App Contract
 
-Last updated: 2026-07-20
+Last updated: 2026-07-23
 
 ## Owner
 
@@ -54,6 +54,12 @@ https://nfc.shgn.com/rules/2680.
 
 Used for current-player projection and template-pool context.
 
+`year_exp` is the source builder's uncapped template-matching tenure.
+`source_year_exp` preserves the potentially capped compiled-model value, while
+`year_exp_source` and `year_exp_uncapped_delta` make the reconstruction
+auditable. Runtime template matching must use the persisted pool mapping and
+must not re-cap `year_exp`.
+
 Expected columns include:
 - `player`, `pos`, `team`, `year`, `version`, `dataset`
 - `pred_fp_per_game`
@@ -75,12 +81,18 @@ Expected columns include:
 - `template_sample_prob`
 
 The app should sample with `template_sample_prob` when the column exists.
-The intended behavior is to use all selected templates while giving closer
-matches higher prevalence.
+The source builder now uses a position-specific absolute-distance kernel,
+shrinks toward uniform when no local donor is close, and caps one donor at 5%.
+The intended behavior is to use all selected templates while giving genuinely
+closer matches higher prevalence without allowing one season to dominate.
 
 ### `Best_Ball_Weekly_Templates`
 
 Used to turn sampled season outcomes into week-level scores.
+
+Historical `year_exp` and `year_exp_bucket` are uncapped. The corresponding
+`year_exp_scaled` distance feature equals `year_exp / 10` without an upper
+clip, so veteran seasons above year ten remain distinguishable.
 
 Expected columns include:
 - `league`
@@ -89,6 +101,7 @@ Expected columns include:
 - `player`, `pos`, `season`
 - `active_games`, `played_games`, `active_ppg`, `season_points`, `profile_total`
 - `active_ppg_resid`
+- `template_eligible`, `template_exclusion_reason`
 - `week_1` through `week_16`
 - `managed_week_1` through `managed_week_16`
 - `played_week_1` through `played_week_16`
@@ -104,6 +117,12 @@ The `managed_week_*` fields retain those short-QB score profiles for the auction
 app. Snake must continue selecting only columns whose names begin exactly with
 `week_`, so neither `managed_week_*` nor `played_week_*` changes best-ball
 scoring.
+
+`template_eligible = 0` preserves a structurally non-transferable outcome for
+audit while preventing pool use. Le'Veon Bell's 2018 contract holdout is the
+current declared exclusion. Ordinary zero-active seasons remain eligible as
+real downside outcomes. Runtime sampling follows the already-published pools;
+it must not independently filter templates.
 
 ### `Best_Ball_ADP_Audit`
 
@@ -130,11 +149,15 @@ or duplicated selections.
 - Do not reinterpret `played_week_*` as score multipliers. A value of `1`
   means the source weekly table contained a qualifying player-week row, not
   that the player necessarily had comprehensive snap-count coverage.
-- Center and scale template residuals in app sampling before blending them with
-  model residuals.
-- Keep the model residual draw as the calibrated season-distribution anchor.
-- Use template residuals as contextual dependence with the sampled weekly
-  profile, not as an uncentered mean shift.
+- Center each sampled donor's active-PPG residual within its published pool and
+  scale it to the current player's model-residual standard deviation.
+- The production `full_scaled_v1` path uses that scaled donor residual without
+  adding an independent model-residual draw, then applies the same donor's
+  `week_1` through `week_16` path. This keeps performance magnitude and weekly
+  availability as one matched historical outcome.
+- Keep `template_resid_blend=0.30` callable as a legacy rollback and validation
+  comparator. Do not expose it as the production default.
+- Do not use an uncentered template residual as a mean shift.
 - Keep app logic tolerant of older DBs when practical, but update this contract
   when new columns become required.
 - Preserve enough aligned projection/ADP rows for every supported sequential

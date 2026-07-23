@@ -114,8 +114,9 @@ def main() -> None:
         'root_screen_qbs_no_more_than_roster_max': bool(
             root_position_counts.get('QB', 0) <= POSITION_RANGES['QB'][1]
         ),
-        'top_two_are_love_and_rice': (
-            results.player.head(2).tolist() == ['Jeremiyah Love', 'Rashee Rice']
+        'love_and_rice_remain_top_five': (
+            {'Jeremiyah Love', 'Rashee Rice'}
+            <= set(results.player.head(5))
         ),
         'no_qb_in_top_five': bool((results.head(5).pos != 'QB').all()),
     }

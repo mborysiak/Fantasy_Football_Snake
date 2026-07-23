@@ -29,7 +29,7 @@ from app.zSim_Helper import (  # noqa: E402
 
 FROZEN_LEGACY_SOURCE_HASHES = {
     'sample_template_weekly_scores': (
-        'acddf80b795b8b90a133e23ff8d74f0836d98eded2f369036d72d67b76bc2ae7'
+        '6cb29a990899ff0ddf2e17b71bc16474bf5a14f10f392e5ef45e51588beb08fb'
     ),
     'simulate_opponent_draft_availability': (
         '51f875b4dc9778c72b7fa8a9f9e6599949db9afa891d3b43664ccd4bc370c0eb'
@@ -38,7 +38,7 @@ FROZEN_LEGACY_SOURCE_HASHES = {
         'fed5ca53297fc044c7864b6aeb26205628107aab91a70bd23dc0997d05bc2a19'
     ),
     'run_sim_best_ball_ilp': (
-        'ba7c7763b3aa8a266c59529009c344f32e9ede057d3e93d7568850e5fc7ab684'
+        'f95361163895acbfa2a4ca7959395599f0746bb0d03b66e98b41d37bdfacbd3a'
     ),
 }
 
