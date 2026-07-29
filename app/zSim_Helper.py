@@ -22,7 +22,9 @@ import cvxopt
 cvxopt.glpk.options['msg_lev'] = 'GLP_MSG_OFF'
 
 BASE_PRED_COL = 'base_pred_fp_per_game'
-TEMPLATE_RESID_METHOD_VERSION = 'full_scaled_v1'
+PREDICTION_HORIZON_COL = '_prediction_horizon'
+TEMPLATE_RESID_METHOD_VERSION = 'joint_centered_template_v2_v1'
+LEGACY_TEMPLATE_RESID_METHOD_VERSION = 'full_scaled_v1'
 TEMPLATE_RESID_BLEND = 1.00
 LEGACY_TEMPLATE_RESID_BLEND = 0.30
 MIN_RESID_SD = 1e-6
@@ -65,10 +67,11 @@ class FootballSimulation:
             np.sqrt(max(1 - self.template_resid_blend**2, 0))
         )
         self.template_resid_method_version = (
-            TEMPLATE_RESID_METHOD_VERSION
+            LEGACY_TEMPLATE_RESID_METHOD_VERSION
             if self.template_resid_blend == 1.0
             else f"scaled_blend_{self.template_resid_blend:.2f}"
         )
+        self.uses_v2_joint_template = False
         self.conn = conn
         self.num_teams = num_teams
         self.num_rounds = num_rounds
@@ -90,7 +93,34 @@ class FootballSimulation:
         self.player_data = self.join_adp(player_data)
 
     def get_model_predictions(self):
-        df = pd.read_sql_query(f'''SELECT player, 
+        projection_columns = {
+            row[1]
+            for row in self.conn.execute(
+                "PRAGMA table_info(Final_Predictions_Resid)"
+            ).fetchall()
+        }
+        v2_columns = [
+            'player_key',
+            'pred_appear_current',
+            'pred_appear_ny',
+            'current_projection_model_version',
+            'next_projection_model_version',
+            'production_handoff_version',
+            'current_uncertainty_source',
+            'independent_current_residual_draw_allowed',
+            'next_uncertainty_source',
+            'v2_scoring_hash',
+        ]
+        v2_select = ',\n'.join(
+            (
+                column
+                if column in projection_columns
+                else f"NULL AS {column}"
+            )
+            for column in v2_columns
+        )
+        df = pd.read_sql_query(f'''SELECT {v2_select},
+                                          player,
                                           pos, 
                                           pred_fp_per_game, 
                                           pred_fp_per_game_ny,
@@ -118,6 +148,81 @@ class FootballSimulation:
                 f"No Final_Predictions_Resid rows found for "
                 f"year={self.set_year}, dataset={self.pred_vers}, version={self.league}."
             )
+        is_v2 = df.production_handoff_version.notna()
+        if is_v2.any():
+            if not is_v2.all():
+                raise ValueError(
+                    'Cannot mix V2 and legacy projection rows in one Snake context.'
+                )
+            required = [
+                'player_key',
+                'pred_fp_per_game',
+                'pred_fp_per_game_ny',
+                'pred_appear_current',
+                'pred_appear_ny',
+                'pred_resid_5_ny',
+                'pred_resid_10_ny',
+                'pred_resid_25_ny',
+                'pred_resid_75_ny',
+                'pred_resid_90_ny',
+                'pred_resid_95_ny',
+                'current_projection_model_version',
+                'next_projection_model_version',
+                'production_handoff_version',
+                'current_uncertainty_source',
+                'independent_current_residual_draw_allowed',
+                'next_uncertainty_source',
+                'v2_scoring_hash',
+            ]
+            if df[required].isna().any().any():
+                raise ValueError('V2 production projection handoff is incomplete.')
+            if df.player_key.duplicated().any():
+                raise ValueError('V2 production projections contain duplicate player keys.')
+            if not (
+                df.pred_appear_current.between(0, 1).all()
+                and df.pred_appear_ny.between(0, 1).all()
+            ):
+                raise ValueError(
+                    'V2 appearance probabilities must be in [0, 1].'
+                )
+            if not df.current_uncertainty_source.eq(
+                'joint_weekly_template_only'
+            ).all():
+                raise ValueError(
+                    'Current-season uncertainty must come from the joint weekly template.'
+                )
+            if not df.independent_current_residual_draw_allowed.eq(0).all():
+                raise ValueError(
+                    'Independent current-season residual draws are prohibited.'
+                )
+            current_resid_cols = [
+                'pred_resid_5',
+                'pred_resid_10',
+                'pred_resid_25',
+                'pred_resid_75',
+                'pred_resid_90',
+                'pred_resid_95',
+            ]
+            if not np.allclose(
+                df[current_resid_cols].to_numpy(dtype=float),
+                0.0,
+                atol=1e-12,
+            ):
+                raise ValueError(
+                    'Current residual quantiles must be zero in the V2 handoff.'
+                )
+            next_resid_cols = [f'{column}_ny' for column in current_resid_cols]
+            next_resids = df[next_resid_cols].to_numpy(dtype=float)
+            if np.any(np.diff(next_resids, axis=1) < -1e-12):
+                raise ValueError(
+                    'Next-year conditional residual quantiles must be monotone.'
+                )
+            if self.template_resid_blend != 1.0:
+                raise ValueError(
+                    'V2 projections require the full joint-template uncertainty path.'
+                )
+            self.uses_v2_joint_template = True
+            self.template_resid_method_version = TEMPLATE_RESID_METHOD_VERSION
 
         team_df = pd.read_sql_query(f'''
             SELECT player,
@@ -142,8 +247,21 @@ class FootballSimulation:
         resid_cols = [c for c in df.columns if c.startswith('pred_resid_')]
         df[resid_cols] = df[resid_cols].fillna(0)
         df['pred_fp_per_game_ny'] = df.pred_fp_per_game_ny.fillna(df.pred_fp_per_game)
-        df['pred_p10'] = np.maximum(0, df.pred_fp_per_game + df.pred_resid_10)
-        df['pred_p90'] = np.maximum(0, df.pred_fp_per_game + df.pred_resid_90)
+        if self.uses_v2_joint_template:
+            # The legacy row-wise bands are not the V2 uncertainty contract.
+            # Leave them blank rather than displaying the point center as a
+            # misleading zero-width interval.
+            df['pred_p10'] = np.nan
+            df['pred_p90'] = np.nan
+        else:
+            df['pred_p10'] = np.maximum(
+                0,
+                df.pred_fp_per_game + df.pred_resid_10,
+            )
+            df['pred_p90'] = np.maximum(
+                0,
+                df.pred_fp_per_game + df.pred_resid_90,
+            )
 
         return df
     
@@ -297,6 +415,15 @@ class FootballSimulation:
     def trunc_normal_dist(self, col, num_options=50):
         
         if col=='pred_fp_per_game':
+            if self.uses_v2_joint_template:
+                return pd.DataFrame(
+                    np.repeat(
+                        self.player_data['pred_fp_per_game']
+                        .to_numpy(dtype=np.float32)[:, None],
+                        max(1, int(num_options)),
+                        axis=1,
+                    )
+                )
             mean_col = 'pred_fp_per_game'
             resid_dist_cols = [
                 'pred_resid_5', 'pred_resid_10', 'pred_resid_25',
@@ -315,12 +442,22 @@ class FootballSimulation:
                 'pred_resid_5_ny', 'pred_resid_10_ny', 'pred_resid_25_ny',
                 'pred_resid_75_ny', 'pred_resid_90_ny', 'pred_resid_95_ny'
             ]
-            return pd.DataFrame(
-                self.residual_quantile_vectorized(
-                    self.player_data[mean_col].values,
-                    self.player_data[resid_dist_cols].values,
-                    num_options
+            conditional = self.residual_quantile_vectorized(
+                self.player_data[mean_col].values,
+                self.player_data[resid_dist_cols].values,
+                num_options
+            )
+            if self.uses_v2_joint_template:
+                appearance = (
+                    np.random.random(
+                        (len(self.player_data), max(1, int(num_options)))
+                    )
+                    < self.player_data['pred_appear_ny']
+                    .to_numpy(dtype=np.float32)[:, None]
                 )
+                conditional = np.where(appearance, conditional, 0.0)
+            return pd.DataFrame(
+                conditional
             )
         elif col=='adp':
             cols = ['avg_pick', 'adp_std_dev', 'adp_min_pick', 'adp_max_pick']
@@ -343,6 +480,7 @@ class FootballSimulation:
         predictions = self.trunc_normal_dist(pred_label, num_options)
         predictions = pd.concat([labels, predictions], axis=1)
         predictions[BASE_PRED_COL] = self.player_data[pred_label].values
+        predictions[PREDICTION_HORIZON_COL] = pred_label
 
         return predictions
     
@@ -354,7 +492,16 @@ class FootballSimulation:
 
     @staticmethod
     def sample_value_columns(df):
-        return [c for c in df.columns if c not in ('player', 'pos', 'team', BASE_PRED_COL)]
+        return [
+            c for c in df.columns
+            if c not in (
+                'player',
+                'pos',
+                'team',
+                BASE_PRED_COL,
+                PREDICTION_HORIZON_COL,
+            )
+        ]
 
     @staticmethod
     def read_weekly_template_profile_cache(conn, set_year, league, pred_vers):
@@ -514,6 +661,11 @@ class FootballSimulation:
         else:
             base_ppg = score_matrix.mean(axis=1)
         model_resid_sds = np.std(score_matrix - base_ppg[:, None], axis=1)
+        prediction_horizon = (
+            predictions[PREDICTION_HORIZON_COL].iloc[0]
+            if PREDICTION_HORIZON_COL in predictions
+            else 'pred_fp_per_game'
+        )
 
         missing_players = [p for p in players if p not in self.weekly_template_profiles]
         if missing_players:
@@ -530,6 +682,24 @@ class FootballSimulation:
             centered_active_ppg_resids = self.weekly_template_centered_active_ppg_resids[player]
             template_resid_sd = self.weekly_template_active_ppg_resid_sds[player]
             template_idx = np.searchsorted(cum_probs, np.random.random(), side='right')
+            if self.uses_v2_joint_template:
+                if prediction_horizon == 'pred_fp_per_game_ny':
+                    # Next-year samples already contain the conditional
+                    # residual and the appearance mixture. Do not resurrect a
+                    # no-appearance draw or add another PPG residual.
+                    realized_ppg = sampled_ppg[idx]
+                else:
+                    # Current-year uncertainty is one joint donor draw: its
+                    # centered active-PPG residual and the same weekly path.
+                    realized_ppg = (
+                        base_ppg[idx]
+                        + centered_active_ppg_resids[template_idx]
+                    )
+                weekly_scores[idx] = (
+                    max(realized_ppg, 0)
+                    * profiles[template_idx, :num_weeks]
+                )
+                continue
             model_resid = sampled_ppg[idx] - base_ppg[idx]
             scaled_template_resid = 0.0
             # Centering removes pool bias; scaling keeps the model residual variance calibrated.
@@ -667,6 +837,11 @@ class FootballSimulation:
         else:
             base_ppg = score_matrix.mean(axis=1)
         model_resid_sds = np.std(score_matrix - base_ppg[:, None], axis=1)
+        prediction_horizon = (
+            predictions[PREDICTION_HORIZON_COL].iloc[0]
+            if PREDICTION_HORIZON_COL in predictions
+            else 'pred_fp_per_game'
+        )
 
         template_draws = rng.random((num_scenarios, len(players), 1))
         template_indices = np.sum(
@@ -679,6 +854,18 @@ class FootballSimulation:
             player_indices,
             template_indices,
         ]
+        if self.uses_v2_joint_template:
+            if prediction_horizon == 'pred_fp_per_game_ny':
+                # Includes both conditional residual uncertainty and explicit
+                # no-appearance zeros from trunc_normal_dist.
+                blended_ppg = sampled_ppg
+            else:
+                blended_ppg = (
+                    base_ppg[None, :]
+                    + sampled_template_resids
+                )
+            blended_ppg = np.maximum(blended_ppg, 0).astype(np.float32)
+            return sampled_profiles * blended_ppg[:, :, None]
 
         scale_is_valid = (
             np.isfinite(template_resid_sds)

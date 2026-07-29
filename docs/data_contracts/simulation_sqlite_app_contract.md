@@ -1,6 +1,6 @@
 # Simulation SQLite App Contract
 
-Last updated: 2026-07-23
+Last updated: 2026-07-29
 
 ## Owner
 
@@ -61,9 +61,13 @@ auditable. Runtime template matching must use the persisted pool mapping and
 must not re-cap `year_exp`.
 
 Expected columns include:
+- canonical `player_key` and `player_key_match_method`
 - `player`, `pos`, `team`, `year`, `version`, `dataset`
-- `pred_fp_per_game`
+- current `pred_fp_per_game`, conditional next-year `pred_fp_per_game_ny`,
+  and `pred_appear_ny`
 - residual quantile columns prefixed `pred_resid_`
+- V2 model/handoff provenance, `current_uncertainty_source`, and
+  `independent_current_residual_draw_allowed`
 - `avg_pick`
 - `template_pool_key`
 
@@ -78,13 +82,16 @@ Expected columns include:
 - `template_league`
 - `template_distance`
 - `match_rank`
+- `season`, `template_season_gap`, `template_recency_multiplier`
 - `template_sample_prob`
 
 The app should sample with `template_sample_prob` when the column exists.
 The source builder now uses a position-specific absolute-distance kernel,
-shrinks toward uniform when no local donor is close, and caps one donor at 5%.
-The intended behavior is to use all selected templates while giving genuinely
-closer matches higher prevalence without allowing one season to dominate.
+shrinks toward uniform when no local donor is close, applies a fixed 12-season
+recency half-life, and caps one donor at 5%. The intended behavior is to use all
+selected templates while giving genuinely closer and more recent matches higher
+prevalence without allowing one season to dominate. The recency prior changes
+sampling weight only; every donor must still precede the target year.
 
 ### `Best_Ball_Weekly_Templates`
 
@@ -98,9 +105,12 @@ Expected columns include:
 - `league`
 - `template_id`
 - `template_local_id`
+- canonical `player_key` and `player_key_match_method`
 - `player`, `pos`, `season`
 - `active_games`, `played_games`, `active_ppg`, `season_points`, `profile_total`
 - `active_ppg_resid`
+- `historical_pred_fp_per_game`, `v2_historical_pred_fp_per_game`,
+  `historical_center_policy`, and `v2_recenter_promoted`
 - `template_eligible`, `template_exclusion_reason`
 - `week_1` through `week_16`
 - `managed_week_1` through `managed_week_16`
@@ -140,6 +150,10 @@ or duplicated selections.
 
 ## Runtime Rules
 
+- Treat `player_key` as the permanent player identity in both template and
+  current-player-map rows. Generated copies require complete non-null keys,
+  including stable provisional keys for players who have not played. Display
+  names remain labels and must not become a fuzzy production join key.
 - Preserve `template_pool_key` joins across player map, pools, and templates.
 - When `Best_Ball_Weekly_Templates.league` exists, join pools to templates on
   both `template_id` and league context (`pool_version` to `league`).
@@ -149,14 +163,24 @@ or duplicated selections.
 - Do not reinterpret `played_week_*` as score multipliers. A value of `1`
   means the source weekly table contained a qualifying player-week row, not
   that the player necessarily had comprehensive snap-count coverage.
+- For a V2 handoff, require zero current residual quantiles,
+  `current_uncertainty_source = joint_weekly_template_only`, and
+  `independent_current_residual_draw_allowed = 0`.
 - Center each sampled donor's active-PPG residual within its published pool and
-  scale it to the current player's model-residual standard deviation.
-- The production `full_scaled_v1` path uses that scaled donor residual without
-  adding an independent model-residual draw, then applies the same donor's
-  `week_1` through `week_16` path. This keeps performance magnitude and weekly
-  availability as one matched historical outcome.
-- Keep `template_resid_blend=0.30` callable as a legacy rollback and validation
-  comparator. Do not expose it as the production default.
+  add it directly to the current V2 point center. Apply that same donor's
+  `week_1` through `week_16` path. Do not scale to the model-residual standard
+  deviation: the legacy spread is deliberately zero in V2 and scaling would
+  collapse PPG variance.
+- The production method is `joint_centered_template_v2_v1`. The former
+  `full_scaled_v1` branch remains only for older databases without a V2
+  production handoff; V2 rejects legacy template-residual blend settings.
+- Historical residuals remain centered on the validated legacy OOS center.
+  `v2_historical_pred_fp_per_game` is diagnostic and
+  `v2_recenter_promoted` must remain zero unless a new rolling replay clears
+  the calibration guardrail.
+- `pred_fp_per_game_ny` is conditional on appearing. When the optional
+  next-year blend is used, apply the separate `pred_appear_ny` Bernoulli draw;
+  a no-appearance draw must remain a zero weekly path.
 - Do not use an uncentered template residual as a mean shift.
 - Keep app logic tolerant of older DBs when practical, but update this contract
   when new columns become required.

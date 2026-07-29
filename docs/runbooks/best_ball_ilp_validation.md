@@ -1,6 +1,6 @@
 # Best-Ball ILP Validation Runbook
 
-Last updated: 2026-07-23
+Last updated: 2026-07-29
 
 ## Core Files
 
@@ -42,14 +42,20 @@ When changing template or residual logic, check:
 - sampled templates span the full pool but favor better matches
 - no donor probability exceeds 5%, pool probabilities sum to one, and effective
   sample sizes remain broad
+- every donor season precedes the target year and the persisted recency
+  multiplier equals `0.5 ** (template_season_gap / 12)`
 - declared structural exclusions have zero pool uses while ordinary zero-active
   downside remains represented
-- template residuals are centered by pool and scaled to the current player's
-  model-residual standard deviation
-- production `full_scaled_v1` does not change when the unused independent
-  model-residual sample column changes
-- `template_resid_blend=0.30` still reproduces the legacy blend for rollback
-  and matched validation
+- V2 current point samples are constant before template application, while the
+  final weekly score bank retains variance from the sampled centered donor
+  residual/path
+- production reports `joint_centered_template_v2_v1`, adds the centered donor
+  residual directly to the V2 point center, and is independent of the zeroed
+  current residual quantiles
+- older databases without a V2 handoff retain the legacy `full_scaled_v1`
+  branch; V2 contexts reject legacy template-residual blend settings
+- optional next-year samples apply `pred_appear_ny`, and no-appearance draws
+  remain zero after weekly-template application
 - the production template-residual method and fallback remain documented in
   `Agent_Notes/DECISION_LOG.md`
 - x-pruning buffer does not hide materially available fallers
@@ -57,6 +63,10 @@ When changing template or residual logic, check:
 - weekly template profile reads still use the DB-mtime cache path
 - league-aware template joins do not duplicate template rows when multiple
   `Best_Ball_Weekly_Templates.league` slices exist
+- `player_key` exists and is non-null in every weekly template and current
+  player-map row; current keys are unique by version/dataset/year/player
+- canonical-key handoff audits join every current and historical V2 population
+  row without falling back to display-name matching
 - uncapped `year_exp` survives the database copy, values above ten remain in
   player/template rows, and the app uses the persisted pool mapping without
   re-capping tenure

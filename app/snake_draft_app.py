@@ -181,12 +181,18 @@ def create_interactive_grid(data, key_suffix=""):
             ),
             "PredP10": st.column_config.NumberColumn(
                 "P10",
-                help="10th percentile predicted points per game",
+                help=(
+                    "Legacy row-wise PPG interval; blank for V2 because "
+                    "current uncertainty comes from matched weekly templates."
+                ),
                 format="%.1f"
             ),
             "PredP90": st.column_config.NumberColumn(
                 "P90",
-                help="90th percentile predicted points per game",
+                help=(
+                    "Legacy row-wise PPG interval; blank for V2 because "
+                    "current uncertainty comes from matched weekly templates."
+                ),
                 format="%.1f"
             ),
 
@@ -937,10 +943,10 @@ def sidebar_controls(prediction_options):
             options=weekly_score_labels,
             index=weekly_score_index,
             help=(
-                'Weekly templates draw one matched historical season, scale its centered '
-                'active-PPG residual to the current model residual spread, then apply that '
-                'same season’s 16-week best-ball profile. The default does not mix in an '
-                'independent model residual, preserving the donor’s joint outcome path. '
+                'Weekly templates draw one matched historical season. With the V2 '
+                'handoff, its centered active-PPG residual is added directly to the '
+                'current point forecast and that same donor supplies the 16-week '
+                'best-ball profile. No independent current residual is drawn. '
                 'Residual weeks preserves the prior independent weekly sampling behavior.'
             ),
         )

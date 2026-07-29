@@ -1,6 +1,6 @@
 # Session Notes Landing
 
-Last updated: 2026-07-23
+Last updated: 2026-07-29
 
 ## Project Objective
 
@@ -14,14 +14,20 @@ outcomes, and solves roster recommendations with the ILP optimizer.
   sequential best-ball policy while preserving the legacy ILP fallback, plus an
   isolated NFFC setup preview while real NFFC projections are still running.
 - The app consumes `app/Simulation.sqlite3`, copied from the modeling repo.
+- The 2026 DK V2 production handoff is active. Current point samples repeat
+  the V2 center before template application; one sampled donor then supplies
+  its pool-centered active-PPG residual and matching weekly path directly.
+  `joint_centered_template_v2_v1` replaces scaling to the now-zero legacy
+  model-residual spread. Optional next-year draws apply `pred_appear_ny`, and
+  no-appearance paths remain zero.
 - `SNAKE_SIMULATION_DB` can opt into a separate setup database. The current
   NFFC preview uses real NFFC ADP but cloned DK projection/template data and is
   explicitly not calibrated for recommendation evaluation.
 - NFFC draft turns use Third Round Reversal. The separate 30-round
   kicker/team-defense Championship roster contract remains unimplemented and
   is explicitly warned in the UI.
-- Recent changes added weighted weekly-template sampling, centered
-  variance-preserving template residual blending, broader x-pruning buffers,
+- Recent changes added weighted weekly-template sampling, centered joint
+  template residual/path uncertainty, broader x-pruning buffers,
   Streamlit cache support for weekly templates, ADP audit support, and stack
   bonus controls.
 - The copied beta/DK pools now use source-owned adaptive absolute-distance
@@ -33,11 +39,10 @@ outcomes, and solves roster recommendations with the ILP optimizer.
 
 - Sample weekly templates with `template_sample_prob` when available, preserving
   all selected templates while making closer matches more prevalent.
-- Production weekly templates use `full_scaled_v1`: one sampled donor supplies
-  both the centered/scaled active-PPG residual and the 16-week availability and
-  scoring path. The independent model-residual draw has zero production weight.
-- Keep `template_resid_blend=0.30` callable as the legacy rollback and matched
-  validation comparator.
+- V2 production weekly templates use `joint_centered_template_v2_v1`: one
+  sampled donor supplies both the directly applied centered active-PPG residual
+  and the 16-week availability/scoring path. Older databases without a V2
+  handoff retain the `full_scaled_v1` branch.
 - Use a wider x-pruning max-side buffer so sampled ADP rank inflation does not
   hide materially available fallers from the ILP.
 - Cache weekly template profile reads by DB modified time to improve repeated
