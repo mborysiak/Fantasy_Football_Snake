@@ -14,6 +14,16 @@ outcomes, and solves roster recommendations with the ILP optimizer.
   sequential best-ball policy while preserving the legacy ILP fallback, plus an
   isolated NFFC setup preview while real NFFC projections are still running.
 - The app consumes `app/Simulation.sqlite3`, copied from the modeling repo.
+- The 2026-07-29 source refresh preserves the runtime contract while correcting
+  V2 identity/scoring lineage and the formerly DK-scored beta weekly slice.
+  Both leagues now contain 5,298 templates; 5,120 paired active-PPG values and
+  5,147 paired weekly paths differ. The copied player map has complete unique
+  keys for 268 DK and 180 beta rows, including one stable Tetairoa McMillan
+  identity and no duplicate truncated Amon-Ra St. Brown identity.
+- New audit-only template-center fields expose the 39 governed beta 2018 QB
+  diagnostic fallbacks and the three permitted hybrid-position mismatches.
+  Snake scoring behavior is unchanged; the copied database is byte-identical
+  to the corrected modeling source.
 - The 2026 DK V2 production handoff is active. Current point samples repeat
   the V2 center before template application; one sampled donor then supplies
   its pool-centered active-PPG residual and matching weekly path directly.

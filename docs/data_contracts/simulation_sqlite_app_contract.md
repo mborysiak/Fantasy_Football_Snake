@@ -110,6 +110,11 @@ Expected columns include:
 - `active_games`, `played_games`, `active_ppg`, `season_points`, `profile_total`
 - `active_ppg_resid`
 - `historical_pred_fp_per_game`, `v2_historical_pred_fp_per_game`,
+  `v2_template_center_available`,
+  `v2_template_center_unavailable_reason`,
+  `v2_template_center_position`,
+  `v2_template_center_position_mismatch`,
+  `v2_template_center_position_mismatch_reason`,
   `historical_center_policy`, and `v2_recenter_promoted`
 - `template_eligible`, `template_exclusion_reason`
 - `week_1` through `week_16`
@@ -134,10 +139,38 @@ current declared exclusion. Ordinary zero-active seasons remain eligible as
 real downside outcomes. Runtime sampling follows the already-published pools;
 it must not independently filter templates.
 
+The V2 center-availability and position fields are source-owned audit columns;
+Snake does not use them to recenter or filter donors. A missing V2 diagnostic
+is permitted only for the 39 governed beta 2018 QB rows whose active center
+remains `legacy_validated_oos` and whose unavailable reason is tied to the
+FFToday vintage quarantine. The copied database also audits three exact
+hybrid-role position differences: Cordarrelle Patterson's 2019/2021 template
+WR rows use locked RB centers, and Ty Montgomery's 2022 template RB row uses a
+locked WR center. Every other unavailable center or position mismatch fails in
+the source build.
+
 ### `Best_Ball_ADP_Audit`
 
 Optional review table for identifying draftable players with suspicious missing
 or fallback ADP context.
+
+## Current Validated Source Copy
+
+The 2026-07-29 V2 identity/scoring correction retains 268 unique non-null DK
+player keys and 180 unique non-null beta player keys.
+Tetairoa McMillan's provisional and GSIS aliases share one stable key, and
+truncated Amon-Ra St. Brown aliases no longer create a duplicate player.
+
+The follow-up source build explicitly scores each weekly league, quarantines
+the FFToday QB rows stored as 2018 that match the native 2019 vintage, and adds
+the audit-only V2 center-availability/position columns above. It rebuilds 5,298
+DK and 5,298 beta templates; 5,120 paired `active_ppg` values and 5,147 paired
+weekly paths differ. These added columns do not change Snake's selected
+`week_*` profile query or its DK runtime-scoring semantics.
+
+The copied database passed SQLite integrity and foreign-key checks and is
+byte-identical to the modeling source. No Snake query or runtime-scoring change
+is required for this refresh.
 
 ## Sequential Player-Pool Coverage
 
@@ -177,7 +210,11 @@ or duplicated selections.
 - Historical residuals remain centered on the validated legacy OOS center.
   `v2_historical_pred_fp_per_game` is diagnostic and
   `v2_recenter_promoted` must remain zero unless a new rolling replay clears
-  the calibration guardrail.
+  the calibration guardrail. A null V2 diagnostic on a governed beta fallback
+  does not make the active legacy center null.
+- Treat the new V2 center-availability and position-mismatch fields as audit
+  provenance. Do not use them to create an app-side fallback, cross-league
+  center substitution, or template filter.
 - `pred_fp_per_game_ny` is conditional on appearing. When the optional
   next-year blend is used, apply the separate `pred_appear_ny` Bernoulli draw;
   a no-appearance draw must remain a zero weekly path.

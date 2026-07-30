@@ -67,6 +67,12 @@ When changing template or residual logic, check:
   player-map row; current keys are unique by version/dataset/year/player
 - canonical-key handoff audits join every current and historical V2 population
   row without falling back to display-name matching
+- source audit fields report exactly 39 unavailable beta 2018 QB V2 diagnostic
+  centers with quarantine-linked reasons; their active center remains the
+  validated legacy OOS center, and no other unavailable center is present
+- center-position mismatch audit contains only Cordarrelle Patterson 2019/2021
+  template WR to locked RB and Ty Montgomery 2022 template RB to locked WR;
+  every other mismatch is absent
 - uncapped `year_exp` survives the database copy, values above ten remain in
   player/template rows, and the app uses the persisted pool mapping without
   re-capping tenure
