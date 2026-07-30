@@ -67,6 +67,14 @@ When changing template or residual logic, check:
   player-map row; current keys are unique by version/dataset/year/player
 - canonical-key handoff audits join every current and historical V2 population
   row without falling back to display-name matching
+- renamed projection/player-map rows resolve by `player_key`, weekly template
+  caches remain keyed by `player_key`, and a selected row survives ILP pruning
+- the current keyless `Avg_ADPs` schema enters only the explicit
+  `legacy_normalized_name` path; relevant normalized-name collisions fail
+  instead of being silently deduplicated
+- every MyTeam and OtherTeam row resolves exactly once in the active player
+  population; stale, blank, duplicate, conflicting, or ambiguous saved-state
+  rows fail before simulation
 - source audit fields report exactly 39 unavailable beta 2018 QB V2 diagnostic
   centers with quarantine-linked reasons; their active center remains the
   validated legacy OOS center, and no other unavailable center is present

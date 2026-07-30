@@ -1,0 +1,424 @@
+import sqlite3
+import sys
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from app.zSim_Helper import (
+    BASE_PRED_COL,
+    PREDICTION_HORIZON_COL,
+    FootballSimulation,
+)
+
+
+APP_DIR = Path(__file__).parents[1] / "app"
+if str(APP_DIR) not in sys.path:
+    sys.path.insert(0, str(APP_DIR))
+
+from snake_draft_app import apply_loaded_state, run_simulation, save_draft_state
+
+
+def _simulation_with_conn(conn):
+    sim = FootballSimulation.__new__(FootballSimulation)
+    sim.conn = conn
+    sim.set_year = 2026
+    sim.league = "dk"
+    sim.pred_vers = "final_ensemble"
+    sim.uses_v2_joint_template = False
+    sim.template_resid_blend = 1.0
+    return sim
+
+
+def _create_adp_table(conn, include_player_key):
+    key_column = "player_key TEXT," if include_player_key else ""
+    conn.execute(
+        f"""
+        CREATE TABLE Avg_ADPs (
+            {key_column}
+            player TEXT,
+            Years_of_Experience REAL,
+            avg_pick REAL,
+            year INTEGER,
+            league TEXT,
+            std_dev REAL,
+            min_pick REAL,
+            max_pick REAL
+        )
+        """
+    )
+
+
+def _projection_frame(player_key="key-1", player="Canonical Name"):
+    return pd.DataFrame(
+        {
+            "player_key": [player_key],
+            "player": [player],
+            "pos": ["WR"],
+            "team": ["AAA"],
+            "model_input_avg_pick": [99.0],
+            "model_input_year_exp": [2.0],
+        }
+    )
+
+
+def test_adp_join_prefers_player_key_when_names_disagree():
+    conn = sqlite3.connect(":memory:")
+    _create_adp_table(conn, include_player_key=True)
+    conn.execute(
+        """
+        INSERT INTO Avg_ADPs
+        VALUES ('key-1', 'Old Display Name', 3, 17, 2026, 'dk', 2, 12, 24)
+        """
+    )
+    sim = _simulation_with_conn(conn)
+
+    result = sim.join_adp(_projection_frame())
+
+    assert sim.adp_join_method == "player_key"
+    assert result.loc[0, "player"] == "Canonical Name"
+    assert result.loc[0, "avg_pick"] == 17
+
+
+def test_adp_legacy_name_fallback_is_explicit_and_collision_checked():
+    conn = sqlite3.connect(":memory:")
+    _create_adp_table(conn, include_player_key=False)
+    conn.execute(
+        """
+        INSERT INTO Avg_ADPs
+        VALUES ('Amon Ra St Brown', 3, 21, 2026, 'dk', 2, 16, 26)
+        """
+    )
+    sim = _simulation_with_conn(conn)
+
+    result = sim.join_adp(
+        _projection_frame(player="Amon-Ra St. Brown")
+    )
+
+    assert sim.adp_join_method == "legacy_normalized_name"
+    assert result.loc[0, "avg_pick"] == 21
+
+    duplicate_projection_names = pd.concat(
+        [
+            _projection_frame("key-1", "Amon-Ra St. Brown"),
+            _projection_frame("key-2", "Amon Ra St Brown"),
+        ],
+        ignore_index=True,
+    )
+    with pytest.raises(ValueError, match="duplicate identities"):
+        sim.join_adp(duplicate_projection_names)
+
+
+def test_keyed_adp_join_rejects_an_ungoverned_default_pick():
+    conn = sqlite3.connect(":memory:")
+    _create_adp_table(conn, include_player_key=True)
+    sim = _simulation_with_conn(conn)
+    projection = _projection_frame()
+    projection["model_input_avg_pick"] = np.nan
+
+    with pytest.raises(ValueError, match="lack both current ADP"):
+        sim.join_adp(projection)
+
+
+def _create_projection_and_map_tables(conn):
+    residual_columns = ",\n".join(
+        f"pred_resid_{suffix} REAL"
+        for suffix in (
+            "5",
+            "10",
+            "25",
+            "75",
+            "90",
+            "95",
+            "5_ny",
+            "10_ny",
+            "25_ny",
+            "75_ny",
+            "90_ny",
+            "95_ny",
+        )
+    )
+    conn.execute(
+        f"""
+        CREATE TABLE Final_Predictions_Resid (
+            player_key TEXT,
+            player TEXT,
+            pos TEXT,
+            pred_fp_per_game REAL,
+            pred_fp_per_game_ny REAL,
+            {residual_columns},
+            year INTEGER,
+            dataset TEXT,
+            version TEXT
+        )
+        """
+    )
+    values = [
+        "key-1",
+        "Projection Display",
+        "WR",
+        12.0,
+        13.0,
+        *([0.0] * 12),
+        2026,
+        "final_ensemble",
+        "dk",
+    ]
+    conn.execute(
+        f"INSERT INTO Final_Predictions_Resid VALUES "
+        f"({','.join(['?'] * len(values))})",
+        values,
+    )
+    conn.execute(
+        """
+        CREATE TABLE Best_Ball_Weekly_Player_Map (
+            player_key TEXT,
+            player TEXT,
+            pos TEXT,
+            team TEXT,
+            avg_pick REAL,
+            year_exp REAL,
+            year INTEGER,
+            dataset TEXT,
+            version TEXT,
+            template_pool_key TEXT
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO Best_Ball_Weekly_Player_Map
+        VALUES (
+            'key-1', 'Map Display Alias', 'WR', 'AAA', 30, 2,
+            2026, 'final_ensemble', 'dk', 'pool-1'
+        )
+        """
+    )
+
+
+def test_projection_player_map_alignment_uses_player_key_not_display_name():
+    conn = sqlite3.connect(":memory:")
+    _create_projection_and_map_tables(conn)
+    sim = _simulation_with_conn(conn)
+
+    result = sim.get_model_predictions()
+
+    assert sim.player_map_join_method == "player_key"
+    assert result.loc[0, "player"] == "Projection Display"
+    assert result.loc[0, "team"] == "AAA"
+
+
+def _create_template_tables(conn):
+    conn.execute(
+        """
+        CREATE TABLE Best_Ball_Weekly_Templates (
+            template_id INTEGER,
+            league TEXT,
+            active_ppg_resid REAL,
+            week_1 REAL,
+            week_2 REAL
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO Best_Ball_Weekly_Templates
+        VALUES (1, 'dk', 0, 1.0, 0.5)
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE Best_Ball_Weekly_Template_Pools (
+            template_pool_key TEXT,
+            template_id INTEGER,
+            pool_version TEXT,
+            template_sample_prob REAL,
+            match_rank INTEGER
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO Best_Ball_Weekly_Template_Pools
+        VALUES ('pool-1', 1, 'dk', 1.0, 1)
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE Best_Ball_Weekly_Player_Map (
+            player_key TEXT,
+            player TEXT,
+            template_pool_key TEXT,
+            year INTEGER,
+            version TEXT,
+            dataset TEXT
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO Best_Ball_Weekly_Player_Map
+        VALUES (
+            'key-1', 'Old Template Display', 'pool-1',
+            2026, 'dk', 'final_ensemble'
+        )
+        """
+    )
+
+
+def test_template_cache_and_sampling_use_player_key_across_name_changes():
+    conn = sqlite3.connect(":memory:")
+    _create_template_tables(conn)
+    cache = FootballSimulation.read_weekly_template_profile_cache(
+        conn,
+        2026,
+        "dk",
+        "final_ensemble",
+    )
+    assert cache[-1] == "player_key"
+    sim = _simulation_with_conn(conn)
+    sim.weekly_template_profiles = None
+    sim.weekly_template_week_cols = None
+    sim.weekly_template_cum_probs = None
+    sim.weekly_template_active_ppg_resids = None
+    sim.weekly_template_centered_active_ppg_resids = None
+    sim.weekly_template_active_ppg_resid_sds = None
+    sim.weekly_template_identity_column = None
+    sim.weekly_template_tensor_cache = {}
+    sim.uses_v2_joint_template = True
+
+    predictions = pd.DataFrame(
+        {
+            "player_key": ["key-1"],
+            "player": ["Renamed Display"],
+            "pos": ["WR"],
+            "team": ["AAA"],
+            0: [12.0],
+            BASE_PRED_COL: [12.0],
+            PREDICTION_HORIZON_COL: ["pred_fp_per_game"],
+        }
+    )
+
+    scores = sim.sample_template_weekly_score_bank(
+        predictions,
+        num_scenarios=2,
+        num_weeks=2,
+        seed=7,
+    )
+
+    assert sim.weekly_template_identity_column == "player_key"
+    assert set(sim.weekly_template_profiles) == {"key-1"}
+    assert np.array_equal(scores, np.array([[[12.0, 6.0]]] * 2))
+    assert (("key-1",), 2) in sim.weekly_template_tensor_cache
+
+
+def _runtime_simulation(player_count=80):
+    sim = FootballSimulation.__new__(FootballSimulation)
+    sim.num_rounds = 20
+    sim.num_teams = 12
+    sim.position_ranges = {"RB": (5, 7)}
+    sim.player_data = pd.DataFrame(
+        {
+            "player_key": [f"key-{idx}" for idx in range(player_count)],
+            "player": [f"Player {idx}" for idx in range(player_count)],
+            "pos": ["RB"] * player_count,
+            "adp_min_pick": np.arange(player_count) + 1,
+            "adp_max_pick": np.arange(player_count) + 20,
+        }
+    )
+    return sim
+
+
+def test_selection_coverage_fails_closed_and_ilp_pruning_retains_selected_key():
+    sim = _runtime_simulation()
+
+    selected, drafted = sim.validate_selection_coverage(
+        ["key-79"],
+        ["key-0"],
+    )
+    assert selected == ["key-79"]
+    assert drafted == ["key-0"]
+    with pytest.raises(ValueError, match="absent from the active player population"):
+        sim.validate_selection_coverage(["missing-key"], [])
+
+    ppg = sim.player_data[["player_key", "player", "pos"]].copy()
+    ppg[0] = np.linspace(30, 1, len(ppg))
+    adp = sim.player_data[["player_key", "player", "pos"]].copy()
+    adp[0] = np.arange(len(adp)) + 1
+
+    filtered, _, filtered_adp = sim.filter_best_ball_ilp_pool(
+        ppg,
+        None,
+        adp,
+        {"key-79"},
+    )
+
+    assert "key-79" in set(filtered.player_key)
+    assert np.array_equal(filtered.player_key, filtered_adp.player_key)
+    assert len(filtered) <= 57
+
+
+def _app_player_data():
+    return pd.DataFrame(
+        {
+            "PlayerKey": ["key-1", "key-2"],
+            "Player": ["New Display", "Other Player"],
+            "Pos": ["WR", "RB"],
+            "ADP": [10.0, 20.0],
+            "PredPPG": [15.0, 12.0],
+            "MyTeam": [False, False],
+            "OtherTeam": [False, False],
+        }
+    )
+
+
+def test_saved_state_and_simulation_use_player_key():
+    loaded = pd.DataFrame(
+        {
+            "PlayerKey": ["key-1"],
+            "Player": ["Old Display"],
+            "Team": ["MyTeam"],
+        }
+    )
+    applied = apply_loaded_state(_app_player_data(), loaded)
+    assert applied.loc[applied.PlayerKey == "key-1", "MyTeam"].item()
+
+    settings = {
+        "year": 2026,
+        "league": "dk",
+        "num_teams": 12,
+        "my_pick_position": 1,
+        "num_rounds": 20,
+        "scoring_mode": "best_ball_ilp",
+        "pos_require": {"QB": 3, "RB": 6, "WR": 8, "TE": 3},
+        "num_iters": 1,
+    }
+    draft_data, _ = save_draft_state(applied, settings)
+    assert draft_data.loc[0, "PlayerKey"] == "key-1"
+
+    class RecordingSimulation:
+        def run_sim(self, **kwargs):
+            self.kwargs = kwargs
+            return pd.DataFrame()
+
+    recording_sim = RecordingSimulation()
+    run_simulation(
+        recording_sim,
+        applied,
+        num_iters=1,
+        scoring_mode="best_ball_ilp",
+    )
+    assert recording_sim.kwargs["to_add"] == ["key-1"]
+
+    with pytest.raises(ValueError, match="absent from the active player population"):
+        apply_loaded_state(
+            _app_player_data(),
+            pd.DataFrame(
+                {
+                    "PlayerKey": ["missing-key"],
+                    "Player": ["Old Display"],
+                    "Team": ["MyTeam"],
+                }
+            ),
+        )

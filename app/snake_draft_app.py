@@ -109,13 +109,17 @@ def get_player_data(sim):
     player_data = sim.player_data.reset_index()
     
     # Select and rename relevant columns
-    player_data = player_data[[
+    display_columns = [
         'player', 'pos', 'team', 'years_of_experience', 'pred_fp_per_game', 'pred_p10', 'pred_p90',
         'avg_pick', 'adp_std_dev', 'adp_min_pick', 'adp_max_pick'
-    ]]
+    ]
+    if FootballSimulation.identity_column(player_data) == 'player_key':
+        display_columns.insert(0, 'player_key')
+    player_data = player_data[display_columns]
     
     # Rename columns for display
     player_data = player_data.rename(columns={
+        'player_key': 'PlayerKey',
         'player': 'Player',
         'pos': 'Pos', 
         'team': 'NFLTeam',
@@ -146,12 +150,44 @@ def get_player_data(sim):
     player_data = player_data.sort_values(by='ADP')
     
     # Reorder columns
-    player_data = player_data[[
+    ordered_columns = [
         'Player', 'Pos', 'NFLTeam', 'Years_Exp', 'MyTeam', 'OtherTeam', 'ADP',
         'PredPPG', 'PredP10', 'PredP90', 'ADP_StdDev', 'ADP_Min', 'ADP_Max'
-    ]]
+    ]
+    if 'PlayerKey' in player_data.columns:
+        ordered_columns.insert(0, 'PlayerKey')
+    player_data = player_data[ordered_columns]
     
     return player_data
+
+
+def selection_identity_column(player_data):
+    """Return the canonical UI identity, with name fallback for legacy DBs."""
+    if 'PlayerKey' not in player_data.columns:
+        identity_column = 'Player'
+    else:
+        player_keys = player_data['PlayerKey']
+        if (
+            player_keys.isna().any()
+            or player_keys.astype(str).str.strip().eq('').any()
+        ):
+            raise ValueError(
+                "The active player table has incomplete canonical player keys."
+            )
+        identity_column = 'PlayerKey'
+
+    identities = player_data[identity_column].astype(str).str.strip()
+    if identities.duplicated().any():
+        duplicate_preview = ', '.join(
+            identities[
+                identities.duplicated(keep=False)
+            ].drop_duplicates().head(10)
+        )
+        raise ValueError(
+            f"The active player table has duplicate {identity_column} values: "
+            f"{duplicate_preview}"
+        )
+    return identity_column
 
 def create_interactive_grid(data, key_suffix=""):
     """Create the interactive data editor for player selection"""
@@ -159,6 +195,7 @@ def create_interactive_grid(data, key_suffix=""):
         data,
         key=f"player_grid_{key_suffix}",
         column_config={
+            "PlayerKey": None,
             "MyTeam": st.column_config.CheckboxColumn(
                 "My Team",
                 help="Check to add player to your team",
@@ -198,7 +235,16 @@ def create_interactive_grid(data, key_suffix=""):
 
         },
         use_container_width=True,
-        disabled=["Player", "Pos", "NFLTeam", "ADP", "PredPPG", "PredP10", "PredP90"],
+        disabled=[
+            "PlayerKey",
+            "Player",
+            "Pos",
+            "NFLTeam",
+            "ADP",
+            "PredPPG",
+            "PredP10",
+            "PredP90",
+        ],
         hide_index=True,
         height=500
     )
@@ -217,8 +263,13 @@ def run_simulation(
     """Run the snake draft simulation"""
     
     # Get selected players
-    my_team = selected_data[selected_data['MyTeam'] == True]['Player'].tolist()
-    other_teams = selected_data[selected_data['OtherTeam'] == True]['Player'].tolist()
+    identity_column = selection_identity_column(selected_data)
+    my_team = selected_data[
+        selected_data['MyTeam'] == True
+    ][identity_column].astype(str).str.strip().tolist()
+    other_teams = selected_data[
+        selected_data['OtherTeam'] == True
+    ][identity_column].astype(str).str.strip().tolist()
     
     # Run simulation
     results = sim.run_sim(
@@ -534,8 +585,15 @@ def create_my_team_display(selected_data, pos_require, position_ranges=None):
 def save_draft_state(selected_data, settings):
     """Save current draft state to CSV format"""
     # Get only the players that have selections
-    my_team = selected_data[selected_data['MyTeam'] == True][['Player', 'Pos', 'ADP', 'PredPPG']].copy()
-    other_team = selected_data[selected_data['OtherTeam'] == True][['Player', 'Pos', 'ADP', 'PredPPG']].copy()
+    saved_columns = ['Player', 'Pos', 'ADP', 'PredPPG']
+    if 'PlayerKey' in selected_data.columns:
+        saved_columns.insert(0, 'PlayerKey')
+    my_team = selected_data[
+        selected_data['MyTeam'] == True
+    ][saved_columns].copy()
+    other_team = selected_data[
+        selected_data['OtherTeam'] == True
+    ][saved_columns].copy()
     
     # Add team designation
     my_team['Team'] = 'MyTeam'
@@ -613,24 +671,81 @@ def apply_loaded_state(player_data, loaded_data):
     """Apply loaded draft state to current player data"""
     if loaded_data is None or len(loaded_data) == 0:
         return player_data
+    player_data = player_data.copy()
+    loaded_data = loaded_data.reset_index(drop=True)
     
     # Reset all selections
     player_data['MyTeam'] = False
     player_data['OtherTeam'] = False
     
-    # Apply loaded selections
-    for _, row in loaded_data.iterrows():
-        player_name = row['Player']
+    current_identity_column = selection_identity_column(player_data)
+    use_canonical_key = (
+        current_identity_column == 'PlayerKey'
+        and 'PlayerKey' in loaded_data.columns
+    )
+    loaded_identity_column = 'PlayerKey' if use_canonical_key else 'Player'
+    if loaded_identity_column not in loaded_data.columns:
+        raise ValueError(
+            "Saved draft state does not contain a usable player identity."
+        )
+
+    if use_canonical_key:
+        loaded_identities = loaded_data['PlayerKey']
+        if (
+            loaded_identities.isna().any()
+            or loaded_identities.astype(str).str.strip().eq('').any()
+        ):
+            raise ValueError(
+                "Saved draft state contains blank canonical player keys."
+            )
+
+    lookup_column = (
+        current_identity_column
+        if use_canonical_key
+        else 'Player'
+    )
+    current_lookup = player_data[lookup_column].astype(str).str.strip()
+    loaded_lookup = loaded_data[loaded_identity_column].astype(str).str.strip()
+    selected_assignments = {}
+    unmatched = []
+    ambiguous = []
+
+    for row_idx, row in loaded_data.iterrows():
+        player_identity = loaded_lookup.iloc[row_idx]
         team = row['Team']
-        
-        # Find the player in current data
-        player_idx = player_data[player_data['Player'] == player_name].index
-        
-        if len(player_idx) > 0:
-            if team == 'MyTeam':
-                player_data.loc[player_idx, 'MyTeam'] = True
-            elif team == 'OtherTeam':
-                player_data.loc[player_idx, 'OtherTeam'] = True
+        player_idx = player_data.index[current_lookup == player_identity]
+
+        if len(player_idx) == 0:
+            unmatched.append(player_identity)
+            continue
+        if len(player_idx) > 1:
+            ambiguous.append(player_identity)
+            continue
+        if team not in ('MyTeam', 'OtherTeam'):
+            continue
+
+        resolved_idx = player_idx[0]
+        previous_team = selected_assignments.get(resolved_idx)
+        if previous_team is not None and previous_team != team:
+            raise ValueError(
+                "Saved draft state assigns one player to both MyTeam and OtherTeam: "
+                f"{player_identity}"
+            )
+        selected_assignments[resolved_idx] = team
+
+    if unmatched:
+        raise ValueError(
+            "Saved draft-state rows are absent from the active player population: "
+            + ', '.join(dict.fromkeys(unmatched))
+        )
+    if ambiguous:
+        raise ValueError(
+            "Legacy saved-state names match multiple active players: "
+            + ', '.join(dict.fromkeys(ambiguous))
+        )
+
+    for player_idx, team in selected_assignments.items():
+        player_data.loc[player_idx, team] = True
     
     return player_data
 
@@ -1301,9 +1416,30 @@ def main():
             current_other_team = selected_data[selected_data['OtherTeam'] == True]
             
             # Check for conflicts
-            conflicts = set(current_my_team['Player']) & set(current_other_team['Player'])
+            identity_column = selection_identity_column(selected_data)
+            conflicts = (
+                set(
+                    current_my_team[identity_column]
+                    .astype(str)
+                    .str.strip()
+                )
+                & set(
+                    current_other_team[identity_column]
+                    .astype(str)
+                    .str.strip()
+                )
+            )
             if conflicts:
-                st.error(f"Players cannot be on both your team and other teams: {', '.join(conflicts)}")
+                conflict_names = selected_data[
+                    selected_data[identity_column]
+                    .astype(str)
+                    .str.strip()
+                    .isin(conflicts)
+                ]['Player'].astype(str).tolist()
+                st.error(
+                    "Players cannot be on both your team and other teams: "
+                    + ', '.join(conflict_names)
+                )
                 return
             
             # Calculate draft status for simulation button
@@ -1313,8 +1449,8 @@ def main():
 
             if settings['scoring_mode'] == 'best_ball_policy':
                 draft_state_warning = sim.sequential_draft_state_warning(
-                    current_my_team['Player'],
-                    current_other_team['Player'],
+                    current_my_team[identity_column].astype(str).str.strip(),
+                    current_other_team[identity_column].astype(str).str.strip(),
                 )
                 if draft_state_warning:
                     st.warning(draft_state_warning)

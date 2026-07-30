@@ -18,7 +18,7 @@ outcomes, and solves roster recommendations with the ILP optimizer.
   V2 identity/scoring lineage and the formerly DK-scored beta weekly slice.
   Both leagues now contain 5,298 templates; 5,120 paired active-PPG values and
   5,147 paired weekly paths differ. The copied player map has complete unique
-  keys for 268 DK and 180 beta rows, including one stable Tetairoa McMillan
+  keys for 351 DK and 328 beta rows, including one stable Tetairoa McMillan
   identity and no duplicate truncated Amon-Ra St. Brown identity.
 - New audit-only template-center fields expose the 39 governed beta 2018 QB
   diagnostic fallbacks and the three permitted hybrid-position mismatches.

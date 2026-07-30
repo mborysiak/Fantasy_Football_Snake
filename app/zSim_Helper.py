@@ -23,6 +23,7 @@ cvxopt.glpk.options['msg_lev'] = 'GLP_MSG_OFF'
 
 BASE_PRED_COL = 'base_pred_fp_per_game'
 PREDICTION_HORIZON_COL = '_prediction_horizon'
+PLAYER_KEY_COL = 'player_key'
 TEMPLATE_RESID_METHOD_VERSION = 'joint_centered_template_v2_v1'
 LEGACY_TEMPLATE_RESID_METHOD_VERSION = 'full_scaled_v1'
 TEMPLATE_RESID_BLEND = 1.00
@@ -85,6 +86,7 @@ class FootballSimulation:
         self.weekly_template_active_ppg_resids = None
         self.weekly_template_centered_active_ppg_resids = None
         self.weekly_template_active_ppg_resid_sds = None
+        self.weekly_template_identity_column = None
         self.weekly_template_tensor_cache = {}
 
         player_data = self.get_model_predictions()
@@ -176,6 +178,10 @@ class FootballSimulation:
             ]
             if df[required].isna().any().any():
                 raise ValueError('V2 production projection handoff is incomplete.')
+            if not self.has_complete_player_keys(df):
+                raise ValueError(
+                    'V2 production projections require nonblank canonical player keys.'
+                )
             if df.player_key.duplicated().any():
                 raise ValueError('V2 production projections contain duplicate player keys.')
             if not (
@@ -224,9 +230,22 @@ class FootballSimulation:
             self.uses_v2_joint_template = True
             self.template_resid_method_version = TEMPLATE_RESID_METHOD_VERSION
 
+        projection_identity_column = self.identity_column(df)
+        player_map_columns = {
+            row[1]
+            for row in self.conn.execute(
+                "PRAGMA table_info(Best_Ball_Weekly_Player_Map)"
+            ).fetchall()
+        }
+        map_key_select = (
+            f"{PLAYER_KEY_COL},"
+            if PLAYER_KEY_COL in player_map_columns
+            else ""
+        )
         team_df = pd.read_sql_query(f'''
-            SELECT player,
-                   pos,
+            SELECT {map_key_select}
+                   player map_player,
+                   pos map_pos,
                    team,
                    avg_pick model_input_avg_pick,
                    year_exp model_input_year_exp
@@ -236,12 +255,84 @@ class FootballSimulation:
                   AND version='{self.league}'
         ''', self.conn)
         if len(team_df) > 0:
-            team_df = team_df.drop_duplicates(['player', 'pos'])
-            df = pd.merge(df, team_df, how='left', on=['player', 'pos'])
+            if (
+                PLAYER_KEY_COL in team_df.columns
+                and projection_identity_column == PLAYER_KEY_COL
+            ):
+                team_df[PLAYER_KEY_COL] = self._validate_identity_values(
+                    team_df[PLAYER_KEY_COL],
+                    "weekly player-map player_key",
+                ).values
+                df[PLAYER_KEY_COL] = self._validate_identity_values(
+                    df[PLAYER_KEY_COL],
+                    "projection player_key",
+                ).values
+                team_df = team_df.drop_duplicates()
+                if team_df[PLAYER_KEY_COL].duplicated().any():
+                    raise ValueError(
+                        "Weekly player map contains duplicate canonical player keys."
+                    )
+                df = pd.merge(
+                    df,
+                    team_df,
+                    how='left',
+                    on=PLAYER_KEY_COL,
+                    validate='one_to_one',
+                    indicator='_player_map_match',
+                )
+                missing_map = df['_player_map_match'].ne('both')
+                if missing_map.any():
+                    missing_preview = ', '.join(
+                        df.loc[missing_map, 'player'].astype(str).head(10)
+                    )
+                    raise ValueError(
+                        "Canonical projection rows are missing from the weekly "
+                        f"player map: {missing_preview}"
+                    )
+                position_mismatch = (
+                    df['map_pos'].notna()
+                    & df['pos'].ne(df['map_pos'])
+                )
+                if position_mismatch.any():
+                    mismatch_preview = ', '.join(
+                        df.loc[position_mismatch, 'player'].astype(str).head(10)
+                    )
+                    raise ValueError(
+                        "Projection and weekly player-map positions disagree for: "
+                        f"{mismatch_preview}"
+                    )
+                df = df.drop(
+                    columns=['map_player', 'map_pos', '_player_map_match'],
+                )
+                self.player_map_join_method = PLAYER_KEY_COL
+            else:
+                team_df = team_df.drop_duplicates()
+                if team_df.duplicated(['map_player', 'map_pos']).any():
+                    raise ValueError(
+                        "Legacy weekly player map contains ambiguous player/position rows."
+                    )
+                if df.duplicated(['player', 'pos']).any():
+                    raise ValueError(
+                        "Legacy projections contain ambiguous player/position rows."
+                    )
+                df = pd.merge(
+                    df,
+                    team_df.drop(columns=[PLAYER_KEY_COL], errors='ignore'),
+                    how='left',
+                    left_on=['player', 'pos'],
+                    right_on=['map_player', 'map_pos'],
+                    validate='one_to_one',
+                ).drop(columns=['map_player', 'map_pos'])
+                self.player_map_join_method = 'legacy_player_pos'
         else:
+            if projection_identity_column == PLAYER_KEY_COL:
+                raise ValueError(
+                    "Canonical projections require weekly player-map coverage."
+                )
             df['team'] = ''
             df['model_input_avg_pick'] = np.nan
             df['model_input_year_exp'] = np.nan
+            self.player_map_join_method = 'legacy_missing_map'
         df['team'] = df['team'].fillna('').astype(str).str.strip()
 
         resid_cols = [c for c in df.columns if c.startswith('pred_resid_')]
@@ -276,11 +367,128 @@ class FootballSimulation:
             .str.replace(r'[^a-z0-9]+', '', regex=True)
         )
 
+    @staticmethod
+    def has_complete_player_keys(df):
+        if PLAYER_KEY_COL not in df.columns:
+            return False
+        keys = df[PLAYER_KEY_COL]
+        return bool(
+            keys.notna().all()
+            and keys.astype(str).str.strip().ne('').all()
+        )
+
+    @staticmethod
+    def has_any_player_keys(df):
+        if PLAYER_KEY_COL not in df.columns:
+            return False
+        keys = df[PLAYER_KEY_COL]
+        return bool(
+            (
+                keys.notna()
+                & keys.astype(str).str.strip().ne('')
+            ).any()
+        )
+
+    @staticmethod
+    def _validate_identity_values(values, label):
+        identities = pd.Series(values)
+        if identities.isna().any() or identities.astype(str).str.strip().eq('').any():
+            raise ValueError(f"{label} contains blank identities.")
+        identities = identities.astype(str).str.strip()
+        if identities.duplicated().any():
+            duplicate_preview = ', '.join(
+                identities[identities.duplicated(keep=False)].drop_duplicates().head(10)
+            )
+            raise ValueError(
+                f"{label} contains duplicate identities: {duplicate_preview}"
+            )
+        return identities
+
+    @classmethod
+    def identity_column(cls, df):
+        if cls.has_complete_player_keys(df):
+            return PLAYER_KEY_COL
+        if cls.has_any_player_keys(df):
+            raise ValueError(
+                "player_key is partially populated; refusing a display-name fallback."
+            )
+        return 'player'
+
+    @classmethod
+    def identity_values(cls, df, validate_unique=False):
+        identity_col = cls.identity_column(df)
+        values = df[identity_col].astype(str).str.strip()
+        if validate_unique:
+            values = cls._validate_identity_values(
+                values,
+                f"{identity_col} runtime identity",
+            )
+        return values.to_numpy()
+
+    @classmethod
+    def identity_mask(cls, df, identities):
+        identity_set = {
+            str(identity).strip()
+            for identity in identities
+        }
+        return pd.Series(
+            cls.identity_values(df),
+            index=df.index,
+        ).isin(identity_set)
+
+    def validate_selection_coverage(self, to_add, to_drop):
+        runtime_ids = self.identity_values(
+            self.player_data,
+            validate_unique=True,
+        )
+        runtime_id_set = set(runtime_ids)
+        selected_ids = [str(value).strip() for value in to_add]
+        drafted_ids = [str(value).strip() for value in to_drop]
+
+        for values, label in (
+            (selected_ids, "MyTeam"),
+            (drafted_ids, "OtherTeam"),
+        ):
+            if any(value == '' for value in values):
+                raise ValueError(f"{label} contains a blank player identity.")
+            if len(values) != len(set(values)):
+                raise ValueError(f"{label} contains duplicate player identities.")
+
+        missing = [
+            value
+            for value in selected_ids + drafted_ids
+            if value not in runtime_id_set
+        ]
+        if missing:
+            raise ValueError(
+                "Selected draft-state rows are absent from the active player "
+                f"population: {', '.join(dict.fromkeys(missing))}"
+            )
+
+        overlap = set(selected_ids) & set(drafted_ids)
+        if overlap:
+            display_by_id = dict(zip(runtime_ids, self.player_data.player.astype(str)))
+            display = [display_by_id.get(value, value) for value in sorted(overlap)]
+            raise ValueError(
+                "Players cannot be selected by both the user and opponents: "
+                + ', '.join(display)
+            )
+
+        return selected_ids, drafted_ids
 
     def join_adp(self, df):
 
-        # add ADP data to the dataframe 
-        adp_data = pd.read_sql_query(f'''SELECT player adp_player, 
+        adp_columns = {
+            row[1]
+            for row in self.conn.execute("PRAGMA table_info(Avg_ADPs)").fetchall()
+        }
+        adp_key_select = (
+            f"{PLAYER_KEY_COL} adp_player_key,"
+            if PLAYER_KEY_COL in adp_columns
+            else ""
+        )
+        adp_data = pd.read_sql_query(f'''SELECT {adp_key_select}
+                                                player adp_player,
                                                 Years_of_Experience as years_of_experience,
                                                 avg_pick,
                                                 std_dev adp_std_dev,
@@ -293,19 +501,81 @@ class FootballSimulation:
                                         self.conn)
 
         df = df.copy()
-        df['_player_join_key'] = self.player_join_key(df['player']).values
-        adp_data['_player_join_key'] = self.player_join_key(adp_data['adp_player']).values
-        adp_data = (
-            adp_data.sort_values(['_player_join_key', 'avg_pick'])
-            .drop_duplicates('_player_join_key')
-        )
-
-        df = pd.merge(df, adp_data, how='left', on='_player_join_key')
+        projection_identity_column = self.identity_column(df)
+        if (
+            'adp_player_key' in adp_data.columns
+            and projection_identity_column == PLAYER_KEY_COL
+        ):
+            if len(adp_data) > 0:
+                adp_data['adp_player_key'] = self._validate_identity_values(
+                    adp_data['adp_player_key'],
+                    "ADP player_key",
+                ).values
+            projection_keys = set(
+                self._validate_identity_values(
+                    df[PLAYER_KEY_COL],
+                    "projection player_key",
+                )
+            )
+            relevant_adp = adp_data[
+                adp_data['adp_player_key'].astype(str).str.strip().isin(
+                    projection_keys
+                )
+            ].copy()
+            df[PLAYER_KEY_COL] = df[PLAYER_KEY_COL].astype(str).str.strip()
+            df = pd.merge(
+                df,
+                relevant_adp,
+                how='left',
+                left_on=PLAYER_KEY_COL,
+                right_on='adp_player_key',
+                validate='one_to_one',
+            )
+            self.adp_join_method = PLAYER_KEY_COL
+        else:
+            df['_player_join_key'] = self.player_join_key(df['player']).values
+            self._validate_identity_values(
+                df['_player_join_key'],
+                "legacy normalized projection name",
+            )
+            adp_data['_player_join_key'] = self.player_join_key(
+                adp_data['adp_player']
+            ).values
+            relevant_adp = adp_data[
+                adp_data['_player_join_key'].isin(df['_player_join_key'])
+            ].copy()
+            if relevant_adp['_player_join_key'].eq('').any():
+                raise ValueError("Relevant legacy ADP rows contain blank player names.")
+            if relevant_adp['_player_join_key'].duplicated().any():
+                duplicate_preview = ', '.join(
+                    relevant_adp.loc[
+                        relevant_adp['_player_join_key'].duplicated(keep=False),
+                        'adp_player',
+                    ].astype(str).drop_duplicates().head(10)
+                )
+                raise ValueError(
+                    "Legacy normalized-name ADP join is ambiguous for: "
+                    f"{duplicate_preview}"
+                )
+            df = pd.merge(
+                df,
+                relevant_adp,
+                how='left',
+                on='_player_join_key',
+                validate='one_to_one',
+            )
+            self.adp_join_method = 'legacy_normalized_name'
         model_input_avg_pick = pd.to_numeric(
-            df.get('model_input_avg_pick', np.nan), errors='coerce'
+            df['model_input_avg_pick']
+            if 'model_input_avg_pick' in df
+            else pd.Series(np.nan, index=df.index),
+            errors='coerce',
         )
         model_pick_fallback = df['avg_pick'].isna() & model_input_avg_pick.notna()
-        df['avg_pick'] = df['avg_pick'].combine_first(model_input_avg_pick)
+        df['avg_pick'] = df['avg_pick'].where(
+            df['avg_pick'].notna(),
+            model_input_avg_pick,
+        )
         df.loc[model_pick_fallback, 'adp_std_dev'] = (
             df.loc[model_pick_fallback, 'adp_std_dev']
             .fillna(0.2 * df.loc[model_pick_fallback, 'avg_pick'])
@@ -319,10 +589,27 @@ class FootballSimulation:
             .fillna(1.2 * df.loc[model_pick_fallback, 'avg_pick'])
         )
         if 'model_input_year_exp' in df.columns:
-            df['years_of_experience'] = df['years_of_experience'].combine_first(
-                df['model_input_year_exp']
+            df['years_of_experience'] = df['years_of_experience'].where(
+                df['years_of_experience'].notna(),
+                df['model_input_year_exp'],
             )
-        df = df.drop(columns=['_player_join_key', 'adp_player'], errors='ignore')
+        if projection_identity_column == PLAYER_KEY_COL and df['avg_pick'].isna().any():
+            missing = df.loc[
+                df['avg_pick'].isna(),
+                [PLAYER_KEY_COL, 'player', 'pos'],
+            ].head(20).to_dict('records')
+            raise ValueError(
+                'Canonical projections lack both current ADP and governed '
+                f'player-map ADP context: {missing}'
+            )
+        df = df.drop(
+            columns=[
+                '_player_join_key',
+                'adp_player',
+                'adp_player_key',
+            ],
+            errors='ignore',
+        )
         df = df.fillna({'avg_pick': 240, 'adp_std_dev': 20, 'adp_min_pick': 200, 'adp_max_pick': 250})
         df.loc[df.adp_std_dev < 0.1, 'adp_std_dev'] = 0.2 * df.loc[df.adp_std_dev < 0.1, 'avg_pick']
         df.loc[df.adp_min_pick > df.avg_pick, 'adp_min_pick'] = df.loc[df.adp_min_pick > df.avg_pick, 'avg_pick'] * 0.8
@@ -476,7 +763,10 @@ class FootballSimulation:
 
     def get_predictions(self, pred_label, num_options=500):
 
-        labels = self.player_data[['player', 'pos', 'team']]
+        label_columns = ['player', 'pos', 'team']
+        if PLAYER_KEY_COL in self.player_data.columns:
+            label_columns.insert(0, PLAYER_KEY_COL)
+        labels = self.player_data[label_columns]
         predictions = self.trunc_normal_dist(pred_label, num_options)
         predictions = pd.concat([labels, predictions], axis=1)
         predictions[BASE_PRED_COL] = self.player_data[pred_label].values
@@ -485,7 +775,10 @@ class FootballSimulation:
         return predictions
     
     def get_adp_samples(self, num_options=500):
-        labels = self.player_data[['player', 'pos']]
+        label_columns = ['player', 'pos']
+        if PLAYER_KEY_COL in self.player_data.columns:
+            label_columns.insert(0, PLAYER_KEY_COL)
+        labels = self.player_data[label_columns]
         adp = self.trunc_normal_dist('adp', num_options).astype('int64')
         adp = pd.concat([labels, adp], axis=1)
         return adp
@@ -496,6 +789,7 @@ class FootballSimulation:
             c for c in df.columns
             if c not in (
                 'player',
+                PLAYER_KEY_COL,
                 'pos',
                 'team',
                 BASE_PRED_COL,
@@ -535,11 +829,31 @@ class FootballSimulation:
             if "league" in template_cols
             else "ON p.template_id = t.template_id"
         )
+        player_map_cols = pd.read_sql_query(
+            "SELECT * FROM Best_Ball_Weekly_Player_Map LIMIT 0",
+            conn,
+        ).columns
+        template_identity_column = (
+            PLAYER_KEY_COL
+            if PLAYER_KEY_COL in player_map_cols
+            else 'player'
+        )
+        identity_select = (
+            f"m.{PLAYER_KEY_COL},"
+            if template_identity_column == PLAYER_KEY_COL
+            else ""
+        )
+        identity_order = (
+            f"m.{PLAYER_KEY_COL}"
+            if template_identity_column == PLAYER_KEY_COL
+            else "m.player"
+        )
 
         week_select = ', '.join([f't.{c}' for c in week_cols])
         profiles = pd.read_sql_query(
             f'''
-            SELECT m.player,
+            SELECT {identity_select}
+                   m.player,
                    p.template_id,
                    {sample_prob_select},
                    {active_ppg_resid_select},
@@ -552,7 +866,7 @@ class FootballSimulation:
             WHERE m.year = {set_year}
                   AND m.version = '{league}'
                   AND m.dataset = '{pred_vers}'
-            ORDER BY m.player, p.match_rank
+            ORDER BY {identity_order}, p.match_rank
             ''',
             conn,
         )
@@ -563,15 +877,43 @@ class FootballSimulation:
                 f"year={set_year}, version={league}, dataset={pred_vers}."
             )
 
+        if template_identity_column == PLAYER_KEY_COL:
+            identity_values = profiles[PLAYER_KEY_COL]
+            if (
+                identity_values.isna().any()
+                or identity_values.astype(str).str.strip().eq('').any()
+            ):
+                raise ValueError(
+                    "Weekly template player-map rows contain blank canonical keys."
+                )
+            profiles[PLAYER_KEY_COL] = identity_values.astype(str).str.strip()
+            display_names_per_key = profiles.groupby(
+                PLAYER_KEY_COL,
+                sort=False,
+            ).player.nunique(dropna=False)
+            if display_names_per_key.gt(1).any():
+                bad_keys = ', '.join(
+                    display_names_per_key[
+                        display_names_per_key.gt(1)
+                    ].index.astype(str)[:10]
+                )
+                raise ValueError(
+                    "Weekly template canonical keys map to multiple display names: "
+                    f"{bad_keys}"
+                )
+
         weekly_template_profiles = {}
         weekly_template_cum_probs = {}
         weekly_template_active_ppg_resids = {}
         weekly_template_centered_active_ppg_resids = {}
         weekly_template_active_ppg_resid_sds = {}
-        for player, group in profiles.groupby('player', sort=False):
-            weekly_template_profiles[player] = group[week_cols].to_numpy(dtype=np.float32)
+        for player_identity, group in profiles.groupby(
+            template_identity_column,
+            sort=False,
+        ):
+            weekly_template_profiles[player_identity] = group[week_cols].to_numpy(dtype=np.float32)
             active_ppg_resids = group['active_ppg_resid'].fillna(0).to_numpy(dtype=np.float32)
-            weekly_template_active_ppg_resids[player] = active_ppg_resids
+            weekly_template_active_ppg_resids[player_identity] = active_ppg_resids
             probs = group['template_sample_prob'].to_numpy(dtype=np.float64)
             if (
                 len(probs) == 0
@@ -584,14 +926,14 @@ class FootballSimulation:
                 probs = probs / probs.sum()
             cum_probs = np.cumsum(probs)
             cum_probs[-1] = 1.0
-            weekly_template_cum_probs[player] = cum_probs
+            weekly_template_cum_probs[player_identity] = cum_probs
             resid_mean = float(np.sum(probs * active_ppg_resids))
             centered_resids = active_ppg_resids - resid_mean
             resid_sd = float(np.sqrt(np.sum(probs * np.square(centered_resids))))
-            weekly_template_centered_active_ppg_resids[player] = centered_resids.astype(
+            weekly_template_centered_active_ppg_resids[player_identity] = centered_resids.astype(
                 np.float32
             )
-            weekly_template_active_ppg_resid_sds[player] = resid_sd
+            weekly_template_active_ppg_resid_sds[player_identity] = resid_sd
 
         return (
             week_cols,
@@ -600,6 +942,7 @@ class FootballSimulation:
             weekly_template_active_ppg_resids,
             weekly_template_centered_active_ppg_resids,
             weekly_template_active_ppg_resid_sds,
+            template_identity_column,
         )
 
     def set_weekly_template_profile_cache(
@@ -610,11 +953,29 @@ class FootballSimulation:
         weekly_template_active_ppg_resids,
         weekly_template_centered_active_ppg_resids=None,
         weekly_template_active_ppg_resid_sds=None,
+        weekly_template_identity_column=None,
     ):
+        if weekly_template_identity_column is None:
+            weekly_template_identity_column = 'player'
+            if (
+                hasattr(self, 'player_data')
+                and self.has_complete_player_keys(self.player_data)
+            ):
+                cached_identities = {
+                    str(value).strip()
+                    for value in weekly_template_profiles
+                }
+                runtime_keys = set(
+                    self.identity_values(self.player_data)
+                )
+                if cached_identities and cached_identities.issubset(runtime_keys):
+                    weekly_template_identity_column = PLAYER_KEY_COL
         self.weekly_template_week_cols = list(week_cols)
         self.weekly_template_profiles = weekly_template_profiles
         self.weekly_template_cum_probs = weekly_template_cum_probs
         self.weekly_template_active_ppg_resids = weekly_template_active_ppg_resids
+        self.weekly_template_identity_column = weekly_template_identity_column
+        self.weekly_template_tensor_cache = {}
         if weekly_template_centered_active_ppg_resids is None:
             weekly_template_centered_active_ppg_resids = {}
             weekly_template_active_ppg_resid_sds = {}
@@ -648,11 +1009,31 @@ class FootballSimulation:
         )
         return self.set_weekly_template_profile_cache(*cache)
 
+    def template_identity_values(self, predictions):
+        identity_column = (
+            getattr(self, 'weekly_template_identity_column', None)
+            or 'player'
+        )
+        if identity_column == PLAYER_KEY_COL:
+            if not self.has_complete_player_keys(predictions):
+                raise ValueError(
+                    "Canonical weekly template profiles require player_key on "
+                    "every prediction row."
+                )
+        elif identity_column not in predictions.columns:
+            raise ValueError(
+                f"Predictions do not contain template identity column {identity_column}."
+            )
+        values = predictions[identity_column].astype(str).str.strip()
+        if values.eq('').any():
+            raise ValueError("Predictions contain blank weekly template identities.")
+        return values.to_numpy()
+
     def sample_template_weekly_scores(self, predictions, num_weeks):
         template_weeks = self.load_weekly_template_profiles()
         num_weeks = min(num_weeks, template_weeks)
 
-        players = predictions.player.values
+        players = self.template_identity_values(predictions)
         score_matrix = predictions[self.sample_value_columns(predictions)].values.astype(np.float32)
         ppg_col = np.random.randint(0, score_matrix.shape[1])
         sampled_ppg = score_matrix[:, ppg_col]
@@ -669,7 +1050,7 @@ class FootballSimulation:
 
         missing_players = [p for p in players if p not in self.weekly_template_profiles]
         if missing_players:
-            missing_preview = ', '.join(missing_players[:10])
+            missing_preview = ', '.join(map(str, missing_players[:10]))
             raise ValueError(
                 f"Missing weekly template profiles for {len(missing_players)} players: "
                 f"{missing_preview}"
@@ -726,8 +1107,8 @@ class FootballSimulation:
         """Pack ragged per-player template pools into arrays for fast sampling."""
         template_weeks = self.load_weekly_template_profiles()
         num_weeks = min(int(num_weeks), template_weeks)
-        player_key = tuple(players)
-        cache_key = (player_key, num_weeks)
+        identity_key = tuple(map(str, players))
+        cache_key = (identity_key, num_weeks)
         cached = self.weekly_template_tensor_cache.get(cache_key)
         if cached is not None:
             return cached
@@ -737,7 +1118,7 @@ class FootballSimulation:
             if player not in self.weekly_template_profiles
         ]
         if missing_players:
-            missing_preview = ', '.join(missing_players[:10])
+            missing_preview = ', '.join(map(str, missing_players[:10]))
             raise ValueError(
                 f"Missing weekly template profiles for {len(missing_players)} players: "
                 f"{missing_preview}"
@@ -801,7 +1182,8 @@ class FootballSimulation:
         if num_scenarios <= 0:
             raise ValueError("num_scenarios must be positive.")
 
-        players = predictions.player.to_numpy()
+        self.load_weekly_template_profiles()
+        players = self.template_identity_values(predictions)
         (
             profiles,
             cum_probs,
@@ -917,34 +1299,38 @@ class FootballSimulation:
         
         h_player_add = {}
         open_pos_require = copy.deepcopy(self.pos_require_start)
-        df_add = self.player_data[self.player_data.player.isin(to_add)]
-        for player, pos in df_add[['player', 'pos']].values:
-            h_player_add[f'{player}'] = -1
+        identity_col = self.identity_column(self.player_data)
+        df_add = self.player_data[
+            self.identity_mask(self.player_data, to_add)
+        ]
+        for player_identity, pos in df_add[[identity_col, 'pos']].values:
+            h_player_add[f'{player_identity}'] = -1
             open_pos_require[pos] -= 1
 
         return h_player_add, open_pos_require
 
 
-    @staticmethod
-    def drop_players(df, to_drop):
+    @classmethod
+    def drop_players(cls, df, to_drop):
         if not to_drop:  # Early return for empty list
             return df
         # Convert to set for O(1) lookups if it's a list
         to_drop_set = set(to_drop) if isinstance(to_drop, (list, tuple)) else to_drop
-        return df[~df.player.isin(to_drop_set)].reset_index(drop=True)
+        return df[~cls.identity_mask(df, to_drop_set)].reset_index(drop=True)
 
 
-    @staticmethod
-    def player_matrix_mapping(df):
+    @classmethod
+    def player_matrix_mapping(cls, df):
         idx_player_map = {}
         player_idx_map = {}
+        identity_col = cls.identity_column(df)
         for i, row in df.iterrows():
             idx_player_map[i] = {
                 'player': row.player,
                 'pos': row.pos
             }
 
-            player_idx_map[f'{row.player}'] = i
+            player_idx_map[f'{row[identity_col]}'] = i
 
         return idx_player_map, player_idx_map
 
@@ -1051,14 +1437,23 @@ class FootballSimulation:
 
     # Removed old constraint methods - using new matrix-based approach
 
-    @staticmethod
-    def sample_c_points(data, max_entries, num_avg_pts, num_rounds):
+    @classmethod
+    def sample_c_points(cls, data, max_entries, num_avg_pts, num_rounds):
         """Create objective function coefficients for player-round variables"""
         labels = data[['player', 'pos']]
-        
-        # Pre-generate random column indices to avoid repeated calls
-        col_indices = np.random.randint(2, max_entries+2, size=num_avg_pts)
-        current_points = -1 * data.iloc[:, col_indices].mean(axis=1)
+        sample_columns = cls.sample_value_columns(data)
+        available_entries = min(int(max_entries), len(sample_columns))
+        if available_entries <= 0:
+            raise ValueError("Predictions contain no sampled score columns.")
+
+        col_indices = np.random.randint(
+            0,
+            available_entries,
+            size=num_avg_pts,
+        )
+        current_points = -1 * data[
+            [sample_columns[idx] for idx in col_indices]
+        ].mean(axis=1)
         
         # Vectorized expansion: repeat each player's points for all rounds
         expanded_points = np.repeat(current_points.values, num_rounds)
@@ -2214,6 +2609,10 @@ class FootballSimulation:
 
     def build_best_ball_ilp_model(self, predictions, to_add_set, adjusted_picks, num_weeks):
         player_names = predictions.player.values
+        player_ids = self.identity_values(
+            predictions,
+            validate_unique=True,
+        )
         player_positions = predictions.pos.values
         if 'team' in predictions.columns:
             player_teams = predictions.team.fillna('').astype(str).str.strip().values
@@ -2228,7 +2627,13 @@ class FootballSimulation:
         num_players = len(predictions)
         num_rounds = len(adjusted_picks)
 
-        selected_mask = np.array([p in to_add_set for p in player_names])
+        selected_mask = np.array([p in to_add_set for p in player_ids])
+        missing_selected = set(to_add_set) - set(player_ids)
+        if missing_selected:
+            raise ValueError(
+                "Selected players are absent from the ILP player pool: "
+                + ', '.join(sorted(missing_selected))
+            )
         pos_ranges = self.best_ball_position_ranges(player_positions, selected_mask)
         draft_pool_indices = np.where(~selected_mask)[0]
         num_draftable = len(draft_pool_indices)
@@ -2236,11 +2641,21 @@ class FootballSimulation:
         full_x_count = num_draftable * num_rounds
         x_pick_buffer = X_PICK_BUFFER
         pick_nums = np.array(adjusted_picks, dtype=np.float64)
+        adp_identity_col = self.identity_column(self.player_data)
+        adp_bounds = self.player_data[
+            [adp_identity_col, 'adp_min_pick', 'adp_max_pick']
+        ].copy()
+        adp_bounds[adp_identity_col] = (
+            adp_bounds[adp_identity_col].astype(str).str.strip()
+        )
+        if adp_bounds[adp_identity_col].duplicated().any():
+            raise ValueError(
+                f"Player ADP bounds contain duplicate {adp_identity_col} values."
+            )
         adp_bounds = (
-            self.player_data[['player', 'adp_min_pick', 'adp_max_pick']]
-            .drop_duplicates('player')
-            .set_index('player')
-            .reindex(player_names)
+            adp_bounds
+            .set_index(adp_identity_col)
+            .reindex(player_ids)
         )
         total_draft_picks = self.num_teams * self.num_rounds
         adp_min_pick = adp_bounds.adp_min_pick.fillna(1).to_numpy(dtype=np.float64)
@@ -2507,6 +2922,7 @@ class FootballSimulation:
             'valid_x_mask': valid_x_mask,
             'availability_entries': availability_entries,
             'future_pick_nums': np.array(adjusted_picks[1:], dtype=np.float64),
+            'player_ids': player_ids,
             'player_names': player_names,
             'player_positions': player_positions,
             'player_teams': player_teams,
@@ -2658,12 +3074,39 @@ class FootballSimulation:
         return objective_value
 
     def filter_best_ball_ilp_pool(self, ppg_pred, ppg_pred_ny, adp_samples, to_add_set, pos_pool_multiplier=8):
+        player_ids = self.identity_values(
+            ppg_pred,
+            validate_unique=True,
+        )
+        adp_player_ids = self.identity_values(
+            adp_samples,
+            validate_unique=True,
+        )
+        if not np.array_equal(player_ids, adp_player_ids):
+            raise ValueError(
+                "Could not align ADP samples to the ILP projection population."
+            )
+        if ppg_pred_ny is not None:
+            next_year_player_ids = self.identity_values(
+                ppg_pred_ny,
+                validate_unique=True,
+            )
+            if not np.array_equal(player_ids, next_year_player_ids):
+                raise ValueError(
+                    "Could not align next-year samples to the ILP projection population."
+                )
         pool = ppg_pred[['player', 'pos']].copy()
+        pool['_player_identity'] = player_ids
         pool['proj_mean'] = ppg_pred[self.sample_value_columns(ppg_pred)].mean(axis=1).values
         pool['adp_mean'] = adp_samples[self.sample_value_columns(adp_samples)].mean(axis=1).values
         pos_ranges = self.best_ball_position_ranges()
 
-        keep_players = set(pool.loc[pool.player.isin(to_add_set), 'player'])
+        keep_players = set(
+            pool.loc[
+                pool['_player_identity'].isin(to_add_set),
+                '_player_identity',
+            ]
+        )
 
         for pos, (_, max_count) in pos_ranges.items():
 
@@ -2678,8 +3121,18 @@ class FootballSimulation:
             pos_pool['proj_rank'] = pos_pool.proj_mean.rank(method='first', ascending=False)
             pos_pool['blend_rank'] = (0.55 * pos_pool.adp_rank) + (0.45 * pos_pool.proj_rank)
 
-            pos_keep = set(pos_pool.nsmallest(core_quota, 'adp_rank').player)
-            pos_keep.update(pos_pool.nsmallest(core_quota, 'proj_rank').player)
+            pos_keep = set(
+                pos_pool.nsmallest(
+                    core_quota,
+                    'adp_rank',
+                )['_player_identity']
+            )
+            pos_keep.update(
+                pos_pool.nsmallest(
+                    core_quota,
+                    'proj_rank',
+                )['_player_identity']
+            )
 
             late_cutoff = pos_pool.adp_mean.quantile(0.60)
             real_late_pool = pos_pool[
@@ -2687,20 +3140,40 @@ class FootballSimulation:
                 (pos_pool.adp_mean < 230)
             ]
             late_pool = real_late_pool if len(real_late_pool) >= core_quota else pos_pool[pos_pool.adp_mean >= late_cutoff]
-            pos_keep.update(late_pool.nsmallest(core_quota, 'proj_rank').player)
+            pos_keep.update(
+                late_pool.nsmallest(
+                    core_quota,
+                    'proj_rank',
+                )['_player_identity']
+            )
 
             if len(pos_keep) < quota:
-                fill_pool = pos_pool[~pos_pool.player.isin(pos_keep)]
+                fill_pool = pos_pool[
+                    ~pos_pool['_player_identity'].isin(pos_keep)
+                ]
                 fill_count = quota - len(pos_keep)
-                pos_keep.update(fill_pool.nsmallest(fill_count, 'blend_rank').player)
+                pos_keep.update(
+                    fill_pool.nsmallest(
+                        fill_count,
+                        'blend_rank',
+                    )['_player_identity']
+                )
 
             keep_players.update(pos_keep)
 
-        keep_mask = ppg_pred.player.isin(keep_players)
+        keep_mask = pd.Series(player_ids).isin(keep_players).to_numpy()
         ppg_pred = ppg_pred[keep_mask].reset_index(drop=True)
         adp_samples = adp_samples[keep_mask].reset_index(drop=True)
         if ppg_pred_ny is not None:
             ppg_pred_ny = ppg_pred_ny[keep_mask].reset_index(drop=True)
+
+        retained_ids = set(self.identity_values(ppg_pred))
+        missing_selected = set(to_add_set) - retained_ids
+        if missing_selected:
+            raise ValueError(
+                "ILP pruning removed selected players: "
+                + ', '.join(sorted(missing_selected))
+            )
 
         return ppg_pred, ppg_pred_ny, adp_samples
 
@@ -3041,7 +3514,7 @@ class FootballSimulation:
         ppg_pred,
         ppg_pred_ny,
         adp_samples,
-        full_player_names,
+        full_player_ids,
         full_adp_matrix,
         adjusted_picks,
         to_add,
@@ -3064,7 +3537,7 @@ class FootballSimulation:
                 'ppg_pred': ppg_pred,
                 'ppg_pred_ny': ppg_pred_ny,
                 'adp_samples': adp_samples,
-                'full_player_names': full_player_names,
+                'full_player_ids': full_player_ids,
                 'full_adp_matrix': full_adp_matrix,
                 'adjusted_picks': adjusted_picks,
                 'to_add': to_add_list,
@@ -3186,8 +3659,13 @@ class FootballSimulation:
             ppg_pred_ny = self.drop_players(self.get_predictions('pred_fp_per_game_ny', num_options=num_options), to_drop_set)
 
         adp_samples = self.drop_players(self.get_adp_samples(num_options=num_options), to_drop_set)
-        full_player_names = adp_samples.player.values
-        full_adp_matrix = adp_samples.iloc[:, 2:].values
+        full_player_ids = self.identity_values(
+            adp_samples,
+            validate_unique=True,
+        )
+        full_adp_matrix = adp_samples[
+            self.sample_value_columns(adp_samples)
+        ].values
         timings['prediction_adp_generation'] += time.perf_counter() - t0
 
         adjusted_picks = self.calculate_adjusted_picks(len(to_add))
@@ -3221,19 +3699,27 @@ class FootballSimulation:
             adp_samples,
             to_add_set,
         )
-        adp_matrix = adp_samples.iloc[:, 2:].values
+        adp_matrix = adp_samples[
+            self.sample_value_columns(adp_samples)
+        ].values
         timings['pool_filter'] += time.perf_counter() - t0
 
         t0 = time.perf_counter()
         model = self.build_best_ball_ilp_model(ppg_pred, to_add_set, adjusted_picks, num_weeks)
-        full_idx = {player: idx for idx, player in enumerate(full_player_names)}
-        model_player_names = model['player_names'][model['draft_pool_indices']]
-        model_full_indices = np.array([full_idx[player] for player in model_player_names], dtype=np.int64)
-        selected_full_indices = np.array(
-            [full_idx[player] for player in to_add_set if player in full_idx],
+        full_idx = {
+            player_id: idx
+            for idx, player_id in enumerate(full_player_ids)
+        }
+        model_player_ids = model['player_ids'][model['draft_pool_indices']]
+        model_full_indices = np.array(
+            [full_idx[player_id] for player_id in model_player_ids],
             dtype=np.int64,
         )
-        num_full_players = len(full_player_names)
+        selected_full_indices = np.array(
+            [full_idx[player] for player in to_add_set],
+            dtype=np.int64,
+        )
+        num_full_players = len(full_player_ids)
         timings['model_build'] += time.perf_counter() - t0
 
         db_path = self.get_db_path()
@@ -3248,7 +3734,7 @@ class FootballSimulation:
                     ppg_pred,
                     ppg_pred_ny,
                     adp_samples,
-                    full_player_names,
+                    full_player_ids,
                     full_adp_matrix,
                     adjusted_picks,
                     to_add,
@@ -3705,25 +4191,47 @@ class FootballSimulation:
         timings['prediction_adp_generation'] += time.perf_counter() - t0
 
         player_names = ppg_pred.player.to_numpy()
+        player_ids = self.identity_values(
+            ppg_pred,
+            validate_unique=True,
+        )
+        if ppg_pred_ny is not None and not np.array_equal(
+            player_ids,
+            self.identity_values(ppg_pred_ny, validate_unique=True),
+        ):
+            raise ValueError(
+                "Could not align next-year samples to sequential policy players."
+            )
         player_positions = ppg_pred.pos.to_numpy()
         player_teams = ppg_pred.team.fillna('').astype(str).str.strip().to_numpy()
         player_ppg = ppg_pred[BASE_PRED_COL].to_numpy(dtype=np.float32)
-        player_idx = {player: idx for idx, player in enumerate(player_names)}
-        missing_selected = [player for player in to_add if player not in player_idx]
+        player_idx = {
+            player_id: idx
+            for idx, player_id in enumerate(player_ids)
+        }
+        missing_selected = [
+            player
+            for player in to_add
+            if player not in player_idx
+        ]
         if missing_selected:
             raise ValueError(
                 "Selected players are absent from the sequential policy pool: "
                 + ', '.join(missing_selected)
             )
 
-        if not np.array_equal(player_names, adp_samples.player.to_numpy()):
-            adp_samples = (
-                pd.DataFrame({'player': player_names})
-                .merge(adp_samples, how='left', on='player', validate='one_to_one')
-            )
-            if adp_samples.iloc[:, 2:].isna().any().any():
-                raise ValueError("Could not align ADP samples to prediction players.")
-        adp_matrix = adp_samples.iloc[:, 2:].to_numpy(dtype=np.float32)
+        adp_player_ids = self.identity_values(
+            adp_samples,
+            validate_unique=True,
+        )
+        adp_values = adp_samples[
+            self.sample_value_columns(adp_samples)
+        ].copy()
+        adp_values.index = adp_player_ids
+        adp_values = adp_values.reindex(player_ids)
+        if adp_values.isna().any().any():
+            raise ValueError("Could not align ADP samples to prediction players.")
+        adp_matrix = adp_values.to_numpy(dtype=np.float32)
 
         selected_indices = np.asarray(
             [player_idx[player] for player in to_add],
@@ -4326,15 +4834,38 @@ class FootballSimulation:
             ppg_pred_ny = self.drop_players(self.get_predictions('pred_fp_per_game_ny', num_options=num_options), to_drop_set)
 
         adp_samples = self.drop_players(self.get_adp_samples(num_options=num_options), to_drop_set)
-        adp_matrix = adp_samples.iloc[:, 2:].values
+        adp_matrix = adp_samples[
+            self.sample_value_columns(adp_samples)
+        ].values
 
         adjusted_picks = self.calculate_adjusted_picks(len(to_add))
         if len(adjusted_picks) == 0:
             return self.final_results(player_selections, 1)
 
         player_names = ppg_pred.player.values
+        player_ids = self.identity_values(
+            ppg_pred,
+            validate_unique=True,
+        )
+        if ppg_pred_ny is not None and not np.array_equal(
+            player_ids,
+            self.identity_values(ppg_pred_ny, validate_unique=True),
+        ):
+            raise ValueError(
+                "Could not align next-year samples to marginal-policy players."
+            )
+        if not np.array_equal(
+            player_ids,
+            self.identity_values(adp_samples, validate_unique=True),
+        ):
+            raise ValueError(
+                "Could not align ADP samples to marginal-policy players."
+            )
         player_positions = ppg_pred.pos.values
-        player_idx = {player: idx for idx, player in enumerate(player_names)}
+        player_idx = {
+            player_id: idx
+            for idx, player_id in enumerate(player_ids)
+        }
 
         for _ in range(self.num_iters):
             predictions = ppg_pred_ny if (next_year_frac > 0 and np.random.random() < next_year_frac) else ppg_pred
@@ -4345,7 +4876,7 @@ class FootballSimulation:
             adp_col = np.random.randint(0, adp_matrix.shape[1])
             adp_sample = adp_matrix[:, adp_col]
 
-            selected_indices = [player_idx[p] for p in to_add if p in player_idx]
+            selected_indices = [player_idx[p] for p in to_add]
             selected_set = set(selected_indices)
 
             pos_require_adjusted = copy.deepcopy(self.pos_require_start)
@@ -4468,6 +4999,10 @@ class FootballSimulation:
         weekly_score_mode='residual',
         parallel_workers=1,
     ):
+        to_add, to_drop = self.validate_selection_coverage(
+            to_add,
+            to_drop,
+        )
         if scoring_mode == 'best_ball_ilp':
             return self.run_sim_best_ball_ilp(
                 to_add,
@@ -4557,18 +5092,49 @@ class FootballSimulation:
                 # Adjust position requirements based on already owned players (no FLEX for now)
                 pos_require_adjusted = copy.deepcopy(self.pos_require_start)
             
-                for player in to_add:
-                    if player in predictions.player.values:
-                        player_pos = predictions[predictions.player == player].pos.iloc[0]
-                        if player_pos in pos_require_adjusted and pos_require_adjusted[player_pos] > 0:
-                            pos_require_adjusted[player_pos] -= 1
+                prediction_ids = self.identity_values(
+                    predictions,
+                    validate_unique=True,
+                )
+                selected_prediction_mask = pd.Series(
+                    prediction_ids,
+                    index=predictions.index,
+                ).isin(to_add_set)
+                for player_pos in predictions.loc[
+                    selected_prediction_mask,
+                    'pos',
+                ]:
+                    if (
+                        player_pos in pos_require_adjusted
+                        and pos_require_adjusted[player_pos] > 0
+                    ):
+                        pos_require_adjusted[player_pos] -= 1
             
                 # Remove already owned players from consideration
-                available_predictions = predictions[~predictions.player.isin(to_add_set)].reset_index(drop=True)
-                available_adp_samples = adp_samples[~adp_samples.player.isin(to_add_set)].reset_index(drop=True)
+                available_predictions = predictions[
+                    ~selected_prediction_mask
+                ].reset_index(drop=True)
+                available_adp_samples = adp_samples[
+                    ~self.identity_mask(adp_samples, to_add_set)
+                ].reset_index(drop=True)
+                if not np.array_equal(
+                    self.identity_values(
+                        available_predictions,
+                        validate_unique=True,
+                    ),
+                    self.identity_values(
+                        available_adp_samples,
+                        validate_unique=True,
+                    ),
+                ):
+                    raise ValueError(
+                        "Could not align ADP samples to total-points players."
+                    )
                 
                 # Pre-convert ADP data columns to numpy array for faster access
-                adp_data_matrix = available_adp_samples.iloc[:, 2:].values  # Skip player and pos columns
+                adp_data_matrix = available_adp_samples[
+                    self.sample_value_columns(available_adp_samples)
+                ].values
                 
                 if len(available_predictions) == 0:
                     continue
@@ -4776,7 +5342,7 @@ def _best_ball_ilp_base_worker(payload):
         ppg_pred = payload['ppg_pred']
         ppg_pred_ny = payload['ppg_pred_ny']
         adp_samples = payload['adp_samples']
-        full_player_names = payload['full_player_names']
+        full_player_ids = payload['full_player_ids']
         full_adp_matrix = payload['full_adp_matrix']
         adjusted_picks = payload['adjusted_picks']
         to_add = payload['to_add']
@@ -4786,24 +5352,32 @@ def _best_ball_ilp_base_worker(payload):
             sim.load_weekly_template_profiles()
 
         model = sim.build_best_ball_ilp_model(ppg_pred, to_add_set, adjusted_picks, num_weeks)
-        full_idx = {player: idx for idx, player in enumerate(full_player_names)}
-        model_player_names = model['player_names'][model['draft_pool_indices']]
-        model_full_indices = np.array([full_idx[player] for player in model_player_names], dtype=np.int64)
+        full_idx = {
+            player_id: idx
+            for idx, player_id in enumerate(full_player_ids)
+        }
+        model_player_ids = model['player_ids'][model['draft_pool_indices']]
+        model_full_indices = np.array(
+            [full_idx[player_id] for player_id in model_player_ids],
+            dtype=np.int64,
+        )
         selected_full_indices = np.array(
-            [full_idx[player] for player in to_add_set if player in full_idx],
+            [full_idx[player] for player in to_add_set],
             dtype=np.int64,
         )
 
         return sim.run_best_ball_ilp_iteration_chunk(
             ppg_pred,
             ppg_pred_ny,
-            adp_samples.iloc[:, 2:].values,
+            adp_samples[
+                sim.sample_value_columns(adp_samples)
+            ].values,
             full_adp_matrix,
             adjusted_picks,
             model,
             model_full_indices,
             selected_full_indices,
-            len(full_player_names),
+            len(full_player_ids),
             payload['num_iters'],
             to_add,
             payload['next_year_frac'],

@@ -154,10 +154,19 @@ the source build.
 Optional review table for identifying draftable players with suspicious missing
 or fallback ADP context.
 
+### `Avg_ADPs`
+
+When `player_key` is present, the app joins ADP by a complete canonical key and
+rejects duplicate relevant keys. The current legacy table does not yet publish
+`player_key`, so the app uses an explicitly labeled normalized-display-name
+fallback. That fallback rejects collisions among projection rows or relevant
+ADP rows instead of choosing one silently. Unmatched players may still use the
+model-input ADP and documented late-pick defaults.
+
 ## Current Validated Source Copy
 
-The 2026-07-29 V2 identity/scoring correction retains 268 unique non-null DK
-player keys and 180 unique non-null beta player keys.
+The live V2 population retains 351 unique non-null DK player keys and 328
+unique non-null beta player keys.
 Tetairoa McMillan's provisional and GSIS aliases share one stable key, and
 truncated Amon-Ra St. Brown aliases no longer create a duplicate player.
 
@@ -169,8 +178,9 @@ weekly paths differ. These added columns do not change Snake's selected
 `week_*` profile query or its DK runtime-scoring semantics.
 
 The copied database passed SQLite integrity and foreign-key checks and is
-byte-identical to the modeling source. No Snake query or runtime-scoring change
-is required for this refresh.
+byte-identical to the modeling source. Snake now carries the canonical key
+through its runtime joins, sampling caches, selection state, and optimizer
+masks; this changes identity handling, not runtime-scoring semantics.
 
 ## Sequential Player-Pool Coverage
 
@@ -187,6 +197,19 @@ or duplicated selections.
   current-player-map rows. Generated copies require complete non-null keys,
   including stable provisional keys for players who have not played. Display
   names remain labels and must not become a fuzzy production join key.
+- Join `Final_Predictions_Resid` to `Best_Ball_Weekly_Player_Map` by
+  `player_key` whenever both tables publish complete keys. Require one map row
+  per key, matching positions, and complete projection-map coverage.
+- Key weekly template profile dictionaries and tensor caches by `player_key`.
+  A display-name change must not change the donor pool used by a player.
+- Persist `PlayerKey` in saved draft-state files and use it for MyTeam,
+  OtherTeam, exclusion, and selected-player masks. Old saved files and old
+  databases may fall back to exact display-name identity, but unmatched or
+  ambiguous selected rows must fail closed.
+- Preserve the full aligned source population for opponent draft simulation.
+  The ILP candidate reduction may retain its existing position-specific
+  ADP/projection quotas, but it must force every already selected player into
+  the retained pool and verify that none was pruned.
 - Preserve `template_pool_key` joins across player map, pools, and templates.
 - When `Best_Ball_Weekly_Templates.league` exists, join pools to templates on
   both `template_id` and league context (`pool_version` to `league`).
