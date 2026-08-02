@@ -54,14 +54,22 @@ def hydrate_weekly_template_profiles(sim, filename, year, league, pred_vers):
     return sim.set_weekly_template_profile_cache(*cache)
 
 def get_prediction_options(filename, pred_vers):
-    """Return available year/league combinations from residual predictions."""
+    """Return only prediction slices backed by current weekly artifacts."""
     conn = get_conn(filename)
     options = pd.read_sql_query(f'''
-        SELECT year, version
-        FROM Final_Predictions_Resid
-        WHERE dataset='{pred_vers}'
-        GROUP BY year, version
-        ORDER BY year DESC, version
+        SELECT predictions.year,
+               predictions.version
+        FROM Final_Predictions_Resid predictions
+        INNER JOIN (
+            SELECT DISTINCT year, version, dataset
+            FROM Best_Ball_Weekly_Player_Map
+        ) weekly
+                ON weekly.year=predictions.year
+               AND weekly.version=predictions.version
+               AND weekly.dataset=predictions.dataset
+        WHERE predictions.dataset='{pred_vers}'
+        GROUP BY predictions.year, predictions.version
+        ORDER BY predictions.year DESC, predictions.version
     ''', conn)
     conn.close()
 
@@ -922,16 +930,19 @@ def sidebar_controls(prediction_options):
         index=league_index,
         format_func=str.upper,
         help=(
-            "DK is the production slice. NFFC is available for setup testing "
-            "when an NFFC-tagged projection/template slice is present."
+            "DK is the full production format. NFFC is an offense-only scoring "
+            "adapter; it uses governed NFFC inputs but is not a complete NFFC "
+            "contest implementation."
         ),
     )
+    scoring_week_count = 17 if league == 'nffc' else 16
     if league == 'nffc':
         st.sidebar.caption(
-            "NFFC is in preview and uses Third Round Reversal: Rounds 2 and 3 "
-            "both run last-to-first. Confirm projection and weekly-template "
-            "provenance before using recommendations. This setup is not yet "
-            "the Championship's complete 30-round kicker/defense format."
+            "Experimental NFFC-scoring adapter: independently scored offensive "
+            "projections, current composite NFFC ADP, 17-week modern-era "
+            "templates, and Third Round Reversal. Your configured offense-only "
+            "roster is not an official NFFC contest; kicker and team defense "
+            "are not modeled."
         )
 
     league_prediction_options = prediction_options[
@@ -1060,7 +1071,8 @@ def sidebar_controls(prediction_options):
             help=(
                 'Weekly templates draw one matched historical season. With the V2 '
                 'handoff, its centered active-PPG residual is added directly to the '
-                'current point forecast and that same donor supplies the 16-week '
+                f'current point forecast and that same donor supplies the '
+                f'{scoring_week_count}-week '
                 'best-ball profile. No independent current residual is drawn. '
                 'Residual weeks preserves the prior independent weekly sampling behavior.'
             ),
@@ -1141,7 +1153,8 @@ def sidebar_controls(prediction_options):
                 f'{stack_team_cap:.0f} per QB/team.'
             )
         st.sidebar.caption(
-            'Preview methodology: 16-week template outcomes, 24 current candidates, '
+            f'Preview methodology: {scoring_week_count}-week template outcomes, '
+            '24 current candidates, '
             'a roster-need-balanced root screen, empirical next-pick replacement value, '
             'symmetric QB-pass catcher stack utility, candidate-consistent noisy-ADP '
             'rooms, a 64-season pilot, and a separate 128-season decision score for '

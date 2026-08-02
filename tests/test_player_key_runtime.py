@@ -17,7 +17,13 @@ APP_DIR = Path(__file__).parents[1] / "app"
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
-from snake_draft_app import apply_loaded_state, run_simulation, save_draft_state
+from snake_draft_app import (
+    apply_loaded_state,
+    get_prediction_options,
+    get_player_data,
+    run_simulation,
+    save_draft_state,
+)
 
 
 def _simulation_with_conn(conn):
@@ -31,6 +37,54 @@ def _simulation_with_conn(conn):
     return sim
 
 
+def test_prediction_options_require_matching_current_weekly_artifacts(tmp_path):
+    database = tmp_path / "Simulation.sqlite3"
+    with sqlite3.connect(database) as conn:
+        conn.execute(
+            """
+            CREATE TABLE Final_Predictions_Resid (
+                year INTEGER,
+                version TEXT,
+                dataset TEXT
+            )
+            """
+        )
+        conn.executemany(
+            "INSERT INTO Final_Predictions_Resid VALUES (?, ?, ?)",
+            [
+                (2025, "nffc", "final_ensemble"),
+                (2026, "nffc", "final_ensemble"),
+                (2026, "dk", "final_ensemble"),
+            ],
+        )
+        conn.execute(
+            """
+            CREATE TABLE Best_Ball_Weekly_Player_Map (
+                year INTEGER,
+                version TEXT,
+                dataset TEXT
+            )
+            """
+        )
+        conn.executemany(
+            "INSERT INTO Best_Ball_Weekly_Player_Map VALUES (?, ?, ?)",
+            [
+                (2026, "nffc", "final_ensemble"),
+                (2026, "dk", "final_ensemble"),
+            ],
+        )
+
+    options = get_prediction_options(
+        str(database),
+        "final_ensemble",
+    )
+
+    assert options.to_dict("records") == [
+        {"year": 2026, "version": "dk"},
+        {"year": 2026, "version": "nffc"},
+    ]
+
+
 def _create_adp_table(conn, include_player_key):
     key_column = "player_key TEXT," if include_player_key else ""
     conn.execute(
@@ -38,6 +92,26 @@ def _create_adp_table(conn, include_player_key):
         CREATE TABLE Avg_ADPs (
             {key_column}
             player TEXT,
+            Years_of_Experience REAL,
+            avg_pick REAL,
+            year INTEGER,
+            league TEXT,
+            std_dev REAL,
+            min_pick REAL,
+            max_pick REAL
+        )
+        """
+    )
+
+
+def _create_entity_adp_table(conn):
+    conn.execute(
+        """
+        CREATE TABLE Avg_ADPs (
+            player_key TEXT,
+            draft_entity_key TEXT,
+            player TEXT,
+            pos TEXT,
             Years_of_Experience REAL,
             avg_pick REAL,
             year INTEGER,
@@ -81,6 +155,24 @@ def test_adp_join_prefers_player_key_when_names_disagree():
     assert result.loc[0, "avg_pick"] == 17
 
 
+def test_canonical_adp_join_rejects_a_keyless_table():
+    conn = sqlite3.connect(":memory:")
+    _create_adp_table(conn, include_player_key=False)
+    conn.execute(
+        """
+        INSERT INTO Avg_ADPs
+        VALUES ('Canonical Name', 3, 17, 2026, 'dk', 2, 12, 24)
+        """
+    )
+    sim = _simulation_with_conn(conn)
+
+    with pytest.raises(
+        ValueError,
+        match=r"Canonical projections require Avg_ADPs\.player_key",
+    ):
+        sim.join_adp(_projection_frame())
+
+
 def test_adp_legacy_name_fallback_is_explicit_and_collision_checked():
     conn = sqlite3.connect(":memory:")
     _create_adp_table(conn, include_player_key=False)
@@ -93,7 +185,9 @@ def test_adp_legacy_name_fallback_is_explicit_and_collision_checked():
     sim = _simulation_with_conn(conn)
 
     result = sim.join_adp(
-        _projection_frame(player="Amon-Ra St. Brown")
+        _projection_frame(player="Amon-Ra St. Brown").drop(
+            columns=["player_key"]
+        )
     )
 
     assert sim.adp_join_method == "legacy_normalized_name"
@@ -101,8 +195,12 @@ def test_adp_legacy_name_fallback_is_explicit_and_collision_checked():
 
     duplicate_projection_names = pd.concat(
         [
-            _projection_frame("key-1", "Amon-Ra St. Brown"),
-            _projection_frame("key-2", "Amon Ra St Brown"),
+            _projection_frame("key-1", "Amon-Ra St. Brown").drop(
+                columns=["player_key"]
+            ),
+            _projection_frame("key-2", "Amon Ra St Brown").drop(
+                columns=["player_key"]
+            ),
         ],
         ignore_index=True,
     )
@@ -110,9 +208,248 @@ def test_adp_legacy_name_fallback_is_explicit_and_collision_checked():
         sim.join_adp(duplicate_projection_names)
 
 
+@pytest.mark.parametrize(
+    ("rows", "error_match"),
+    [
+        (
+            [
+                (
+                    "key-1",
+                    "Canonical Name",
+                    3,
+                    17,
+                    2026,
+                    "dk",
+                    2,
+                    12,
+                    24,
+                ),
+                (
+                    None,
+                    "Unkeyed ADP Row",
+                    2,
+                    50,
+                    2026,
+                    "dk",
+                    5,
+                    40,
+                    60,
+                ),
+            ],
+            "blank identities",
+        ),
+        (
+            [
+                (
+                    "key-1",
+                    "Canonical Name",
+                    3,
+                    17,
+                    2026,
+                    "dk",
+                    2,
+                    12,
+                    24,
+                ),
+                (
+                    "key-1",
+                    "Duplicate Alias",
+                    3,
+                    18,
+                    2026,
+                    "dk",
+                    2,
+                    13,
+                    25,
+                ),
+            ],
+            "duplicate identities",
+        ),
+    ],
+)
+def test_keyed_adp_join_rejects_incomplete_or_duplicate_slice(
+    rows,
+    error_match,
+):
+    conn = sqlite3.connect(":memory:")
+    _create_adp_table(conn, include_player_key=True)
+    conn.executemany(
+        "INSERT INTO Avg_ADPs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        rows,
+    )
+    sim = _simulation_with_conn(conn)
+
+    with pytest.raises(ValueError, match=error_match):
+        sim.join_adp(_projection_frame())
+
+
+def test_keyed_alias_adp_flows_to_runtime_and_app_display():
+    conn = sqlite3.connect(":memory:")
+    _create_adp_table(conn, include_player_key=True)
+    conn.executemany(
+        "INSERT INTO Avg_ADPs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (
+                "tet-key",
+                "Tet Mcmillan",
+                1,
+                43.669216,
+                2026,
+                "dk",
+                6.5,
+                35.0,
+                53.0,
+            ),
+            (
+                "amon-key",
+                "Amon Ra St Brown",
+                5,
+                7.185248,
+                2026,
+                "dk",
+                1.25,
+                4.0,
+                11.0,
+            ),
+        ],
+    )
+    projection = pd.DataFrame(
+        {
+            "player_key": ["tet-key", "amon-key"],
+            "player": ["Tetairoa McMillan", "Amon-Ra St. Brown"],
+            "pos": ["WR", "WR"],
+            "team": ["CAR", "DET"],
+            "model_input_avg_pick": [39.56, 7.05],
+            "model_input_year_exp": [1.0, 5.0],
+            "pred_fp_per_game": [16.0, 19.0],
+            "pred_p10": [12.0, 15.0],
+            "pred_p90": [20.0, 23.0],
+        }
+    )
+    sim = _simulation_with_conn(conn)
+
+    runtime = sim.join_adp(projection)
+    sim.player_data = runtime
+    displayed = get_player_data(sim).set_index("PlayerKey")
+
+    assert sim.adp_join_method == "player_key"
+    assert runtime.set_index("player_key").loc["tet-key", "avg_pick"] == pytest.approx(
+        43.669216
+    )
+    assert runtime.set_index("player_key").loc["amon-key", "avg_pick"] == pytest.approx(
+        7.185248
+    )
+    assert displayed.loc["tet-key", "Player"] == "Tetairoa McMillan"
+    assert displayed.loc["amon-key", "Player"] == "Amon-Ra St. Brown"
+    assert displayed.loc["tet-key", "ADP"] == pytest.approx(43.7)
+    assert displayed.loc["amon-key", "ADP"] == pytest.approx(7.2)
+
+
+def test_keyed_adp_ignores_unkeyed_non_offensive_draft_entities():
+    conn = sqlite3.connect(":memory:")
+    _create_entity_adp_table(conn)
+    conn.executemany(
+        "INSERT INTO Avg_ADPs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (
+                "key-1",
+                "player:key-1",
+                "Canonical Name",
+                "WR",
+                3,
+                17,
+                2026,
+                "nffc",
+                2,
+                12,
+                24,
+            ),
+            (
+                None,
+                "team-unit:NYJ:TK",
+                "New York Jets Kicker",
+                "TK",
+                None,
+                250,
+                2026,
+                "nffc",
+                15,
+                220,
+                280,
+            ),
+            (
+                None,
+                "team-unit:NYJ:TDSP",
+                "New York Jets Defense",
+                "TDSP",
+                None,
+                260,
+                2026,
+                "nffc",
+                15,
+                230,
+                290,
+            ),
+        ],
+    )
+    sim = _simulation_with_conn(conn)
+    sim.league = "nffc"
+
+    result = sim.join_adp(_projection_frame())
+
+    assert sim.adp_join_method == "player_key"
+    assert result.loc[0, "avg_pick"] == 17
+
+
+def test_keyed_adp_rejects_an_unkeyed_offensive_entity_with_position():
+    conn = sqlite3.connect(":memory:")
+    _create_entity_adp_table(conn)
+    conn.executemany(
+        "INSERT INTO Avg_ADPs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (
+                "key-1",
+                "player:key-1",
+                "Canonical Name",
+                "WR",
+                3,
+                17,
+                2026,
+                "dk",
+                2,
+                12,
+                24,
+            ),
+            (
+                None,
+                "player:missing-key",
+                "Unkeyed Running Back",
+                "RB",
+                2,
+                50,
+                2026,
+                "dk",
+                5,
+                40,
+                60,
+            ),
+        ],
+    )
+    sim = _simulation_with_conn(conn)
+
+    with pytest.raises(ValueError, match="blank identities"):
+        sim.join_adp(_projection_frame())
+
+
 def test_keyed_adp_join_rejects_an_ungoverned_default_pick():
     conn = sqlite3.connect(":memory:")
     _create_adp_table(conn, include_player_key=True)
+    conn.execute(
+        """
+        INSERT INTO Avg_ADPs
+        VALUES ('other-key', 'Other Player', 3, 17, 2026, 'dk', 2, 12, 24)
+        """
+    )
     sim = _simulation_with_conn(conn)
     projection = _projection_frame()
     projection["model_input_avg_pick"] = np.nan

@@ -1,6 +1,6 @@
 # Session Notes Landing
 
-Last updated: 2026-07-29
+Last updated: 2026-07-31
 
 ## Project Objective
 
@@ -10,29 +10,47 @@ outcomes, and solves roster recommendations with the ILP optimizer.
 
 ## Current Focus
 
-- Current active workstream: DK production Preview rollout of the non-clairvoyant
-  sequential best-ball policy while preserving the legacy ILP fallback, plus an
-  isolated NFFC setup preview while real NFFC projections are still running.
+- The modeling source now audits and omits incomplete market-only players only
+  in the final sixth of a draft surface, while keeping them in canonical ADP
+  and preserving full-room projection coverage. Snake does not fill these rows;
+  its existing sequential aligned-pool gate remains authoritative. This source
+  change has passed a disposable handoff replay but has not been promoted.
+- Current active workstream: DK production Preview rollout of the
+  non-clairvoyant sequential best-ball policy while preserving the legacy ILP
+  fallback, plus a governed independently scored NFFC offense-only candidate.
+  The full 2026 modeling refresh and staged DK/NFFC AppTest passed, but no NFFC
+  database has been promoted to this app.
 - The app consumes `app/Simulation.sqlite3`, copied from the modeling repo.
+- Canonical projection contexts now refuse keyless `Avg_ADPs` slices. Every
+  supported offensive ADP row must carry a complete unique player key, and the
+  same keyed value feeds runtime availability sampling and the displayed board.
+  Explicitly positioned NFFC kicker/team-defense rows are outside the
+  offense-only validation. The live canonical cutover is complete: the DK
+  source feed has 416 rows, and weekly runtime context uses 343 exact keyed ADP
+  joins plus eight governed player-map fallbacks.
 - The 2026-07-29 source refresh preserves the runtime contract while correcting
   V2 identity/scoring lineage and the formerly DK-scored beta weekly slice.
   Both leagues now contain 5,298 templates; 5,120 paired active-PPG values and
-  5,147 paired weekly paths differ. The copied player map has complete unique
-  keys for 351 DK and 328 beta rows, including one stable Tetairoa McMillan
-  identity and no duplicate truncated Amon-Ra St. Brown identity.
+  5,147 paired weekly paths differ. The live production pools have complete
+  unique keys for 351 DK players (56 QB/101 RB/143 WR/51 TE) and 328 beta
+  players (50 QB/95 RB/133 WR/50 TE), including one stable Tetairoa McMillan
+  identity and no duplicate truncated Amon-Ra St. Brown identity. Beta weekly
+  context uses 238 exact keyed ADP joins plus 90 governed fallbacks.
 - New audit-only template-center fields expose the 39 governed beta 2018 QB
   diagnostic fallbacks and the three permitted hybrid-position mismatches.
-  Snake scoring behavior is unchanged; the copied database is byte-identical
-  to the corrected modeling source.
+  Snake scoring behavior is unchanged. The live database is table-identical to
+  the frozen staged source, and the live Streamlit AppTest completed with zero
+  exceptions or rendered error elements.
 - The 2026 DK V2 production handoff is active. Current point samples repeat
   the V2 center before template application; one sampled donor then supplies
   its pool-centered active-PPG residual and matching weekly path directly.
   `joint_centered_template_v2_v1` replaces scaling to the now-zero legacy
   model-residual spread. Optional next-year draws apply `pred_appear_ny`, and
   no-appearance paths remain zero.
-- `SNAKE_SIMULATION_DB` can opt into a separate setup database. The current
-  NFFC preview uses real NFFC ADP but cloned DK projection/template data and is
-  explicitly not calibrated for recommendation evaluation.
+- `SNAKE_SIMULATION_DB` can opt into a staged database. The governed NFFC
+  candidate uses independent NFFC projections, canonical NFFC ADP, 1,509
+  modern-era templates, and a 385-player 17-week map. The historical
+  DK-cloned preview remains a wiring fixture only and is not a release input.
 - NFFC draft turns use Third Round Reversal. The separate 30-round
   kicker/team-defense Championship roster contract remains unimplemented and
   is explicitly warned in the UI.

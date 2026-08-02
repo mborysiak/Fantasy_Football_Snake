@@ -31,6 +31,10 @@ LEGACY_TEMPLATE_RESID_BLEND = 0.30
 MIN_RESID_SD = 1e-6
 X_PICK_BUFFER = 6
 SEQUENTIAL_POLICY_HORIZON = 16
+SEQUENTIAL_POLICY_HORIZON_BY_LEAGUE = {
+    'dk': 16,
+    'nffc': 17,
+}
 SEQUENTIAL_CONSTRUCTION_SAMPLES = 16
 SEQUENTIAL_EVALUATION_SAMPLES = 64
 SEQUENTIAL_DECISION_SAMPLES = 128
@@ -43,6 +47,7 @@ SEQUENTIAL_POLICY_SEED = 20260719
 SEQUENTIAL_STACK_BONUS_PCT = 0.20
 SEQUENTIAL_STACK_PAIR_CAP = 8.0
 SEQUENTIAL_STACK_TEAM_CAP = 12.0
+SUPPORTED_OFFENSIVE_POSITIONS = frozenset({'QB', 'RB', 'WR', 'TE'})
 
 class FootballSimulation:
 
@@ -482,12 +487,16 @@ class FootballSimulation:
             row[1]
             for row in self.conn.execute("PRAGMA table_info(Avg_ADPs)").fetchall()
         }
+        has_adp_player_key = PLAYER_KEY_COL in adp_columns
+        has_adp_position = 'pos' in adp_columns
         adp_key_select = (
             f"{PLAYER_KEY_COL} adp_player_key,"
-            if PLAYER_KEY_COL in adp_columns
+            if has_adp_player_key
             else ""
         )
+        adp_position_select = "pos adp_pos," if has_adp_position else ""
         adp_data = pd.read_sql_query(f'''SELECT {adp_key_select}
+                                                {adp_position_select}
                                                 player adp_player,
                                                 Years_of_Experience as years_of_experience,
                                                 avg_pick,
@@ -502,15 +511,32 @@ class FootballSimulation:
 
         df = df.copy()
         projection_identity_column = self.identity_column(df)
-        if (
-            'adp_player_key' in adp_data.columns
-            and projection_identity_column == PLAYER_KEY_COL
-        ):
-            if len(adp_data) > 0:
-                adp_data['adp_player_key'] = self._validate_identity_values(
-                    adp_data['adp_player_key'],
-                    "ADP player_key",
-                ).values
+        if has_adp_position:
+            offensive_adp_mask = (
+                adp_data['adp_pos']
+                .fillna('')
+                .astype(str)
+                .str.strip()
+                .str.upper()
+                .isin(SUPPORTED_OFFENSIVE_POSITIONS)
+            )
+            adp_data = adp_data.loc[offensive_adp_mask].copy()
+        if has_adp_player_key and len(adp_data) > 0:
+            adp_data['adp_player_key'] = self._validate_identity_values(
+                adp_data['adp_player_key'],
+                "ADP player_key",
+            ).values
+
+        if projection_identity_column == PLAYER_KEY_COL:
+            if not has_adp_player_key:
+                raise ValueError(
+                    "Canonical projections require Avg_ADPs.player_key; "
+                    "refusing a normalized-name ADP join."
+                )
+            if len(adp_data) == 0:
+                raise ValueError(
+                    "No keyed Avg_ADPs rows found for the selected year and league."
+                )
             projection_keys = set(
                 self._validate_identity_values(
                     df[PLAYER_KEY_COL],
@@ -607,6 +633,7 @@ class FootballSimulation:
                 '_player_join_key',
                 'adp_player',
                 'adp_player_key',
+                'adp_pos',
             ],
             errors='ignore',
         )
@@ -875,6 +902,19 @@ class FootballSimulation:
             raise ValueError(
                 f"No weekly template profiles found for "
                 f"year={set_year}, version={league}, dataset={pred_vers}."
+            )
+        week_cols = [
+            column
+            for column in week_cols
+            if profiles[column].notna().any()
+        ]
+        if not week_cols:
+            raise ValueError(
+                "Selected league has no populated weekly template columns."
+            )
+        if profiles[week_cols].isna().any().any():
+            raise ValueError(
+                "Selected league has a partial weekly template horizon."
             )
 
         if template_identity_column == PLAYER_KEY_COL:
@@ -1174,13 +1214,18 @@ class FootballSimulation:
         self,
         predictions,
         num_scenarios,
-        num_weeks=SEQUENTIAL_POLICY_HORIZON,
+        num_weeks=None,
         seed=None,
         ppg_column_indices=None,
     ):
         """Sample common-random-number weekly scores as [scenario, player, week]."""
         if num_scenarios <= 0:
             raise ValueError("num_scenarios must be positive.")
+        if num_weeks is None:
+            num_weeks = SEQUENTIAL_POLICY_HORIZON_BY_LEAGUE.get(
+                self.league,
+                SEQUENTIAL_POLICY_HORIZON,
+            )
 
         self.load_weekly_template_profiles()
         players = self.template_identity_values(predictions)
@@ -4100,7 +4145,7 @@ class FootballSimulation:
         to_drop,
         num_iters=SEQUENTIAL_DRAFT_ROOMS,
         next_year_frac=0,
-        num_weeks=SEQUENTIAL_POLICY_HORIZON,
+        num_weeks=None,
         construction_samples=SEQUENTIAL_CONSTRUCTION_SAMPLES,
         evaluation_samples=SEQUENTIAL_EVALUATION_SAMPLES,
         decision_samples=SEQUENTIAL_DECISION_SAMPLES,
@@ -4118,7 +4163,13 @@ class FootballSimulation:
         total_start = time.perf_counter()
         timings = Counter()
         num_rooms = max(1, int(num_iters))
-        num_weeks = min(int(num_weeks), SEQUENTIAL_POLICY_HORIZON)
+        configured_horizon = SEQUENTIAL_POLICY_HORIZON_BY_LEAGUE.get(
+            self.league,
+            SEQUENTIAL_POLICY_HORIZON,
+        )
+        if num_weeks is None:
+            num_weeks = configured_horizon
+        num_weeks = min(int(num_weeks), configured_horizon)
         evaluation_seed = (
             int(seed) + 202
             if evaluation_seed is None
@@ -4157,7 +4208,7 @@ class FootballSimulation:
             results.attrs['timings'] = {
                 'mode': 'best_ball_policy_sequential',
                 'release_stage': 'preview',
-                'horizon_label': 'sequential_template_16',
+                'horizon_label': f'sequential_template_{num_weeks}',
                 'template_resid_method_version': self.template_resid_method_version,
                 'template_resid_blend': self.template_resid_blend,
                 'sections': {'total': time.perf_counter() - total_start},
@@ -4762,7 +4813,7 @@ class FootballSimulation:
         results.attrs['timings'] = {
             'mode': 'best_ball_policy_sequential',
             'release_stage': 'preview',
-            'horizon_label': 'sequential_template_16',
+            'horizon_label': f'sequential_template_{num_weeks}',
             'template_resid_method_version': self.template_resid_method_version,
             'template_resid_blend': self.template_resid_blend,
             'requested_iters': int(num_rooms),

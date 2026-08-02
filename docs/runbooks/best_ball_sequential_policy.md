@@ -1,14 +1,16 @@
 # Sequential Best-Ball Policy Runbook
 
-Last updated: 2026-07-20
+Last updated: 2026-07-31
 
 ## Release Status
 
-`best_ball_policy` is the DK-only default for field testing and remains labeled
-Preview. The legacy `best_ball_ilp` remains available as the fallback. The
-Preview is intentionally limited to the current-pick recommendation; it does
-not present future-round recommendations as if their players were fixed in
-advance.
+`best_ball_policy` remains labeled Preview, and its release-gate evidence is
+still DK-specific. The experimental, governed offense-only NFFC scoring adapter
+can run the same policy against independently scored NFFC projections, current
+canonical NFFC ADP, and 17-week modern-era templates. The legacy `best_ball_ilp` remains
+available as the fallback. The Preview is intentionally limited to the
+current-pick recommendation; it does not present future-round recommendations
+as if their players were fixed in advance.
 
 ## League-Aware Pick Schedule
 
@@ -25,16 +27,18 @@ slot 1 picks 1, 24, 36, 37, 60, and 61. This schedule applies to draft-status
 counts, opponent-turn validation, availability horizons, ILP turns, and
 sequential rollouts.
 
-NFFC remains setup-only beyond the pick schedule. The 2026 Best Ball
-Championship is 30 rounds and includes kicker/team-defense slots, while the
-current app is still offense-only and defaults to the DK roster construction.
+This is the only NFFC schedule currently implemented. The app has no
+straight-snake NFFC25/NFFC50 selector. Its NFFC player and roster scope is
+limited to QB/RB/WR/TE, with no kicker or team defense, so the governed
+offensive mode is not a complete implementation of an official NFFC contest.
 
 ## Methodology Boundary
 
 The policy separates information used to make draft decisions from outcomes
 used to score those decisions:
 
-1. Generate 16 construction seasons from the 16-week weekly-template model.
+1. Generate construction seasons from the selected league's weekly-template
+   model: 16 weeks for DK or 17 weeks for NFFC.
 2. Generate noisy-ADP opponent priority orders for shared draft rooms.
 3. Allocate a 24-player legal root screen across positions according to the
    remaining roster minimum deficits and maximum capacity.
@@ -77,12 +81,15 @@ a formal posterior probability that a candidate is optimal.
 
 ## Explicit Horizons
 
-- `sequential_template_16`: Preview sequential policy and weekly-template horizon.
-- `legacy_template_16`: legacy ILP when weekly templates are selected.
+- `sequential_template_16`: DK Preview sequential policy and weekly-template horizon.
+- `sequential_template_17`: NFFC offense-only Preview and weekly-template horizon.
+- `legacy_template_16`/`legacy_template_17`: legacy ILP when weekly templates
+  are selected for DK/NFFC.
 - `legacy_residual_17`: historical independent-residual configuration.
 
-The Preview does not silently synthesize Week 17. Rebuilding weekly templates for
-17 weeks remains separate modeling-repo work.
+The app does not synthesize or pad a weekly horizon. DK consumes 16 populated
+weeks. NFFC consumes 17 populated weeks from the modeling repository's
+2021-and-later modern-era donor build; a partial horizon fails closed.
 
 ## Candidate Screen
 

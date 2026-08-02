@@ -1,6 +1,6 @@
 # Best-Ball ILP Validation Runbook
 
-Last updated: 2026-07-29
+Last updated: 2026-07-31
 
 ## Core Files
 
@@ -26,6 +26,9 @@ streamlitvenv\Scripts\streamlit.exe run app\snake_draft_app.py
 
 Then confirm:
 - the app loads the player pool
+- the release database offers NFFC only after a governed NFFC prediction slice
+  is present; do not use the historical DK-clone preview artifact for release
+  smoke checks
 - draft controls render
 - optimizer can run at least one recommendation
 - weekly template controls do not error
@@ -33,6 +36,10 @@ Then confirm:
 - the DK-only Sequential best-ball policy (Preview) renders all completed
   decision candidates with raw EV, roster stack utility, immediate stack
   utility, stack-adjusted decision score, paired SE, survival, and room coverage
+- selecting NFFC loads independently scored NFFC offensive projections, the
+  current canonical NFFC ADP feed, and a 17-week modern-era template horizon
+  with 17 populated weekly columns, without falling back to DK data
+- NFFC displays only QB/RB/WR/TE and clearly identifies its offense-only scope
 
 ## Best-Ball Runtime Checks
 
@@ -63,15 +70,23 @@ When changing template or residual logic, check:
 - weekly template profile reads still use the DB-mtime cache path
 - league-aware template joins do not duplicate template rows when multiple
   `Best_Ball_Weekly_Templates.league` slices exist
+- DK resolves to 16 populated `week_*` columns; NFFC resolves to 17 populated
+  `week_*` columns built from 2021-and-later donors; an all-null shared-table
+  `week_17` is ignored for DK and any partial selected horizon fails closed
 - `player_key` exists and is non-null in every weekly template and current
   player-map row; current keys are unique by version/dataset/year/player
 - canonical-key handoff audits join every current and historical V2 population
   row without falling back to display-name matching
 - renamed projection/player-map rows resolve by `player_key`, weekly template
   caches remain keyed by `player_key`, and a selected row survives ILP pruning
-- the current keyless `Avg_ADPs` schema enters only the explicit
-  `legacy_normalized_name` path; relevant normalized-name collisions fail
-  instead of being silently deduplicated
+- canonical projection contexts report `adp_join_method = player_key`; every
+  supported QB/RB/WR/TE row in the selected `Avg_ADPs` slice has a complete
+  unique key, and runtime/displayed ADP agrees with the keyed handoff even when
+  display aliases differ
+- explicitly positioned NFFC kicker/team-defense entities are excluded before
+  player-key validation, while a missing/duplicate key on any offensive ADP
+  row fails closed; only genuinely unkeyed legacy projections may enter
+  `legacy_normalized_name`
 - every MyTeam and OtherTeam row resolves exactly once in the active player
   population; stale, blank, duplicate, conflicting, or ambiguous saved-state
   rows fail before simulation
@@ -87,6 +102,12 @@ When changing template or residual logic, check:
 - DK pick schedules remain straight serpentine
 - NFFC 12-team pick schedules use 3RR: slot 12 starts `12, 13, 25, 48` and
   slot 1 starts `1, 24, 36, 37`
+- NFFC mode remains QB/RB/WR/TE only: TK/TDSP ADP entities never enter the
+  optimizer, and there are no kicker or team-defense roster slots
+- the UI and validation receipts state that NFFC is not a complete official
+  contest implementation
+- selecting NFFC always uses the current 3RR path; the app does not offer a
+  straight-snake NFFC25/NFFC50 format selector
 
 ## Research Outputs
 

@@ -1,6 +1,6 @@
 # Simulation SQLite App Contract
 
-Last updated: 2026-07-29
+Last updated: 2026-07-31
 
 ## Owner
 
@@ -17,36 +17,57 @@ app/Simulation.sqlite3
 The file is generated/copied from the modeling repo and should not be hand-edited
 as a durable fix.
 
-The production/default Snake workflow uses the `dk` league slice. The app may
-also expose an `nffc` slice when the selected database contains one, but NFFC
-remains a setup preview and is outside the DK sequential-policy release gates.
-Other league/version slices in the shared database belong to separate
-applications and remain out of scope.
+The production orchestrator compacts the staged Snake copy with SQLite
+`VACUUM` before app smoke and promotion. It must retain the full source table
+inventory and logical table content, report zero freelist pages afterward, and
+remain at or below GitHub's 100 MiB blob limit. Byte identity with the source
+database is neither expected nor required because compaction changes physical
+page layout without changing rows or schemas.
+
+The default Snake workflow uses the `dk` league slice. The app also exposes the
+experimental, governed offense-only `nffc` scoring adapter when the selected
+database contains one.
+NFFC uses its own scoring, ADP, and weekly-template inputs rather than a renamed
+or cloned DK slice. Other league/version slices in the shared database belong
+to separate applications and remain out of scope.
 
 `SNAKE_SIMULATION_DB` may select an alternate database filename from the app
 directory (or an absolute path). The default remains `Simulation.sqlite3`.
 
-## NFFC Setup Preview
+## Governed NFFC Offensive Scoring Adapter
 
-`Fantasy_Football/Scripts/Modeling/create_snake_nffc_preview.py` creates
-`app/Simulation_nffc_preview.sqlite3` from the stable app database without
-modifying the modeling source database. It clones the DK runtime rows under
-NFFC-safe league keys and the reserved 3,000,000 template-ID range while
-retaining the real NFFC `Avg_ADPs` slice.
+A publishable NFFC slice must contain all of the following under the same
+prediction year and `nffc` league/version key:
 
-The preview is valid for app wiring, selector, persistence, league-aware draft
-order, and partial draft-flow tests only. Its cloned projections and weekly
-profiles still reflect DK scoring/calibration. The 2026 NFFC Best Ball
-Championship is also a 30-round format with kicker and team-defense roster
-slots, which the current offense-only app does not yet model. Replace the cloned
-rows with normal NFFC s3/s4 outputs and add the complete roster contract before
-evaluating recommendation quality or using the app for a live NFFC draft.
+- independently scored NFFC offensive rows in `Final_Predictions_Resid`;
+- matching canonical player-map and template-pool rows;
+- modern-era NFFC weekly templates with populated `week_1` through `week_17`;
+- the current canonical NFFC `Avg_ADPs` feed, keyed by `player_key`.
 
-For the NFFC slice, `FootballSimulation.calculate_snake_picks()` uses Third
-Round Reversal: Round 1 is first-to-last, Rounds 2 and 3 are last-to-first,
-Round 4 is first-to-last, and the draft alternates thereafter. DK retains its
-existing straight serpentine schedule. The official contest reference is:
-https://nfc.shgn.com/rules/2680.
+The year/league selector lists only `Final_Predictions_Resid` slices with a
+matching `Best_Ball_Weekly_Player_Map` slice. Annual source rebuilds replace
+all older pool/map rows for the active league/dataset because template IDs are
+regenerated from the current donor bank; an older map must never be joined to
+the newer unversioned template table.
+
+The NFFC weekly build uses 2021-and-later donors so its 17-week profiles do not
+silently reinterpret older 16-game regular seasons. The old
+`Simulation_nffc_preview.sqlite3`/DK-clone path may remain useful as a historical
+wiring fixture, but it is not a governed NFFC production input.
+
+This mode supports only `QB`, `RB`, `WR`, and `TE`. Kicker (`TK`) and
+team-defense (`TDSP`) ADP entities are excluded before app identity validation,
+and the optimizer has no kicker or defense roster slots. NFFC mode is therefore
+not a complete implementation of an official NFFC contest.
+
+For every NFFC selection,
+`FootballSimulation.calculate_snake_picks()` currently uses Third Round
+Reversal: Round 1 is first-to-last, Rounds 2 and 3 are last-to-first, Round 4 is
+first-to-last, and the draft alternates thereafter. DK retains straight
+serpentine order. The app does not currently expose the straight-snake schedule
+used by NFFC25/NFFC50 formats, so those formats must not be represented by
+selecting NFFC. The Championship 3RR reference used for the current schedule
+implementation is https://nfc.shgn.com/rules/2680.
 
 ## Best-Ball Weekly Tables
 
@@ -69,6 +90,8 @@ Expected columns include:
 - V2 model/handoff provenance, `current_uncertainty_source`, and
   `independent_current_residual_draw_allowed`
 - `avg_pick`
+- `current_team_source`, which identifies `model_inputs`,
+  `v2_player_season_features`, `canonical_avg_adps`, or `unassigned`
 - `template_pool_key`
 
 ### `Best_Ball_Weekly_Template_Pools`
@@ -117,9 +140,15 @@ Expected columns include:
   `v2_template_center_position_mismatch_reason`,
   `historical_center_policy`, and `v2_recenter_promoted`
 - `template_eligible`, `template_exclusion_reason`
-- `week_1` through `week_16`
-- `managed_week_1` through `managed_week_16`
-- `played_week_1` through `played_week_16`
+- `week_1` through the league horizon (`week_16` for DK and `week_17` for NFFC)
+- `managed_week_1` through the same league horizon
+- `played_week_1` through the same league horizon
+
+Because league slices share one SQLite table, the NFFC publication adds the
+`*_week_17` columns while DK rows may leave those columns null. The app removes
+columns that are entirely null for the selected league and rejects a partially
+populated selected horizon. A governed DK slice therefore remains 16 weeks and
+a governed NFFC slice must resolve to exactly 17 populated weeks.
 
 The `played_week_*` fields are additive 0/1 source-observation masks owned by
 the modeling build. The Snake app does not currently use them for best-ball
@@ -156,19 +185,61 @@ or fallback ADP context.
 
 ### `Avg_ADPs`
 
-When `player_key` is present, the app joins ADP by a complete canonical key and
-rejects duplicate relevant keys. The current legacy table does not yet publish
-`player_key`, so the app uses an explicitly labeled normalized-display-name
-fallback. That fallback rejects collisions among projection rows or relevant
-ADP rows instead of choosing one silently. Unmatched players may still use the
-model-input ADP and documented late-pick defaults.
+Canonical projection contexts require `Avg_ADPs.player_key` and join ADP
+one-to-one by that key. Every supported offensive row (`QB`, `RB`, `WR`, or
+`TE`) in the selected year/league slice must have a nonblank, unique
+`player_key`; the app fails closed rather than reverting a canonical projection
+to a normalized-display-name join.
+
+For offensive rows, `Avg_ADPs.team` is the canonical identity's latest team.
+The source weekly builder may use it to fill an otherwise unassigned current
+team, but it must not override an assigned Model Inputs/V2 team and must retain
+the choice in `Best_Ball_Weekly_Player_Map.current_team_source`. The Snake app
+consumes the published map and does not perform its own team inference.
+
+Formats may retain non-offensive draft entities such as NFFC kicker (`TK`) and
+team-defense (`TDSP`) rows in `Avg_ADPs`. When those rows are present, the table
+must publish `pos` so the offense-only Snake runtime can exclude them before
+validating player keys. Such team units may use a separate
+`draft_entity_key` and do not need an NFL player key. A missing key on an
+offensive row still fails the entire selected slice.
+
+An unmatched canonical projection row may use its governed player-map
+`model_input_avg_pick`; a row lacking both direct keyed ADP and governed
+player-map ADP fails closed. The normalized-display-name path remains available
+only for genuinely legacy projection tables that do not publish any
+`player_key`.
+
+The live 2026 DK source slice contains 416 canonical keyed rows. Snake retains
+the full aligned source population for draft-room simulation, joins production
+players by `player_key`, and uses the resulting ADP consistently for both
+availability sampling and the displayed draft board. The NFFC selector follows
+the same key-only contract against the current canonical NFFC feed; it does not
+reuse DK ADP. Provider/display labels do not participate in either canonical
+join.
+
+The source handoff may omit an incomplete market-only projection in the final
+sixth of its draft surface, but it must retain that player in canonical
+`Avg_ADPs` and record the omission in
+`V2_Production_Eligibility_Audit`. Core projection players and keepers always
+fail the source build; a new gap in the protected first five-sixths also fails
+unless it has a separately reviewed annual exclusion. Snake does not invent
+a projection for an omitted tail player; it requires the remaining aligned
+projection/ADP pool to cover every simulated room pick through the user's final
+pick.
 
 ## Current Validated Source Copy
 
-The live V2 population retains 351 unique non-null DK player keys and 328
-unique non-null beta player keys.
+The live V2 production pools retain 351 unique non-null DK player keys
+(56 QB/101 RB/143 WR/51 TE) and 328 unique non-null beta player keys
+(50 QB/95 RB/133 WR/50 TE).
 Tetairoa McMillan's provisional and GSIS aliases share one stable key, and
 truncated Amon-Ra St. Brown aliases no longer create a duplicate player.
+
+The weekly player context has 343 exact keyed ADP joins and eight governed
+player-map fallbacks for DK, plus 238 exact joins and 90 governed fallbacks for
+beta. These partitions cover all 351/328 production players; there are no
+unresolved or generic-default runtime rows.
 
 The follow-up source build explicitly scores each weekly league, quarantines
 the FFToday QB rows stored as 2018 that match the native 2019 vintage, and adds
@@ -178,9 +249,12 @@ weekly paths differ. These added columns do not change Snake's selected
 `week_*` profile query or its DK runtime-scoring semantics.
 
 The copied database passed SQLite integrity and foreign-key checks and is
-byte-identical to the modeling source. Snake now carries the canonical key
-through its runtime joins, sampling caches, selection state, and optimizer
-masks; this changes identity handling, not runtime-scoring semantics.
+table-identical to the frozen staged modeling source. Byte identity is not
+required because equivalent SQLite files may have different physical layouts.
+Snake now carries the canonical key through its runtime joins, displayed
+player board, sampling caches, selection state, and optimizer masks; this
+changes identity handling, not runtime-scoring semantics. The live Streamlit
+AppTest completed with zero exceptions and zero rendered error elements.
 
 ## Sequential Player-Pool Coverage
 
@@ -197,6 +271,10 @@ or duplicated selections.
   current-player-map rows. Generated copies require complete non-null keys,
   including stable provisional keys for players who have not played. Display
   names remain labels and must not become a fuzzy production join key.
+- Require a fully populated, unique `Avg_ADPs.player_key` on every supported
+  offensive row whenever the active projections use canonical keys. Filter
+  explicitly positioned non-offensive draft entities before key validation;
+  never use their separate draft-entity identifiers as player identities.
 - Join `Final_Predictions_Resid` to `Best_Ball_Weekly_Player_Map` by
   `player_key` whenever both tables publish complete keys. Require one map row
   per key, matching positions, and complete projection-map coverage.
@@ -213,9 +291,13 @@ or duplicated selections.
 - Preserve `template_pool_key` joins across player map, pools, and templates.
 - When `Best_Ball_Weekly_Templates.league` exists, join pools to templates on
   both `template_id` and league context (`pool_version` to `league`).
-- Best-ball table builds should preserve other league slices already present in
-  `Simulation.sqlite3`.
-- Treat `week_1` through `week_16` as multipliers.
+- Best-ball table builds preserve other league slices already present in
+  `Simulation.sqlite3`, but replace every retained year for the rebuilt
+  league/dataset's pool, map, summary, and player-audit surfaces.
+- Treat the selected league's populated `week_*` horizon as multipliers:
+  `week_1` through `week_16` for DK and `week_1` through `week_17` for NFFC.
+  Drop only columns that are entirely null for the selected slice and reject a
+  partial horizon.
 - Do not reinterpret `played_week_*` as score multipliers. A value of `1`
   means the source weekly table contained a qualifying player-week row, not
   that the player necessarily had comprehensive snap-count coverage.
@@ -224,9 +306,9 @@ or duplicated selections.
   `independent_current_residual_draw_allowed = 0`.
 - Center each sampled donor's active-PPG residual within its published pool and
   add it directly to the current V2 point center. Apply that same donor's
-  `week_1` through `week_16` path. Do not scale to the model-residual standard
-  deviation: the legacy spread is deliberately zero in V2 and scaling would
-  collapse PPG variance.
+  league-specific 16- or 17-week path. Do not scale to the model-residual
+  standard deviation: the legacy spread is deliberately zero in V2 and scaling
+  would collapse PPG variance.
 - The production method is `joint_centered_template_v2_v1`. The former
   `full_scaled_v1` branch remains only for older databases without a V2
   production handoff; V2 rejects legacy template-residual blend settings.
