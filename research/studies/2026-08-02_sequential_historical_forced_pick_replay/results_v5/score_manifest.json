@@ -1,0 +1,82 @@
+{
+  "code_contract": {
+    "Scripts/Modeling/s4_Best_Ball_Weekly.py": {
+      "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\Modeling\\s4_Best_Ball_Weekly.py",
+      "sha256": "cdafae42b6cd3dacec32efd650454b857d4364b1efa16241b5ea4dae3d5f6bd3"
+    },
+    "Scripts/V2/build_player_outcomes.py": {
+      "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+      "sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76"
+    },
+    "Scripts/V2/config.py": {
+      "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\config.py",
+      "sha256": "d70731af80a39bf732e97efd71417905d7c7afa22470f795f1411ee64b983a43"
+    },
+    "Scripts/V2/contracts.py": {
+      "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\contracts.py",
+      "sha256": "b97a021b3dd6de1e80c38bd4b9157b6a0f15a07e28cec12c5c0aa179d7bec087"
+    },
+    "Scripts/config.py": {
+      "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\config.py",
+      "sha256": "e2c794260e7383dd2f8a8807d21bf94622812d78925c78e6f3e79c24cbcc62d9"
+    },
+    "app/simulation_worker.py": {
+      "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\app\\simulation_worker.py",
+      "sha256": "909cbec9d9e18a6c8ae842b56dfdf6001756305eb77f8ca03f6af42e5a62dd0b"
+    },
+    "app/zSim_Helper.py": {
+      "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\app\\zSim_Helper.py",
+      "sha256": "b738598fe70380b3062136f64811805be7891650a0551f4c0929d11720327114"
+    },
+    "historical_data.py": {
+      "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\research\\studies\\2026-08-02_sequential_historical_forced_pick_replay\\historical_data.py",
+      "sha256": "86dbbb0ca3c97df61c93284d113e0b055315fe832996b349f23d61583509da6d"
+    },
+    "run_study.py": {
+      "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\research\\studies\\2026-08-02_sequential_historical_forced_pick_replay\\run_study.py",
+      "sha256": "67c740baefa1d8feb27184af84f1eebe0f13fb5cc7d77421cec0cfe5404e9107"
+    }
+  },
+  "design_hash": "30acec97a90b19f08a77a6b15fb4f577e605d1a89773f34f4ab13e6c2b8eae82",
+  "exact_state_arm_room_domain": true,
+  "freeze_manifest_hash": "1e6e30fe78cf5cc8691e834efa19a3a7c0b89cda771694818153502093f05e64",
+  "frozen_states_sha256": "1b081a0ca2a90d55a5e5cd11e032bd10968d4ff43543beebb5b22d72821b8876",
+  "room_scores_sha256": "021974b244b6dba394696727cb9cb58d60a8931b77b61d2ccf91e99ae63fdeda",
+  "score_complete": true,
+  "score_receipts_sha256": "32db7f39cd5f7063ae6aa13214cc2b0aac9e8a68fe3a6c8bfd593b9de4e9f894",
+  "sealed_at_utc": "2026-08-03T21:40:08.991989+00:00",
+  "state_metrics_sha256": "b7feda409586e7589c25a42047b925c9f36056845edd22f097bdf4af76092c65",
+  "target_outcome_fingerprints": {
+    "2017": "b06fccd9a9163ceea8bfc0fb26fb35ad8e1b09eefe5a1cc72d8bbaa3db3a0334",
+    "2018": "6404bdccb985b6096d4970b0f1e353440365bc2f4a881017cee3451082c2e672",
+    "2019": "ef4eb3ab6d9e9d0f49e077226a8153490bd2882b6f01e4217d0250e53bf73ae7",
+    "2020": "3029a886ac71aad63eac916cd987a812e14833dd97a7dd8e0283c789611dd63d",
+    "2021": "3aaf2b4d106eff06f329b2cf6773ddc2bea8ecb571b48fc0994423c84947c403",
+    "2022": "f9d4b999b90dc0fc7328b9781648d80e94ac5b4d88b31a9d8bc5ddd81f8b9907",
+    "2023": "ccf7e2a99331708cb2eafbc67116ad8daf447ff18175baef3578edec07debf17",
+    "2024": "168272f0d4b2f8195607141d31c744c359ad0cd1375455c17b9510bc2ae1b488",
+    "2025": "bc0d409550de397208a4ef7638badc9bec4f8c6432200354c6085d13635b3915"
+  },
+  "target_source_receipt_hashes": {
+    "2017": "fcab32fc882cbd9a4b862f3bf1340efdd1ab9ff434ad6cba7e99df2701a05758",
+    "2018": "cbedc0f7d46dd897f8cb1d5d1add9e72aae3b13c7cafcd8fe2b0e86db4e25fe8",
+    "2019": "21f1d19fdb26645f2016cbbcf8f154f0e18f371aa61a799e67992373a99c49cd",
+    "2020": "2f29596a144accb465a1c4f01a191b187f44b0cc627c200f810ebf85acf2da8f",
+    "2021": "a9d8ddbac76263e1173bd6598a4ce5d4abf40d232f095bde2a1529f39e3054ec",
+    "2022": "2459d17917be210421340035c7052c7d461a87e7fc257a6d9b6bb1f1e6ca995e",
+    "2023": "cace906ce0ba15280c04468253150d5d99015b667fd23885fa25b2fdb98177a4",
+    "2024": "a022ba039448edd34a9a2724153a4e26b6253be877fbcdb3240d02e7a04e8187",
+    "2025": "e643f7ea6db845007c3e72062ad06b7e08ee81a17a49bfc1273c5dc3b8a701ff"
+  },
+  "target_source_sha256": {
+    "2017": "064208e4b10398775ee7a2359b124c146b83816ee3bec5c18a1e320d987d7d85",
+    "2018": "016a488cd7c187f0d0ba58ad1b8fad11b633d2050964fbb3009bd26ff9c82f95",
+    "2019": "7e956affe5cdf93ea57261c90b8a4c77b9f8e6fe8e04a82459a295d45878a31d",
+    "2020": "54d9274dfda5637daf5675b41f682959b442ae94e9ea95bc0a779c2024e52d81",
+    "2021": "63cc3e2400307ee8c1fc5c6283c6c4223471111c0f4aedecd60c8db75c96a06d",
+    "2022": "9ee25c230db72c8b9cffc3ad3d218482c3ef53c8a06eadaee85f9e8163552f28",
+    "2023": "ee65341b2f28cfbf48df85571bf512ec62b281043623e7ffed2926e5569126b3",
+    "2024": "db6379707a8d520f7fb9a90eeacd8a98ec3d5cdca8b98e0943cab5a250d91a97",
+    "2025": "40b67b296fda02c7f628741d4aa471208352dd42fb670d4854e7ba95295af1a6"
+  }
+}

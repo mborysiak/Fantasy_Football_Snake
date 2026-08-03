@@ -1,0 +1,192 @@
+{
+  "completed_at_utc": "2026-08-02T22:14:41.529399+00:00",
+  "configuration": {
+    "year": 2026,
+    "league": "dk",
+    "teams": 12,
+    "rounds": 20,
+    "slots": [
+      1,
+      6,
+      12
+    ],
+    "seeds": [
+      17,
+      1017,
+      2017
+    ],
+    "completed_picks": [
+      0,
+      7,
+      14
+    ],
+    "rooms": 24,
+    "candidates": 24,
+    "construction_samples": 16,
+    "evaluation_samples": 64,
+    "control_decision_samples": 128,
+    "expanded_decision_samples": 256,
+    "reference_samples": 512,
+    "reference_halves": [
+      256,
+      256
+    ],
+    "stack_bonus_pct": 0.2,
+    "stack_pair_cap": 8.0,
+    "stack_team_cap": 12.0,
+    "regret_threshold": 10.0,
+    "value_noninferiority_pct": -0.25
+  },
+  "source_receipt": {
+    "created_at_utc": "2026-08-02T21:57:30.416375+00:00",
+    "git_head": "f7c709d829632a41d974c716b8727f24d3731f52",
+    "database": {
+      "path": "C:\\Users\\borys\\OneDrive\\Documents\\GitHub\\Fantasy_Football_Snake\\app\\Simulation.sqlite3",
+      "size_bytes": 59453440,
+      "sha256": "8e89f0d24561c0989af3bf7d661d399ada0f335d59a5b40783bbffaefa1ef029",
+      "quick_check": "ok",
+      "page_count": 14515,
+      "freelist_count": 0
+    },
+    "code": {
+      "zSim_Helper.py": "1d0843e1ac2834c1659b25a4587815613f719fc401c18f00c0363e73d294d325",
+      "snake_draft_app.py": "20d9c8a38c35810d8fe42d6a0fdd3f7649155b7fbcb2e3e95f749c654efad607",
+      "run_study.py": "a77127fb1be45007283337d8e9debc68126ee23d602bbd34295dbadabb0578ae"
+    },
+    "runtime": {
+      "python": "3.9.13 (tags/v3.9.13:6de2ca5, May 17 2022, 16:36:42) [MSC v.1929 64 bit (AMD64)]",
+      "platform": "Windows-10-10.0.26200-SP0",
+      "numpy": "1.24.4",
+      "pandas": "1.4.0"
+    },
+    "model_contract": {
+      "league": "dk",
+      "player_count": 350,
+      "identity_column": "player_key",
+      "uses_v2_joint_template": true,
+      "template_resid_method_version": "joint_centered_template_v2_v1",
+      "weekly_horizon": 16
+    }
+  },
+  "state_counts": {
+    "configured": 27,
+    "complete": 27,
+    "errors": 0
+  },
+  "quality": {
+    "control": {
+      "crossfit_regret_mean": 1.4001453853683736,
+      "crossfit_regret_max": 10.82274622718478,
+      "crossfit_regret_above_10": 2,
+      "full_reference_regret_mean": 2.2560343109531393,
+      "full_reference_regret_max": 13.342937846978202,
+      "reference_exact_rate": 0.4074074074074074,
+      "rank_correlation_mean": 0.9160598565924133,
+      "top5_overlap_mean": 4.074074074074074
+    },
+    "challenger": {
+      "crossfit_regret_mean": 0.10744710395365305,
+      "crossfit_regret_max": 4.30251869559288,
+      "crossfit_regret_above_10": 0,
+      "full_reference_regret_mean": 0.9633360295384187,
+      "full_reference_regret_max": 5.132209916909687,
+      "reference_exact_rate": 0.6296296296296297,
+      "rank_correlation_mean": 0.9375121858625083,
+      "top5_overlap_mean": 4.111111111111111
+    },
+    "action_agreement_rate": 0.7037037037037037,
+    "legacy_audit_128_exact_rate": 0.37037037037037035,
+    "legacy_audit_128_regret_max": 11.14856700102473
+  },
+  "paired_reference_effect": {
+    "draws": 10000,
+    "seed": 20260802,
+    "cluster_unit": "base_seed",
+    "clusters": 3,
+    "mean_delta": 1.292698281414715,
+    "ci95": [
+      0.0,
+      2.2599027156829834
+    ],
+    "mean_delta_pct": 0.057890685923497776,
+    "ci95_pct": [
+      0.0,
+      0.1015371135033
+    ]
+  },
+  "runtime": {
+    "control": {
+      "p50": 13.037653199999909,
+      "p90": 23.053698619999988,
+      "by_round": {
+        "1": {
+          "p50": 23.006478699999988,
+          "p90": 23.497931600000015
+        },
+        "8": {
+          "p50": 13.037653199999909,
+          "p90": 13.325048640000023
+        },
+        "15": {
+          "p50": 5.121202799999992,
+          "p90": 5.296475639999994
+        }
+      }
+    },
+    "challenger": {
+      "p50": 13.451786999999968,
+      "p90": 23.571532979999972,
+      "by_round": {
+        "1": {
+          "p50": 23.511678399999994,
+          "p90": 23.70284648000004
+        },
+        "8": {
+          "p50": 13.451786999999968,
+          "p90": 13.782240540000021
+        },
+        "15": {
+          "p50": 5.634124499999871,
+          "p90": 5.8018437400000265
+        }
+      }
+    },
+    "legacy": {
+      "p50": 3.6143569000000753,
+      "p90": 9.392548240000032,
+      "by_round": {
+        "1": {
+          "p50": 7.71882949999997,
+          "p90": 13.03599194000001
+        },
+        "8": {
+          "p50": 3.6143569000000753,
+          "p90": 4.899809619999985
+        },
+        "15": {
+          "p50": 2.3187540000000126,
+          "p90": 2.822460979999994
+        }
+      }
+    },
+    "challenger_vs_control_p50_ratio": 1.0317644436193518
+  },
+  "gates": {
+    "frozen_design_exact": true,
+    "all_states_complete": true,
+    "legality_completion_bank_and_path_contracts": true,
+    "challenger_crossfit_regret_at_most_10": true,
+    "challenger_regret_nonworse_than_control": true,
+    "reference_value_noninferior_at_minus_0_25_pct": true,
+    "challenger_runtime_p50_no_slower_than_legacy": false
+  },
+  "compatibility_methodology_pass": true,
+  "frozen_study_all_gates_pass": false,
+  "promotion_ready": false,
+  "promotion_blockers": [
+    "fresh_seed_confirmation_not_run",
+    "current_v2_24_vs_32_shortlist_gate_not_run",
+    "challenger_runtime_p50_slower_than_legacy"
+  ],
+  "errors": []
+}

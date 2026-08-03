@@ -1,0 +1,97 @@
+{
+  "bootstrap": {
+    "cluster": "origin_season",
+    "draws": 10000,
+    "seed": 20260803
+  },
+  "candidates": 24,
+  "code_contract": {
+    "Scripts/Modeling/s4_Best_Ball_Weekly.py": {
+      "path": "C:\\Users\\borys\\OneDrive\\Documents\\GitHub\\Fantasy_Football\\Scripts\\Modeling\\s4_Best_Ball_Weekly.py",
+      "sha256": "70df2d91a0e1646db5a76c90321c0f25ca7c9c3bd33d8573b38f40cd39c66c4e"
+    },
+    "Scripts/V2/build_player_outcomes.py": {
+      "path": "C:\\Users\\borys\\OneDrive\\Documents\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+      "sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76"
+    },
+    "Scripts/V2/config.py": {
+      "path": "C:\\Users\\borys\\OneDrive\\Documents\\GitHub\\Fantasy_Football\\Scripts\\V2\\config.py",
+      "sha256": "d70731af80a39bf732e97efd71417905d7c7afa22470f795f1411ee64b983a43"
+    },
+    "Scripts/V2/contracts.py": {
+      "path": "C:\\Users\\borys\\OneDrive\\Documents\\GitHub\\Fantasy_Football\\Scripts\\V2\\contracts.py",
+      "sha256": "b97a021b3dd6de1e80c38bd4b9157b6a0f15a07e28cec12c5c0aa179d7bec087"
+    },
+    "Scripts/config.py": {
+      "path": "C:\\Users\\borys\\OneDrive\\Documents\\GitHub\\Fantasy_Football\\Scripts\\config.py",
+      "sha256": "e2c794260e7383dd2f8a8807d21bf94622812d78925c78e6f3e79c24cbcc62d9"
+    },
+    "app/zSim_Helper.py": {
+      "path": "C:\\Users\\borys\\OneDrive\\Documents\\GitHub\\Fantasy_Football_Snake\\app\\zSim_Helper.py",
+      "sha256": "b3b5c9ea68320a1db10b3fb5b04d18e7b193d3b8c99db28d58e02945bb3cf4e8"
+    },
+    "historical_data.py": {
+      "path": "C:\\Users\\borys\\OneDrive\\Documents\\GitHub\\Fantasy_Football_Snake\\research\\studies\\2026-08-02_sequential_historical_forced_pick_replay\\historical_data.py",
+      "sha256": "86dbbb0ca3c97df61c93284d113e0b055315fe832996b349f23d61583509da6d"
+    },
+    "run_study.py": {
+      "path": "C:\\Users\\borys\\OneDrive\\Documents\\GitHub\\Fantasy_Football_Snake\\research\\studies\\2026-08-02_sequential_historical_forced_pick_replay\\run_study.py",
+      "sha256": "df1375d2949996a0dbdfee4974436670631aeaaa35f701e54277af38159afc21"
+    }
+  },
+  "completed_user_picks": [
+    0,
+    7,
+    14
+  ],
+  "construction_samples": 16,
+  "created_before_outcome_scoring": true,
+  "decision_samples": {
+    "d128": 128,
+    "d256": 256
+  },
+  "design_hash": "de9d8323fe5dfae8eccce8675f19e2c3aaeecbebffd85e6d7db81f2003edbfc9",
+  "evaluation_samples": 64,
+  "expected_states": 81,
+  "frozen_design_exact": true,
+  "league": "dk",
+  "legacy_diagnostic_gate": {
+    "contrast": "d256_minus_legacy_target_best_ball_points",
+    "estimand": "current_action_only_with_common_sequential_downstream_policy",
+    "interval": "two_sided_95pct_season_cluster_bootstrap",
+    "margin_points_formula": "-0.0025 * observed_paired_legacy_mean_points",
+    "noninferiority_margin_pct": -0.25
+  },
+  "legacy_estimand": "legacy_current_action_then_common_sequential_downstream_policy",
+  "origins": [
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+  ],
+  "primary_gate": {
+    "contrast": "d256_minus_d128_target_best_ball_points",
+    "interval": "two_sided_95pct_season_cluster_bootstrap",
+    "margin_points_formula": "-0.0025 * observed_paired_d128_mean_points",
+    "noninferiority_margin_pct": -0.25
+  },
+  "rooms": 24,
+  "rounds": 20,
+  "seed_base": 20260802,
+  "slots": [
+    1,
+    6,
+    12
+  ],
+  "strict_prior_donors": true,
+  "study": "sequential_historical_forced_pick_replay",
+  "synthetic_board": "single_noisy_adp_priority_with_adp_only_legal_user_picks",
+  "target_outcomes": "held_out_origin_configured_dk_all_played_weekly_outcomes_only_after_global_freeze",
+  "target_scoring_scope": "configured-DK all-played; not official contest-realized DK; repo scoring dictionaries omit two-point and individual return/ST TD",
+  "teams": 12
+}

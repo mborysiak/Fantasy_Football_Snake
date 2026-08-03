@@ -1,0 +1,258 @@
+{
+  "2017": {
+    "database_sha256": "f4e142540680d4adca57d2658b414c68388fce002e7b69546622c5a8039e68d8",
+    "donor_years": [
+      2008,
+      2009,
+      2010,
+      2011,
+      2012,
+      2013,
+      2014,
+      2015,
+      2016
+    ],
+    "origin_year": 2017,
+    "receipt": {
+      "adp_coverage_policy": "all_positive_allowed_market_rows_resolve_joined_origin_universe_v1",
+      "adp_noise_parameters": {
+        "bound_sigmas": 2.0,
+        "std_fraction": 0.18,
+        "std_max": 30.0,
+        "std_min": 6.0
+      },
+      "adp_noise_policy": "deterministic_truncated_normal_bounds_v1",
+      "adp_policy": "dk_compatible_single_source_priority_keyed_v2",
+      "adp_source_priority": [
+        "fantasypros_best_ball_adp",
+        "draftkings_adp",
+        "adp_average_dk"
+      ],
+      "allowed_adp_coverage_ambiguous_rows": 0,
+      "allowed_adp_coverage_missing_rows": 0,
+      "allowed_adp_coverage_position_mismatch_rows": 0,
+      "allowed_adp_coverage_rows": 353,
+      "allowed_adp_coverage_sha256": "7ee3a2dc55e0820eda12aafdaf84bf4e4760663f1764f1c60085e8111528db61",
+      "board_size_required": 240,
+      "candidate_limit_requested_compatibility_floor": 360,
+      "candidate_population_policy": "all_confirmed_with_allowed_adp",
+      "candidate_rows": 353,
+      "center_imputation_rows": 1,
+      "center_policy": "locked_else_same_origin_position_adp8_v1",
+      "decision_authentication_policy": "selected_decision_frame_and_allowed_adp_boundary_sha256_v3",
+      "decision_policy_context": {
+        "adp": "dk_compatible_single_source_priority_keyed_v2",
+        "adp_coverage": "all_positive_allowed_market_rows_resolve_joined_origin_universe_v1",
+        "adp_noise": "deterministic_truncated_normal_bounds_v1",
+        "adp_priority": [
+          "fantasypros_best_ball_adp",
+          "draftkings_adp",
+          "adp_average_dk"
+        ],
+        "center": "locked_else_same_origin_position_adp8_v1",
+        "historical_data_code_sha256": "86dbbb0ca3c97df61c93284d113e0b055315fe832996b349f23d61583509da6d",
+        "outcome": "manifest_pinned_nflverse_gsis_full_horizon_gate_score_week1_16_v3",
+        "outcome_reconciliation_atol": 1e-06,
+        "pool": "production_matcher_strict_prior_v1",
+        "provisional_redirects": {
+          "41d294a1-1aea-5d92-9ea2-18be6bf8b6c0": "3f0b675d-ef58-5606-8f9e-73bc2a9b4118",
+          "5241e828-a13a-5ce1-82c8-95bb66b0ac32": "b3a4e510-01f3-5651-91e2-7b4c468294da",
+          "934933ee-30ba-5d02-b13e-58403636a609": "447b185a-9ecd-51f6-8921-30a0206a573c",
+          "a62767ca-6e79-5c00-92d9-d8dd19260b89": "b3a4e510-01f3-5651-91e2-7b4c468294da",
+          "c90ee060-7829-56e9-9113-0a6b3af5d96a": "e57e342f-82ad-5f06-9b13-bbc2cc8ea9f4",
+          "efc32ec0-af66-593d-8a38-0440c0687a90": "4bce7997-6962-558d-a207-44e60c5fc456"
+        },
+        "provisional_resolution": "reviewed_key_redirects_fail_any_allowed_adp_v2",
+        "runtime_name": "disambiguate_duplicate_display_name_pos_key8_v1"
+      },
+      "donor_years": [
+        2008,
+        2009,
+        2010,
+        2011,
+        2012,
+        2013,
+        2014,
+        2015,
+        2016
+      ],
+      "excluded_provisional_rows": 90,
+      "historical_data_code_sha256": "86dbbb0ca3c97df61c93284d113e0b055315fe832996b349f23d61583509da6d",
+      "known_provisional_adp_regression_fixture_candidates_admitted": 0,
+      "known_provisional_adp_regression_fixture_rows_checked": 0,
+      "league": "dk",
+      "max_donor_year": 2016,
+      "origin_year": 2017,
+      "outcome_policy": "manifest_pinned_nflverse_gsis_full_horizon_gate_score_week1_16_v3",
+      "outcome_reconciliation_atol": 1e-06,
+      "pool_policy": "production_matcher_strict_prior_v1",
+      "pool_rows": 28240,
+      "pred_vers": "final_ensemble",
+      "provisional_redirect_allowed_market_rows": 0,
+      "provisional_redirect_rows": 2,
+      "provisional_resolution_policy": "reviewed_key_redirects_fail_any_allowed_adp_v2",
+      "runtime_disambiguated_player_rows": 0,
+      "runtime_name_policy": "disambiguate_duplicate_display_name_pos_key8_v1",
+      "schema_version": 1,
+      "selected_decision_audit_sha256": {
+        "allowed_adp_coverage": "7ee3a2dc55e0820eda12aafdaf84bf4e4760663f1764f1c60085e8111528db61"
+      },
+      "source_files": {
+        "projection_v2": {
+          "authentication": "selected_decision_frames_and_allowed_adp_boundary_audit",
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Data\\Databases\\Projection_V2.sqlite3"
+        },
+        "simulation": {
+          "authentication": "selected_strict_prior_template_frames_only",
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Data\\Databases\\Simulation.sqlite3"
+        }
+      },
+      "source_fingerprint": "6ad6d3780ad22a5cb0acd46db64eb8ce12e215d24b18cac6994d53fc36ee0f06",
+      "strict_prior": true,
+      "table_sha256": {
+        "Avg_ADPs": "e7098a2cf2efd37a0158685509b56d62cbe2fa432d2aa4efb683e0a5a38908e4",
+        "Best_Ball_Weekly_Player_Map": "019cb9a23c6c840c187e89e15bce8cfd8aafd07b1c1cf5760ffc0c9650e3e7dd",
+        "Best_Ball_Weekly_Template_Pools": "722417185842b0423c5b9a73bfb3e618862105728f314fe8b7febc0e7ab8b641",
+        "Best_Ball_Weekly_Templates": "e460f91cc0c7fe28ed3b100dede4a466cfc6573432120020a6723a34c5c427b8",
+        "Final_Predictions_Resid": "f1d9a09e07c7096992312c9647227554d75e84c849e85d973ad161dc3f9c985f"
+      },
+      "target_outcomes_loaded": false,
+      "template_rows": 2583,
+      "top240_center_imputation_gate": 8,
+      "top240_center_imputation_rows": 1,
+      "unresolved_provisional_allowed_adp_rows": 0,
+      "unresolved_provisional_excluded_rows": 88
+    },
+    "source_fingerprint": "6ad6d3780ad22a5cb0acd46db64eb8ce12e215d24b18cac6994d53fc36ee0f06",
+    "strict_prior": true
+  },
+  "2018": {
+    "database_sha256": "5fd19b4c52b6f14da033f8d30cb6a456a4481afeb896c7bc41fc6ef9b339298f",
+    "donor_years": [
+      2008,
+      2009,
+      2010,
+      2011,
+      2012,
+      2013,
+      2014,
+      2015,
+      2016,
+      2017
+    ],
+    "origin_year": 2018,
+    "receipt": {
+      "adp_coverage_policy": "all_positive_allowed_market_rows_resolve_joined_origin_universe_v1",
+      "adp_noise_parameters": {
+        "bound_sigmas": 2.0,
+        "std_fraction": 0.18,
+        "std_max": 30.0,
+        "std_min": 6.0
+      },
+      "adp_noise_policy": "deterministic_truncated_normal_bounds_v1",
+      "adp_policy": "dk_compatible_single_source_priority_keyed_v2",
+      "adp_source_priority": [
+        "fantasypros_best_ball_adp",
+        "draftkings_adp",
+        "adp_average_dk"
+      ],
+      "allowed_adp_coverage_ambiguous_rows": 0,
+      "allowed_adp_coverage_missing_rows": 0,
+      "allowed_adp_coverage_position_mismatch_rows": 1,
+      "allowed_adp_coverage_rows": 432,
+      "allowed_adp_coverage_sha256": "bf76ea09b2b7617718b9f119e07e95e2ce4e1f2129c1de1cb121a11f84d73288",
+      "board_size_required": 240,
+      "candidate_limit_requested_compatibility_floor": 360,
+      "candidate_population_policy": "all_confirmed_with_allowed_adp",
+      "candidate_rows": 432,
+      "center_imputation_rows": 3,
+      "center_policy": "locked_else_same_origin_position_adp8_v1",
+      "decision_authentication_policy": "selected_decision_frame_and_allowed_adp_boundary_sha256_v3",
+      "decision_policy_context": {
+        "adp": "dk_compatible_single_source_priority_keyed_v2",
+        "adp_coverage": "all_positive_allowed_market_rows_resolve_joined_origin_universe_v1",
+        "adp_noise": "deterministic_truncated_normal_bounds_v1",
+        "adp_priority": [
+          "fantasypros_best_ball_adp",
+          "draftkings_adp",
+          "adp_average_dk"
+        ],
+        "center": "locked_else_same_origin_position_adp8_v1",
+        "historical_data_code_sha256": "86dbbb0ca3c97df61c93284d113e0b055315fe832996b349f23d61583509da6d",
+        "outcome": "manifest_pinned_nflverse_gsis_full_horizon_gate_score_week1_16_v3",
+        "outcome_reconciliation_atol": 1e-06,
+        "pool": "production_matcher_strict_prior_v1",
+        "provisional_redirects": {
+          "41d294a1-1aea-5d92-9ea2-18be6bf8b6c0": "3f0b675d-ef58-5606-8f9e-73bc2a9b4118",
+          "5241e828-a13a-5ce1-82c8-95bb66b0ac32": "b3a4e510-01f3-5651-91e2-7b4c468294da",
+          "934933ee-30ba-5d02-b13e-58403636a609": "447b185a-9ecd-51f6-8921-30a0206a573c",
+          "a62767ca-6e79-5c00-92d9-d8dd19260b89": "b3a4e510-01f3-5651-91e2-7b4c468294da",
+          "c90ee060-7829-56e9-9113-0a6b3af5d96a": "e57e342f-82ad-5f06-9b13-bbc2cc8ea9f4",
+          "efc32ec0-af66-593d-8a38-0440c0687a90": "4bce7997-6962-558d-a207-44e60c5fc456"
+        },
+        "provisional_resolution": "reviewed_key_redirects_fail_any_allowed_adp_v2",
+        "runtime_name": "disambiguate_duplicate_display_name_pos_key8_v1"
+      },
+      "donor_years": [
+        2008,
+        2009,
+        2010,
+        2011,
+        2012,
+        2013,
+        2014,
+        2015,
+        2016,
+        2017
+      ],
+      "excluded_provisional_rows": 84,
+      "historical_data_code_sha256": "86dbbb0ca3c97df61c93284d113e0b055315fe832996b349f23d61583509da6d",
+      "known_provisional_adp_regression_fixture_candidates_admitted": 0,
+      "known_provisional_adp_regression_fixture_rows_checked": 1,
+      "league": "dk",
+      "max_donor_year": 2017,
+      "origin_year": 2018,
+      "outcome_policy": "manifest_pinned_nflverse_gsis_full_horizon_gate_score_week1_16_v3",
+      "outcome_reconciliation_atol": 1e-06,
+      "pool_policy": "production_matcher_strict_prior_v1",
+      "pool_rows": 34560,
+      "pred_vers": "final_ensemble",
+      "provisional_redirect_allowed_market_rows": 0,
+      "provisional_redirect_rows": 2,
+      "provisional_resolution_policy": "reviewed_key_redirects_fail_any_allowed_adp_v2",
+      "runtime_disambiguated_player_rows": 0,
+      "runtime_name_policy": "disambiguate_duplicate_display_name_pos_key8_v1",
+      "schema_version": 1,
+      "selected_decision_audit_sha256": {
+        "allowed_adp_coverage": "bf76ea09b2b7617718b9f119e07e95e2ce4e1f2129c1de1cb121a11f84d73288"
+      },
+      "source_files": {
+        "projection_v2": {
+          "authentication": "selected_decision_frames_and_allowed_adp_boundary_audit",
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Data\\Databases\\Projection_V2.sqlite3"
+        },
+        "simulation": {
+          "authentication": "selected_strict_prior_template_frames_only",
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Data\\Databases\\Simulation.sqlite3"
+        }
+      },
+      "source_fingerprint": "57f748447cba4a0d59e8a262ea437231baf16965afb30b669fdcd5b6d5b04972",
+      "strict_prior": true,
+      "table_sha256": {
+        "Avg_ADPs": "9be9fc44312a48e8124144bb6ca484219c14b2129a6fbb79dc005059b627cf69",
+        "Best_Ball_Weekly_Player_Map": "810341b062cc3681caa821876674adb246d98eac8e2476c16dab02d921232074",
+        "Best_Ball_Weekly_Template_Pools": "48d4b4a5769c850f900b3832bc354e938c37ef6411a03b0244a5d04a25e58350",
+        "Best_Ball_Weekly_Templates": "bbf4392fee08e9bb5c011de73cddbbfc346b0961f56ce65982984d72e91c7a74",
+        "Final_Predictions_Resid": "a135c3fcd40c7e71b5038fd75ff5103b2133f75a2abb8392a6f1e7dd988194ce"
+      },
+      "target_outcomes_loaded": false,
+      "template_rows": 2861,
+      "top240_center_imputation_gate": 8,
+      "top240_center_imputation_rows": 0,
+      "unresolved_provisional_allowed_adp_rows": 0,
+      "unresolved_provisional_excluded_rows": 82
+    },
+    "source_fingerprint": "57f748447cba4a0d59e8a262ea437231baf16965afb30b669fdcd5b6d5b04972",
+    "strict_prior": true
+  }
+}

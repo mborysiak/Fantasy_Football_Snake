@@ -24,6 +24,7 @@ from snake_draft_app import (
     run_simulation,
     save_draft_state,
 )
+import snake_draft_app as snake_app
 
 
 def _simulation_with_conn(conn):
@@ -710,7 +711,7 @@ def _app_player_data():
     )
 
 
-def test_saved_state_and_simulation_use_player_key():
+def test_saved_state_and_simulation_use_player_key(monkeypatch):
     loaded = pd.DataFrame(
         {
             "PlayerKey": ["key-1"],
@@ -735,18 +736,23 @@ def test_saved_state_and_simulation_use_player_key():
     assert draft_data.loc[0, "PlayerKey"] == "key-1"
 
     class RecordingSimulation:
-        def run_sim(self, **kwargs):
-            self.kwargs = kwargs
-            return pd.DataFrame()
+        pass
 
     recording_sim = RecordingSimulation()
+    captured = {}
+
+    def fake_isolated(sim, to_add, to_drop, **kwargs):
+        captured.update({"to_add": to_add, "to_drop": to_drop, **kwargs})
+        return pd.DataFrame()
+
+    monkeypatch.setattr(snake_app, "run_isolated_simulation", fake_isolated)
     run_simulation(
         recording_sim,
         applied,
         num_iters=1,
         scoring_mode="best_ball_ilp",
     )
-    assert recording_sim.kwargs["to_add"] == ["key-1"]
+    assert captured["to_add"] == ["key-1"]
 
     with pytest.raises(ValueError, match="absent from the active player population"):
         apply_loaded_state(

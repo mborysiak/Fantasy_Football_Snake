@@ -25,3 +25,6 @@ dated, reviewable bundles.
 - Sequential best-ball policy correctness, shortlist regret, and runtime gates.
 - Sequential default-promotion studies with operational decision banks,
   policy-inert audit banks, and physical cross-slot/cross-round fixtures.
+- Current-V2 decision-bank stability: [`2026-08-02_sequential_v2_bank_stability`](studies/2026-08-02_sequential_v2_bank_stability/)
+  compares production-equivalent D128 with D256 on a common policy-inert R512
+  reference bank. D256 passed compatibility but not runtime or promotion gates.

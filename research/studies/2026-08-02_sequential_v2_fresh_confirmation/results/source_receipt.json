@@ -1,0 +1,763 @@
+{
+  "created_at_utc": "2026-08-03T20:39:09.118052+00:00",
+  "git_head": "f7c709d829632a41d974c716b8727f24d3731f52",
+  "launch": {
+    "resume_requested": false
+  },
+  "fingerprints": {
+    "database": "47658fab0a2a98a1714890e8c57d45dbfbce63dd62c5455fad4ccc15374065a2",
+    "zSim_Helper.py": "b738598fe70380b3062136f64811805be7891650a0551f4c0929d11720327114",
+    "snake_draft_app.py": "06b94952cf6626ea584c35edebdb43316bd502b07e961ae5720337b56bb18606",
+    "simulation_worker.py": "909cbec9d9e18a6c8ae842b56dfdf6001756305eb77f8ca03f6af42e5a62dd0b",
+    "prior_run_study.py": "bd552fdfd5f1d62d5ce76dda96093da6d107a1c6e10b11a1be79537ff56e10d1",
+    "run_study.py": "a61a5b0f721c2b2ed7e2c8f71cc5adf5eb0b17abee9ee9d7858d633a7fddcabb",
+    "arm_worker.py": "bc90ba0565798c85d48b7408e7dfbf1d8c699f0ca7a5fdf75a66871d1a355601",
+    "isolation_protocol.py": "dc94996517c7502992f770a43a49b997bffbc2ad0a62db059b6c3ad0ece146de",
+    "README.md": "fd4e1de55e18e782f583800770340a6ba6f7e281972ade3b8387e45082fba2c0",
+    "ABORTED.md": "f0b41985d024d619fd921b0dfd4617e5c13d1c5f74048f313373e220fd512fc3"
+  },
+  "runtime_fingerprint": {
+    "python_executable": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Scripts\\python.exe",
+    "python_version": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+    "python_implementation": "CPython",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "packages": {
+      "numpy": "2.2.6",
+      "pandas": "2.3.1",
+      "scipy": "1.13.1",
+      "scikit-learn": null,
+      "cvxopt": "1.3.2"
+    },
+    "worker_environment_contract": {
+      "PYTHONHASHSEED": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1",
+      "VECLIB_MAXIMUM_THREADS": "1",
+      "BLIS_NUM_THREADS": "1"
+    },
+    "native_binaries": {
+      "selection": "python_and_high_risk_numeric_native_artifacts_v1",
+      "file_count": 15,
+      "manifest_sha256": "1f1779c5825e36bfa5ee26ab72daa7cde5e1baece8483465f57c9d2050c5c83e",
+      "files": [
+        {
+          "path": "C:\\Users\\borys\\AppData\\Local\\Programs\\Python\\Python312\\python3.dll",
+          "size_bytes": 70376,
+          "sha256": "fb975a606e7fbf74f64260e3f60c3490b4f74a183c0926fd6ed1ac4c52ac7b1c"
+        },
+        {
+          "path": "C:\\Users\\borys\\AppData\\Local\\Programs\\Python\\Python312\\python312.dll",
+          "size_bytes": 6945272,
+          "sha256": "9a0e3435aaa680d868150f87ab3e388ad2eebc22f87e036155c7b4eda8cd2120"
+        },
+        {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Lib\\site-packages\\cvxopt\\.libs\\libopenblas.dll",
+          "size_bytes": 48728051,
+          "sha256": "41e67937d6fa96f9eeb046f4c8ab2d655755d45a534475fe19c999a1a0dc5b3a"
+        },
+        {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Lib\\site-packages\\cvxopt\\base.cp312-win_amd64.pyd",
+          "size_bytes": 171008,
+          "sha256": "d26df644c2930388edba0d800b4936a9f71e7da47e1c34fff7a52f7969429b7b"
+        },
+        {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Lib\\site-packages\\cvxopt\\glpk.cp312-win_amd64.pyd",
+          "size_bytes": 429056,
+          "sha256": "9bafac648c4aa74a50642562f29f2fc696a458936080e46269648e270081731c"
+        },
+        {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Lib\\site-packages\\numpy\\_core\\_multiarray_tests.cp312-win_amd64.pyd",
+          "size_bytes": 64000,
+          "sha256": "24adbe4bbf7b2a6208aeb800d11b8b6957c925d3c796552b3a55e1b4e278754e"
+        },
+        {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Lib\\site-packages\\numpy\\_core\\_multiarray_umath.cp312-win_amd64.pyd",
+          "size_bytes": 4178432,
+          "sha256": "d98a8f4ce703bf7158f639d24ff4a55ece2753a306a3f7074b4fa670660afee5"
+        },
+        {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Lib\\site-packages\\numpy.libs\\libscipy_openblas64_-13e2df515630b4a41f92893938845698.dll",
+          "size_bytes": 20390912,
+          "sha256": "6547e9fb966e9773caee2755e91a8bf4d6f3a2f0eebf9646b0158f8675ea4ab5"
+        },
+        {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Lib\\site-packages\\numpy.libs\\msvcp140-263139962577ecda4cd9469ca360a746.dll",
+          "size_bytes": 575056,
+          "sha256": "a4c2229bdc2a2a630acdc095b4d86008e5c3e3bc7773174354f3da4f5beb9cde"
+        },
+        {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Lib\\site-packages\\pandas\\_libs\\algos.cp312-win_amd64.pyd",
+          "size_bytes": 1703936,
+          "sha256": "2bf68245dde4cd1ae1726c86ed30b94f1596d8bd43133a5dee60c86ba1c5751c"
+        },
+        {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Lib\\site-packages\\pandas\\_libs\\hashtable.cp312-win_amd64.pyd",
+          "size_bytes": 1757184,
+          "sha256": "2c45a8cb73dd6f37af7dbe3ba3aa12948701e4d0c6d8e8ca5737f09eaa206128"
+        },
+        {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Lib\\site-packages\\pandas.libs\\msvcp140-1a0962f2a91a74c6d7136a768987a591.dll",
+          "size_bytes": 575056,
+          "sha256": "a4c2229bdc2a2a630acdc095b4d86008e5c3e3bc7773174354f3da4f5beb9cde"
+        },
+        {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Lib\\site-packages\\scipy\\_lib\\_ccallback_c.cp312-win_amd64.pyd",
+          "size_bytes": 84480,
+          "sha256": "646642cd4b3bda46e3d50e791302fa8467cd8350767de771b98cea6563654d9f"
+        },
+        {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Lib\\site-packages\\scipy.libs\\libopenblas_v0.3.27--3aa239bc726cfb0bd8e5330d8d4c15c6.dll",
+          "size_bytes": 38129340,
+          "sha256": "2ee0262b429173f6fa3569d7b242e696736996210b2152c73fbce0b5d61dcfc1"
+        },
+        {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Scripts\\python.exe",
+          "size_bytes": 274424,
+          "sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14"
+        }
+      ]
+    }
+  },
+  "prelaunch_stress_attestation": {
+    "directory": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\research\\studies\\2026-08-02_sequential_v2_fresh_confirmation\\artifacts\\local\\prelaunch_arm_isolation_v2",
+    "configuration": {
+      "database_path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\app\\Simulation.sqlite3",
+      "output_directory": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\research\\studies\\2026-08-02_sequential_v2_fresh_confirmation\\artifacts\\local\\prelaunch_arm_isolation_v2",
+      "year": 2026,
+      "league": "dk",
+      "teams": 12,
+      "rounds": 20,
+      "base_seeds": [
+        12017,
+        13017
+      ],
+      "slots": [
+        1,
+        6,
+        12
+      ],
+      "slot_stream_manifest": [
+        {
+          "base_seed": 12017,
+          "pick_slot": 1,
+          "stream_seed": 509113976
+        },
+        {
+          "base_seed": 12017,
+          "pick_slot": 6,
+          "stream_seed": 1165207932
+        },
+        {
+          "base_seed": 12017,
+          "pick_slot": 12,
+          "stream_seed": 2156637241
+        },
+        {
+          "base_seed": 13017,
+          "pick_slot": 1,
+          "stream_seed": 3517093716
+        },
+        {
+          "base_seed": 13017,
+          "pick_slot": 6,
+          "stream_seed": 4113074731
+        },
+        {
+          "base_seed": 13017,
+          "pick_slot": 12,
+          "stream_seed": 475308598
+        }
+      ],
+      "completed_picks": [
+        0
+      ],
+      "rooms": 24,
+      "primary_candidates": 24,
+      "wide_candidates": 32,
+      "construction_samples": 16,
+      "evaluation_samples": 64,
+      "control_decision_samples": 128,
+      "expanded_decision_samples": 256,
+      "reference_samples": 512,
+      "reference_halves": [
+        256,
+        256
+      ],
+      "legacy_in_confirmation_process": false,
+      "execution_isolation": "fresh_subprocess_per_policy_arm",
+      "one_fresh_subprocess_per_arm": true,
+      "worker_pool": false,
+      "worker_retry": false,
+      "worker_job_schema_version": "sequential-v2-policy-arm-job-v1",
+      "worker_result_schema_version": "sequential-v2-policy-arm-result-v1",
+      "worker_environment": {
+        "PYTHONHASHSEED": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "OMP_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "NUMEXPR_NUM_THREADS": "1",
+        "VECLIB_MAXIMUM_THREADS": "1",
+        "BLIS_NUM_THREADS": "1"
+      },
+      "arm_timeout_seconds": 180.0,
+      "in_progress_journal": "in_progress.json",
+      "in_progress_journal_schema_version": "sequential-v2-in-progress-journal-v1",
+      "stale_journal_blocks_resume_and_retry": true,
+      "prelaunch_stress_dir": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\research\\studies\\2026-08-02_sequential_v2_fresh_confirmation\\artifacts\\local\\prelaunch_arm_isolation_v2",
+      "fail_fast": true,
+      "regret_threshold": 10.0,
+      "coverage_threshold": 10.0,
+      "value_noninferiority_pct": -0.25,
+      "internal_policy_p90_seconds_diagnostic_threshold": 15.0,
+      "parent_end_to_end_p90_seconds_strict_upper_bound": 30.0
+    },
+    "runtime_fingerprint": {
+      "python_executable": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Scripts\\python.exe",
+      "python_version": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+      "python_implementation": "CPython",
+      "platform": "Windows-11-10.0.26200-SP0",
+      "packages": {
+        "numpy": "2.2.6",
+        "pandas": "2.3.1",
+        "scipy": "1.13.1",
+        "scikit-learn": null,
+        "cvxopt": "1.3.2"
+      },
+      "worker_environment_contract": {
+        "PYTHONHASHSEED": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "OMP_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "NUMEXPR_NUM_THREADS": "1",
+        "VECLIB_MAXIMUM_THREADS": "1",
+        "BLIS_NUM_THREADS": "1"
+      },
+      "native_binaries": {
+        "selection": "python_and_high_risk_numeric_native_artifacts_v1",
+        "file_count": 15,
+        "manifest_sha256": "1f1779c5825e36bfa5ee26ab72daa7cde5e1baece8483465f57c9d2050c5c83e",
+        "files": [
+          {
+            "path": "C:\\Users\\borys\\AppData\\Local\\Programs\\Python\\Python312\\python3.dll",
+            "size_bytes": 70376,
+            "sha256": "fb975a606e7fbf74f64260e3f60c3490b4f74a183c0926fd6ed1ac4c52ac7b1c"
+          },
+          {
+            "path": "C:\\Users\\borys\\AppData\\Local\\Programs\\Python\\Python312\\python312.dll",
+            "size_bytes": 6945272,
+            "sha256": "9a0e3435aaa680d868150f87ab3e388ad2eebc22f87e036155c7b4eda8cd2120"
+          },
+          {
+            "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Lib\\site-packages\\cvxopt\\.libs\\libopenblas.dll",
+            "size_bytes": 48728051,
+            "sha256": "41e67937d6fa96f9eeb046f4c8ab2d655755d45a534475fe19c999a1a0dc5b3a"
+          },
+          {
+            "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Lib\\site-packages\\cvxopt\\base.cp312-win_amd64.pyd",
+            "size_bytes": 171008,
+            "sha256": "d26df644c2930388edba0d800b4936a9f71e7da47e1c34fff7a52f7969429b7b"
+          },
+          {
+            "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Lib\\site-packages\\cvxopt\\glpk.cp312-win_amd64.pyd",
+            "size_bytes": 429056,
+            "sha256": "9bafac648c4aa74a50642562f29f2fc696a458936080e46269648e270081731c"
+          },
+          {
+            "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Lib\\site-packages\\numpy\\_core\\_multiarray_tests.cp312-win_amd64.pyd",
+            "size_bytes": 64000,
+            "sha256": "24adbe4bbf7b2a6208aeb800d11b8b6957c925d3c796552b3a55e1b4e278754e"
+          },
+          {
+            "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Lib\\site-packages\\numpy\\_core\\_multiarray_umath.cp312-win_amd64.pyd",
+            "size_bytes": 4178432,
+            "sha256": "d98a8f4ce703bf7158f639d24ff4a55ece2753a306a3f7074b4fa670660afee5"
+          },
+          {
+            "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Lib\\site-packages\\numpy.libs\\libscipy_openblas64_-13e2df515630b4a41f92893938845698.dll",
+            "size_bytes": 20390912,
+            "sha256": "6547e9fb966e9773caee2755e91a8bf4d6f3a2f0eebf9646b0158f8675ea4ab5"
+          },
+          {
+            "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Lib\\site-packages\\numpy.libs\\msvcp140-263139962577ecda4cd9469ca360a746.dll",
+            "size_bytes": 575056,
+            "sha256": "a4c2229bdc2a2a630acdc095b4d86008e5c3e3bc7773174354f3da4f5beb9cde"
+          },
+          {
+            "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Lib\\site-packages\\pandas\\_libs\\algos.cp312-win_amd64.pyd",
+            "size_bytes": 1703936,
+            "sha256": "2bf68245dde4cd1ae1726c86ed30b94f1596d8bd43133a5dee60c86ba1c5751c"
+          },
+          {
+            "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Lib\\site-packages\\pandas\\_libs\\hashtable.cp312-win_amd64.pyd",
+            "size_bytes": 1757184,
+            "sha256": "2c45a8cb73dd6f37af7dbe3ba3aa12948701e4d0c6d8e8ca5737f09eaa206128"
+          },
+          {
+            "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Lib\\site-packages\\pandas.libs\\msvcp140-1a0962f2a91a74c6d7136a768987a591.dll",
+            "size_bytes": 575056,
+            "sha256": "a4c2229bdc2a2a630acdc095b4d86008e5c3e3bc7773174354f3da4f5beb9cde"
+          },
+          {
+            "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Lib\\site-packages\\scipy\\_lib\\_ccallback_c.cp312-win_amd64.pyd",
+            "size_bytes": 84480,
+            "sha256": "646642cd4b3bda46e3d50e791302fa8467cd8350767de771b98cea6563654d9f"
+          },
+          {
+            "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Lib\\site-packages\\scipy.libs\\libopenblas_v0.3.27--3aa239bc726cfb0bd8e5330d8d4c15c6.dll",
+            "size_bytes": 38129340,
+            "sha256": "2ee0262b429173f6fa3569d7b242e696736996210b2152c73fbce0b5d61dcfc1"
+          },
+          {
+            "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\.venv_snake_312\\Scripts\\python.exe",
+            "size_bytes": 274424,
+            "sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14"
+          }
+        ]
+      }
+    },
+    "source_receipt_sha256": "d0929024c70faa97cf81d887ca38d8768e8dbcdd1926ba92238d62ee07ed233d",
+    "state_metrics_sha256": "91e7991e6d4e6b156aa7d24b63c9464d974ee424856553b7341e2097b97a78e5",
+    "summary_sha256": "b3d3784b24503033c0e2eb03b1fbb2be776caeb372761d2f5397341c8bef34a0",
+    "state_counts": {
+      "configured": 6,
+      "complete": 6,
+      "errors": 0
+    }
+  },
+  "database": {
+    "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\app\\Simulation.sqlite3",
+    "size_bytes": 62173184,
+    "quick_check": "ok",
+    "integrity_check": "ok",
+    "freelist_count": 0
+  },
+  "model_contract": {
+    "league": "dk",
+    "player_count": 350,
+    "identity_column": "player_key",
+    "uses_v2_joint_template": true,
+    "template_resid_method_version": "joint_centered_template_v2_v1",
+    "weekly_horizon": 16
+  },
+  "frozen_design_manifest": {
+    "default_database_path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\app\\Simulation.sqlite3",
+    "frozen_database_sha256": "47658fab0a2a98a1714890e8c57d45dbfbce63dd62c5455fad4ccc15374065a2",
+    "frozen_base_seeds": [
+      20017,
+      21017,
+      22017,
+      23017,
+      24017,
+      25017,
+      26017,
+      27017,
+      28017
+    ],
+    "frozen_slots": [
+      1,
+      6,
+      12
+    ],
+    "frozen_completed_picks": [
+      0,
+      7,
+      14
+    ],
+    "slot_stream_manifest": [
+      {
+        "base_seed": 20017,
+        "pick_slot": 1,
+        "stream_seed": 3629227597
+      },
+      {
+        "base_seed": 20017,
+        "pick_slot": 6,
+        "stream_seed": 68929357
+      },
+      {
+        "base_seed": 20017,
+        "pick_slot": 12,
+        "stream_seed": 3378929283
+      },
+      {
+        "base_seed": 21017,
+        "pick_slot": 1,
+        "stream_seed": 3718387942
+      },
+      {
+        "base_seed": 21017,
+        "pick_slot": 6,
+        "stream_seed": 1308066799
+      },
+      {
+        "base_seed": 21017,
+        "pick_slot": 12,
+        "stream_seed": 3868603858
+      },
+      {
+        "base_seed": 22017,
+        "pick_slot": 1,
+        "stream_seed": 3140991474
+      },
+      {
+        "base_seed": 22017,
+        "pick_slot": 6,
+        "stream_seed": 340674328
+      },
+      {
+        "base_seed": 22017,
+        "pick_slot": 12,
+        "stream_seed": 1813306962
+      },
+      {
+        "base_seed": 23017,
+        "pick_slot": 1,
+        "stream_seed": 2869762264
+      },
+      {
+        "base_seed": 23017,
+        "pick_slot": 6,
+        "stream_seed": 1989106507
+      },
+      {
+        "base_seed": 23017,
+        "pick_slot": 12,
+        "stream_seed": 2775923502
+      },
+      {
+        "base_seed": 24017,
+        "pick_slot": 1,
+        "stream_seed": 2728110134
+      },
+      {
+        "base_seed": 24017,
+        "pick_slot": 6,
+        "stream_seed": 1690789999
+      },
+      {
+        "base_seed": 24017,
+        "pick_slot": 12,
+        "stream_seed": 151670141
+      },
+      {
+        "base_seed": 25017,
+        "pick_slot": 1,
+        "stream_seed": 1555180018
+      },
+      {
+        "base_seed": 25017,
+        "pick_slot": 6,
+        "stream_seed": 3250897733
+      },
+      {
+        "base_seed": 25017,
+        "pick_slot": 12,
+        "stream_seed": 2333400305
+      },
+      {
+        "base_seed": 26017,
+        "pick_slot": 1,
+        "stream_seed": 35899228
+      },
+      {
+        "base_seed": 26017,
+        "pick_slot": 6,
+        "stream_seed": 748559555
+      },
+      {
+        "base_seed": 26017,
+        "pick_slot": 12,
+        "stream_seed": 66452612
+      },
+      {
+        "base_seed": 27017,
+        "pick_slot": 1,
+        "stream_seed": 2976618028
+      },
+      {
+        "base_seed": 27017,
+        "pick_slot": 6,
+        "stream_seed": 4091291269
+      },
+      {
+        "base_seed": 27017,
+        "pick_slot": 12,
+        "stream_seed": 1152579556
+      },
+      {
+        "base_seed": 28017,
+        "pick_slot": 1,
+        "stream_seed": 241747399
+      },
+      {
+        "base_seed": 28017,
+        "pick_slot": 6,
+        "stream_seed": 594082754
+      },
+      {
+        "base_seed": 28017,
+        "pick_slot": 12,
+        "stream_seed": 2320620687
+      }
+    ],
+    "fail_fast_on_state_error": true,
+    "prelaunch_stress": {
+      "base_seeds": [
+        12017,
+        13017
+      ],
+      "slots": [
+        1,
+        6,
+        12
+      ],
+      "completed_picks": [
+        0
+      ],
+      "rooms": 24,
+      "required_before_confirmation": true
+    },
+    "gates": {
+      "regret_threshold": 10.0,
+      "coverage_threshold": 10.0,
+      "value_noninferiority_pct": -0.25,
+      "internal_policy_p90_seconds_diagnostic_threshold": 15.0,
+      "parent_end_to_end_p90_seconds_strict_upper_bound": 30.0
+    },
+    "arm_execution": {
+      "isolation": "fresh_subprocess_per_policy_arm",
+      "fresh_subprocesses_per_state": 2,
+      "order": [
+        "primary",
+        "wide"
+      ],
+      "pool": false,
+      "retry": false,
+      "timeout_seconds": 180.0,
+      "job_transport": "os_temp_json",
+      "result_transport": "versioned_os_temp_json",
+      "worker_environment": {
+        "PYTHONHASHSEED": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "OMP_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "NUMEXPR_NUM_THREADS": "1",
+        "VECLIB_MAXIMUM_THREADS": "1",
+        "BLIS_NUM_THREADS": "1"
+      },
+      "failed_final_arm_invalidates_launch": true,
+      "in_progress_journal": "in_progress.json",
+      "stale_journal_blocks_resume_and_retry": true,
+      "journal_clears_only_after_committed_pair_validation": true
+    }
+  },
+  "frozen_design_manifest_hash": "67f043bf55b99fcda759eeb25b0a03bb4f4e1bcbcdfff4754a5e45639c4eaef1",
+  "active_configuration": {
+    "database_path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\app\\Simulation.sqlite3",
+    "output_directory": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\research\\studies\\2026-08-02_sequential_v2_fresh_confirmation\\results",
+    "year": 2026,
+    "league": "dk",
+    "teams": 12,
+    "rounds": 20,
+    "base_seeds": [
+      20017,
+      21017,
+      22017,
+      23017,
+      24017,
+      25017,
+      26017,
+      27017,
+      28017
+    ],
+    "slots": [
+      1,
+      6,
+      12
+    ],
+    "slot_stream_manifest": [
+      {
+        "base_seed": 20017,
+        "pick_slot": 1,
+        "stream_seed": 3629227597
+      },
+      {
+        "base_seed": 20017,
+        "pick_slot": 6,
+        "stream_seed": 68929357
+      },
+      {
+        "base_seed": 20017,
+        "pick_slot": 12,
+        "stream_seed": 3378929283
+      },
+      {
+        "base_seed": 21017,
+        "pick_slot": 1,
+        "stream_seed": 3718387942
+      },
+      {
+        "base_seed": 21017,
+        "pick_slot": 6,
+        "stream_seed": 1308066799
+      },
+      {
+        "base_seed": 21017,
+        "pick_slot": 12,
+        "stream_seed": 3868603858
+      },
+      {
+        "base_seed": 22017,
+        "pick_slot": 1,
+        "stream_seed": 3140991474
+      },
+      {
+        "base_seed": 22017,
+        "pick_slot": 6,
+        "stream_seed": 340674328
+      },
+      {
+        "base_seed": 22017,
+        "pick_slot": 12,
+        "stream_seed": 1813306962
+      },
+      {
+        "base_seed": 23017,
+        "pick_slot": 1,
+        "stream_seed": 2869762264
+      },
+      {
+        "base_seed": 23017,
+        "pick_slot": 6,
+        "stream_seed": 1989106507
+      },
+      {
+        "base_seed": 23017,
+        "pick_slot": 12,
+        "stream_seed": 2775923502
+      },
+      {
+        "base_seed": 24017,
+        "pick_slot": 1,
+        "stream_seed": 2728110134
+      },
+      {
+        "base_seed": 24017,
+        "pick_slot": 6,
+        "stream_seed": 1690789999
+      },
+      {
+        "base_seed": 24017,
+        "pick_slot": 12,
+        "stream_seed": 151670141
+      },
+      {
+        "base_seed": 25017,
+        "pick_slot": 1,
+        "stream_seed": 1555180018
+      },
+      {
+        "base_seed": 25017,
+        "pick_slot": 6,
+        "stream_seed": 3250897733
+      },
+      {
+        "base_seed": 25017,
+        "pick_slot": 12,
+        "stream_seed": 2333400305
+      },
+      {
+        "base_seed": 26017,
+        "pick_slot": 1,
+        "stream_seed": 35899228
+      },
+      {
+        "base_seed": 26017,
+        "pick_slot": 6,
+        "stream_seed": 748559555
+      },
+      {
+        "base_seed": 26017,
+        "pick_slot": 12,
+        "stream_seed": 66452612
+      },
+      {
+        "base_seed": 27017,
+        "pick_slot": 1,
+        "stream_seed": 2976618028
+      },
+      {
+        "base_seed": 27017,
+        "pick_slot": 6,
+        "stream_seed": 4091291269
+      },
+      {
+        "base_seed": 27017,
+        "pick_slot": 12,
+        "stream_seed": 1152579556
+      },
+      {
+        "base_seed": 28017,
+        "pick_slot": 1,
+        "stream_seed": 241747399
+      },
+      {
+        "base_seed": 28017,
+        "pick_slot": 6,
+        "stream_seed": 594082754
+      },
+      {
+        "base_seed": 28017,
+        "pick_slot": 12,
+        "stream_seed": 2320620687
+      }
+    ],
+    "completed_picks": [
+      0,
+      7,
+      14
+    ],
+    "rooms": 24,
+    "primary_candidates": 24,
+    "wide_candidates": 32,
+    "construction_samples": 16,
+    "evaluation_samples": 64,
+    "control_decision_samples": 128,
+    "expanded_decision_samples": 256,
+    "reference_samples": 512,
+    "reference_halves": [
+      256,
+      256
+    ],
+    "legacy_in_confirmation_process": false,
+    "execution_isolation": "fresh_subprocess_per_policy_arm",
+    "one_fresh_subprocess_per_arm": true,
+    "worker_pool": false,
+    "worker_retry": false,
+    "worker_job_schema_version": "sequential-v2-policy-arm-job-v1",
+    "worker_result_schema_version": "sequential-v2-policy-arm-result-v1",
+    "worker_environment": {
+      "PYTHONHASHSEED": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1",
+      "VECLIB_MAXIMUM_THREADS": "1",
+      "BLIS_NUM_THREADS": "1"
+    },
+    "arm_timeout_seconds": 180.0,
+    "in_progress_journal": "in_progress.json",
+    "in_progress_journal_schema_version": "sequential-v2-in-progress-journal-v1",
+    "stale_journal_blocks_resume_and_retry": true,
+    "prelaunch_stress_dir": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\research\\studies\\2026-08-02_sequential_v2_fresh_confirmation\\artifacts\\local\\prelaunch_arm_isolation_v2",
+    "fail_fast": true,
+    "regret_threshold": 10.0,
+    "coverage_threshold": 10.0,
+    "value_noninferiority_pct": -0.25,
+    "internal_policy_p90_seconds_diagnostic_threshold": 15.0,
+    "parent_end_to_end_p90_seconds_strict_upper_bound": 30.0
+  },
+  "resume_guard": "ef96e7455cfdc2963a31bc2de1eaf1206f72f289474d1bac6df22a8bbc1baf96"
+}

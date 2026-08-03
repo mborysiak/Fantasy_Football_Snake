@@ -1,16 +1,21 @@
 # Sequential Best-Ball Policy Runbook
 
-Last updated: 2026-07-31
+Last updated: 2026-08-03
 
 ## Release Status
 
-`best_ball_policy` remains labeled Preview, and its release-gate evidence is
-still DK-specific. The experimental, governed offense-only NFFC scoring adapter
-can run the same policy against independently scored NFFC projections, current
-canonical NFFC ADP, and 17-week modern-era templates. The legacy `best_ball_ilp` remains
-available as the fallback. The Preview is intentionally limited to the
+`best_ball_policy` remains labeled Preview and is the fresh-session default.
+DK uses the approved nested D256 decision bank with 24 rooms and 24 candidates.
+The experimental governed NFFC offense-only adapter remains D128 against
+independently scored NFFC projections, current canonical NFFC ADP, and 17-week
+modern-era templates. Legacy `best_ball_ilp` remains available as a fallback
+and diagnostic, but is not an approval oracle. The Preview is limited to the
 current-pick recommendation; it does not present future-round recommendations
 as if their players were fixed in advance.
+
+Every Sequential or Legacy click runs in one fresh Python subprocess, forces
+numeric thread counts to one, uses one inner worker, and has no automatic retry
+or cross-method fallback. A failed worker leaves the draft selections unchanged.
 
 ## League-Aware Pick Schedule
 
@@ -51,15 +56,21 @@ used to score those decisions:
    stack-adjusted utility drop-off from waiting, with no hard availability
    threshold. Recalculate after every opponent turn.
 6. Score every completed roster on a separate 64-season pilot bank.
-7. Rank every completed candidate on a separate 128-season decision bank. Keep
-   raw best-ball EV visible and rank on a separate decision score equal to raw
-   EV plus average final-roster stack utility.
+7. Rank every completed candidate on a separate decision bank: nested D256 for
+   DK and D128 for NFFC offense-only. Keep raw best-ball EV visible and rank on
+   a separate decision score equal to raw EV plus average final-roster stack
+   utility.
 
 Release studies may additionally rescore every completed candidate on a fourth
 128-season audit bank. Its PPG columns are unique and disjoint from every
 operational bank. Audit is diagnostic only: changing its seed cannot change the
 candidate screen, rollout paths, pilot ranking, decision ranking, recommendation,
 or downstream draft state.
+
+DK D256 preserves the exact production D128 allocation as its first 128 columns
+and adds a separately seeded, non-overlapping 128-column extension. Release
+studies score D128 and D256 actions on common policy-inert R512 outcomes; R512
+is research-only and never changes a production recommendation.
 
 Construction, pilot, decision, and optional audit draw unique PPG scenario
 columns from explicitly disjoint subsets of the 1,000 prediction columns. The
@@ -126,7 +137,12 @@ The Preview keeps 24 candidates at every draft depth. After replacement-aware
 scoring and roster-need quotas, the DK-only release gate found one 24-versus-32
 miss across 27 states: 8.25 points at slot 12/seed 2017/round 8. That clears the
 fixed 10-point shortlist gate. The broader pool is an intentional
-runtime-for-coverage tradeoff and is not adaptively reduced late.
+runtime-for-coverage tradeoff and is not adaptively reduced late. The isolated
+current-V2 prelaunch and 33 additional clean fresh states found no positive
+R512 advantage for the 32-candidate action over the production 24-candidate
+action. The exact launch later failed closed when only a wide control worker
+hit a native access violation, so those states remain diagnostic rather than a
+completed confirmation.
 
 The scarcity-aware and pure-greedy policies selected Jonathan Taylor in the
 physical opening fixture, but scarcity changed their future draft paths. The
@@ -158,6 +174,19 @@ versus 1.12. Hidden audit work was excluded and cost about 0.26 seconds p50.
 This still fails the no-slower-than-legacy promotion gate. The focused 50-room
 Puka fixture took 9.73 seconds, with 8.97 seconds in candidate rollouts.
 
+The final production smoke completed DK D256 at 24/24 rooms in 11.72 seconds
+end to end without loading CVXOPT. Legacy completed 50/50 simulations in 7.76
+seconds and loaded CVXOPT only inside its disposable worker. The isolated
+six-state prelaunch measured primary parent p50/p90 of 12.74/12.90 seconds; the
+33 clean primary arms in the later exact launch measured 8.64/12.80 seconds
+across opening, mid-, and late-draft states. Both are comfortably below the
+accepted parent-observed p90 SLA of 30 seconds. Runtime relative to Legacy is a
+diagnostic, not a release gate.
+
+Fresh Streamlit sessions initialize Sequential with the validated 24 rooms.
+Custom room counts are under Advanced settings and show a warning; Legacy
+initializes at 50 simulations with one inner worker.
+
 ## Validation
 
 Run:
@@ -167,6 +196,9 @@ python research/studies/2026-07-19_sequential_best_ball_policy/verify_milestone_
 python research/studies/2026-07-19_sequential_best_ball_policy/verify_replacement_policy.py
 python research/studies/2026-07-19_sequential_best_ball_policy/run_milestone_a.py
 python research/studies/2026-07-19_sequential_best_ball_release_gate/run_release_gate.py
+python research/studies/2026-08-02_sequential_v2_bank_stability/run_study.py
+.venv_snake_312\Scripts\python.exe research/studies/2026-08-02_sequential_v2_fresh_confirmation/run_study.py --fail-fast
+..\Fantasy_Football\.venv_ff_312\Scripts\python.exe research/studies/2026-08-02_sequential_historical_forced_pick_replay/run_study.py --phase score --output-dir research/studies/2026-08-02_sequential_historical_forced_pick_replay/results_v5
 ```
 
 The verifier checks frozen legacy source hashes, tensor scoring parity,
@@ -189,6 +221,17 @@ opponent-pick count mismatches, and real-database smoke/regression runs.
   fourth, and the three screened QBs ranked 20th, 22nd, and 24th. Independent
   bank noise remains: decision and audit winners agreed in 17 of 27 refreshed
   states, with four regrets above 10 points and a maximum of 12.13.
+- On the current-V2 reused-seed compatibility matrix, D128 exact R512-winner
+  agreement was 11/27 and D256 improved it to 17/27. D256 reduced cross-fitted
+  reference score-gap mean/maximum from 1.400/10.823 to 0.107/4.303 and changed
+  eight actions, seven positively on R512. The +1.2927-point conditional mean
+  has a three-base-seed 95% interval of [0, +2.2599]; it touches zero and is not
+  promotion-grade evidence of superiority.
+- The exact fresh confirmation launch is not a formal pass: a non-production
+  32-candidate control worker exited with Windows `0xC0000005` after 33 clean
+  states. Those states nevertheless showed D256 +0.621 R512 points, lower
+  regret, zero 24-versus-32 loss, and 12.80-second primary parent p90. The
+  completed held-out historical replay is the approval-grade D256/D128 test.
 - The app warns when the number of marked opponent picks does not match the
   snake schedule, but the Preview still runs with the marked availability state.
   An unmarked drafted player may therefore appear in recommendations until the
@@ -206,11 +249,16 @@ opponent-pick count mismatches, and real-database smoke/regression runs.
 
 ## Release Decision
 
-Milestone A justified shipping the explicit Preview, retaining scarcity, and
-skipping beam search. The DK-only 24-candidate gate cleared candidate coverage,
-and the operational decision stage scores all completed candidates. Empirical
-replacement-aware draft timing fixes the observed early-QB failure and improves
-the maximum audit regret, while the refreshed matrix still fails the fixed
-decision/audit stability and runtime gates. On 2026-07-19 the app owner chose
-Preview as the fresh-session default for field testing; Legacy remains available
-as fallback and the hidden audit bank remains policy-inert.
+As of 2026-08-03, nested D256 is approved for DK Sequential Preview. The final
+leakage-safe replay froze 81 states before outcome access and scored 3,888
+paired arm-room results across held-out 2017-2025 seasons. D256 averaged
+2,079.373 points versus 2,078.467 for D128: +0.907 points (+0.044%). The
+season-clustered 95% interval was [-3.160, 5.439] points
+([-0.150%, 0.262%]), above the preregistered -5.196-point (-0.25%)
+noninferiority margin. Every frozen design, leakage, source, identity, roster,
+isolation, and scoring gate passed.
+
+Sequential is the production methodology independent of GLPK/Legacy results.
+Legacy remains available for fallback and diagnostics, but it is not the
+approval oracle and does not block D256. NFFC offense-only remains D128. Keep
+the Preview label while live stability and modeling limitations are monitored.

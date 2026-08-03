@@ -1,0 +1,5 @@
+state_id,origin_year,pick_slot,completed_picks,d128_action,d256_action,legacy_action,unique_actions,rooms
+dk:2017:slot1:depth0,2017,1,0,Julio Jones,Julio Jones,Julio Jones,1,24
+dk:2017:slot1:depth7,2017,1,7,Theo Riddick,Theo Riddick,Philip Rivers,2,24
+dk:2017:slot1:depth14,2017,1,14,Latavius Murray,Joe Flacco,Latavius Murray,2,24
+dk:2017:slot6:depth0,2017,6,0,Julio Jones,Julio Jones,Devonta Freeman,2,24

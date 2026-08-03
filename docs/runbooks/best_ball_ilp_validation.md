@@ -1,6 +1,6 @@
 # Best-Ball ILP Validation Runbook
 
-Last updated: 2026-07-31
+Last updated: 2026-08-03
 
 ## Core Files
 
@@ -40,6 +40,11 @@ Then confirm:
   current canonical NFFC ADP feed, and a 17-week modern-era template horizon
   with 17 populated weekly columns, without falling back to DK data
 - NFFC displays only QB/RB/WR/TE and clearly identifies its offense-only scope
+
+The promoted 2026 source copy from correction run
+`20260803T040708Z_2075ac47` passed the governed bare-mode Snake smoke with DK
+and NFFC selectors, zero errors, and zero exceptions. Its 26-table logical
+content matches the promoted modeling source after compaction.
 
 ## Best-Ball Runtime Checks
 
@@ -90,9 +95,10 @@ When changing template or residual logic, check:
 - every MyTeam and OtherTeam row resolves exactly once in the active player
   population; stale, blank, duplicate, conflicting, or ambiguous saved-state
   rows fail before simulation
-- source audit fields report exactly 39 unavailable beta 2018 QB V2 diagnostic
-  centers with quarantine-linked reasons; their active center remains the
-  validated legacy OOS center, and no other unavailable center is present
+- source audit fields report exactly 39 unavailable beta 2018 QB scoring
+  contexts with quarantine-linked reasons; those rows are donor-ineligible,
+  retain their auditable legacy center, and no other unavailable context is
+  present
 - center-position mismatch audit contains only Cordarrelle Patterson 2019/2021
   template WR to locked RB and Ty Montgomery 2022 template RB to locked WR;
   every other mismatch is absent

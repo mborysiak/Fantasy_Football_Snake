@@ -1,0 +1,53 @@
+{
+  "code_contract": {
+    "Scripts/Modeling/s4_Best_Ball_Weekly.py": {
+      "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\Modeling\\s4_Best_Ball_Weekly.py",
+      "sha256": "cdafae42b6cd3dacec32efd650454b857d4364b1efa16241b5ea4dae3d5f6bd3"
+    },
+    "Scripts/V2/build_player_outcomes.py": {
+      "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+      "sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76"
+    },
+    "Scripts/V2/config.py": {
+      "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\config.py",
+      "sha256": "d70731af80a39bf732e97efd71417905d7c7afa22470f795f1411ee64b983a43"
+    },
+    "Scripts/V2/contracts.py": {
+      "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\contracts.py",
+      "sha256": "b97a021b3dd6de1e80c38bd4b9157b6a0f15a07e28cec12c5c0aa179d7bec087"
+    },
+    "Scripts/config.py": {
+      "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\config.py",
+      "sha256": "e2c794260e7383dd2f8a8807d21bf94622812d78925c78e6f3e79c24cbcc62d9"
+    },
+    "app/simulation_worker.py": {
+      "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\app\\simulation_worker.py",
+      "sha256": "909cbec9d9e18a6c8ae842b56dfdf6001756305eb77f8ca03f6af42e5a62dd0b"
+    },
+    "app/zSim_Helper.py": {
+      "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\app\\zSim_Helper.py",
+      "sha256": "b738598fe70380b3062136f64811805be7891650a0551f4c0929d11720327114"
+    },
+    "historical_data.py": {
+      "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\research\\studies\\2026-08-02_sequential_historical_forced_pick_replay\\historical_data.py",
+      "sha256": "86dbbb0ca3c97df61c93284d113e0b055315fe832996b349f23d61583509da6d"
+    },
+    "run_study.py": {
+      "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\research\\studies\\2026-08-02_sequential_historical_forced_pick_replay\\run_study.py",
+      "sha256": "e3c9ce8d2b8f8b0c1bacd1f6334eaaaf0488a84d452f5936816a20c5c49d8ba6"
+    }
+  },
+  "design_hash": "ef07eb16ca640ffc9eb54053d3ba567696ff5101abe17803f35cde85153d56f8",
+  "expected_state_count": 1,
+  "freeze_complete": true,
+  "frozen_states_sha256": "9534e2a74827d03215aff2e54f9fcea3ca48cf325aa776cd716ae257568d169c",
+  "origin_receipts_sha256": "b869251a35aad1c3e77df97b99cd1a77ed88f7f701dd8746a8cfa4ce98386385",
+  "outcomes_scored": false,
+  "physical_bank_and_roster_contracts": true,
+  "production_d128_prefix_exact": false,
+  "runner_receipt_hash": "94a2dd52281fb4ac631dcaf366f4cc5066367e0bd006b78fa36a88ba46678b7e",
+  "sealed_at_utc": "2026-08-03T20:55:21.145343+00:00",
+  "state_count": 1,
+  "strict_prior_all_origins": true,
+  "three_stage_process_isolation": true
+}

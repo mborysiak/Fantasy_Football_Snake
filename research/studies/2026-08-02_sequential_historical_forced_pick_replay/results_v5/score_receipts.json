@@ -1,0 +1,2013 @@
+{
+  "2017": {
+    "historical_data_sha256": "86dbbb0ca3c97df61c93284d113e0b055315fe832996b349f23d61583509da6d",
+    "target_outcome_fingerprint": "b06fccd9a9163ceea8bfc0fb26fb35ad8e1b09eefe5a1cc72d8bbaa3db3a0334",
+    "target_source_receipt": {
+      "configured_scoring_limitation": "configured-DK scorer; current dictionaries zero two-point and individual return/special-teams touchdown components",
+      "evaluation_audit": {
+        "all_played_full_horizon_player_week_rows": 3536,
+        "all_played_full_horizon_points": 34891.64,
+        "all_played_full_horizon_raw_rows": 3536,
+        "all_played_week1_16_player_week_rows": 3536,
+        "all_played_week1_16_points": 34891.64,
+        "all_played_week1_16_raw_rows": 3536,
+        "candidate_identity_sha256": "3abd508cdcc15e3c2ec3d47a8530bbb8cb32c36175f1eba0ef4a67fee4ec9ce7",
+        "configured_dk_week1_16_outcome_frame_sha256": "4956fecfa807209b7e3d9830715468bc2658c4cdf15a77893dfc51e3a32baff0",
+        "configured_scoring_limitation": "configured-DK scorer; current dictionaries zero two-point and individual return/special-teams touchdown components",
+        "decision_frame_sha256_revalidated": {
+          "Avg_ADPs": "e7098a2cf2efd37a0158685509b56d62cbe2fa432d2aa4efb683e0a5a38908e4",
+          "Best_Ball_Weekly_Player_Map": "019cb9a23c6c840c187e89e15bce8cfd8aafd07b1c1cf5760ffc0c9650e3e7dd",
+          "Best_Ball_Weekly_Template_Pools": "722417185842b0423c5b9a73bfb3e618862105728f314fe8b7febc0e7ab8b641",
+          "Best_Ball_Weekly_Templates": "e460f91cc0c7fe28ed3b100dede4a466cfc6573432120020a6723a34c5c427b8",
+          "Final_Predictions_Resid": "f1d9a09e07c7096992312c9647227554d75e84c849e85d973ad161dc3f9c985f"
+        },
+        "exact_outcome_rows": 307,
+        "full_player_identity_sha256": "1812fa07b3e86abd46fe76402899fd8cc180306d7f3f7310eb6aaa3cd5ef59e2",
+        "governed_last_week": 16,
+        "governed_reconciliation_points": 34853.96000000001,
+        "governed_reconciliation_rows": 3442,
+        "governed_seasonal_rows": 353,
+        "governed_seasonal_sha256": "e340c53633d4da1795f4caddecea31b19fbf520be6f36b1a5563074e6f84e43c",
+        "known_mapping_regression_records": [],
+        "known_mapping_regression_rows_checked": 0,
+        "mapped_candidate_count": 312,
+        "mapped_full_horizon_points": 34891.64,
+        "mapped_full_horizon_rows": 3536,
+        "missing_required_weekly_mapping_rows": 0,
+        "opportunity_excluded_points": 37.679999999993015,
+        "opportunity_excluded_rows": 94,
+        "origin_regular_points": 43602.58,
+        "origin_regular_rows": 16786,
+        "outcome_reconciliation_atol": 1e-06,
+        "outcome_reconciliation_compared_rows": 353,
+        "outcome_reconciliation_max_abs_delta": 0.0,
+        "outcome_reconciliation_mismatch_rows": 0,
+        "outcome_rows": 353,
+        "raw_all_player_full_governed_horizon_points": 41123.46,
+        "raw_all_player_full_governed_horizon_rows": 15742,
+        "raw_candidate_position_mismatch_examples": [
+          {
+            "candidate_position": "WR",
+            "player_display_name": "Cordarrelle Patterson",
+            "player_key": "b16d3ba0-39d4-5a4b-bca8-ad15e147c96b",
+            "raw_position": "RB"
+          },
+          {
+            "candidate_position": "WR",
+            "player_display_name": "Jordan Matthews",
+            "player_key": "4d6c81fb-b03b-51ed-af40-6990966fa6c9",
+            "raw_position": "TE"
+          },
+          {
+            "candidate_position": "RB",
+            "player_display_name": "Ty Montgomery",
+            "player_key": "2f3a5f36-ad51-527b-8fdc-ca0a5e431ad6",
+            "raw_position": "WR"
+          }
+        ],
+        "raw_candidate_position_mismatch_players": 3,
+        "raw_candidate_position_mismatch_rows": 33,
+        "raw_payload_rows": 17477,
+        "raw_schema_columns": [
+          {
+            "column": "player_id",
+            "dtype": "object"
+          },
+          {
+            "column": "player_display_name",
+            "dtype": "object"
+          },
+          {
+            "column": "position_group",
+            "dtype": "object"
+          },
+          {
+            "column": "season",
+            "dtype": "int64"
+          },
+          {
+            "column": "week",
+            "dtype": "int64"
+          },
+          {
+            "column": "season_type",
+            "dtype": "object"
+          },
+          {
+            "column": "game_id",
+            "dtype": "object"
+          },
+          {
+            "column": "team",
+            "dtype": "object"
+          },
+          {
+            "column": "attempts",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_yards",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_interceptions",
+            "dtype": "int64"
+          },
+          {
+            "column": "sacks_suffered",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_2pt_conversions",
+            "dtype": "int64"
+          },
+          {
+            "column": "carries",
+            "dtype": "int64"
+          },
+          {
+            "column": "rushing_yards",
+            "dtype": "int64"
+          },
+          {
+            "column": "rushing_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "rushing_2pt_conversions",
+            "dtype": "int64"
+          },
+          {
+            "column": "receptions",
+            "dtype": "int64"
+          },
+          {
+            "column": "targets",
+            "dtype": "int64"
+          },
+          {
+            "column": "receiving_yards",
+            "dtype": "int64"
+          },
+          {
+            "column": "receiving_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "receiving_2pt_conversions",
+            "dtype": "int64"
+          },
+          {
+            "column": "special_teams_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "fumbles_lost_total",
+            "dtype": "int64"
+          }
+        ],
+        "raw_schema_sha256": "f1fbd1ba9f8c6f93478892a45703755d078dff7ecc5588e110358d325b64ef5d",
+        "required_weekly_mapping_rows": 307,
+        "target_alias_position_sha256": "c3222a11bfd23c5ea989eeee763443ebe758c26288a94e48537fcc3674d27fb4",
+        "unmapped_full_horizon_points": 6231.82,
+        "unmapped_full_horizon_rows": 12206,
+        "week17_excluded_points": 0.0,
+        "week17_excluded_rows": 0
+      },
+      "foundation_run_id": "milestone_1_20260803T040839Z_23727751",
+      "governed_last_week": 16,
+      "mask_code_path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+      "mask_code_sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76",
+      "origin_year": 2017,
+      "reconciliation_population": "build_player_outcomes.aggregate_player_outcomes",
+      "roster_position_attribution": "candidate_preseason_position",
+      "roster_scoring_population": "configured_dk_all_regular_season_played_rows",
+      "row_count": 17477,
+      "scoring_code_path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+      "scoring_code_sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76",
+      "scoring_dependency_sha256": {
+        "build_player_outcomes": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+          "sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76"
+        },
+        "contracts": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\contracts.py",
+          "sha256": "b97a021b3dd6de1e80c38bd4b9157b6a0f15a07e28cec12c5c0aa179d7bec087"
+        },
+        "scripts_config": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\config.py",
+          "sha256": "e2c794260e7383dd2f8a8807d21bf94622812d78925c78e6f3e79c24cbcc62d9"
+        },
+        "v2_config": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\config.py",
+          "sha256": "d70731af80a39bf732e97efd71417905d7c7afa22470f795f1411ee64b983a43"
+        },
+        "weekly_builder": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\Modeling\\s4_Best_Ball_Weekly.py",
+          "sha256": "cdafae42b6cd3dacec32efd650454b857d4364b1efa16241b5ea4dae3d5f6bd3"
+        },
+        "weekly_config": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\config.py",
+          "sha256": "e2c794260e7383dd2f8a8807d21bf94622812d78925c78e6f3e79c24cbcc62d9"
+        }
+      },
+      "scoring_hash": "ffd5380565fe3f79beadf882313f7071e869807a3b684be52ca0f35394cf5f70",
+      "scoring_week_count": 16,
+      "source_name": "nflverse_weekly_stats_2017",
+      "source_sha256": "064208e4b10398775ee7a2359b124c146b83816ee3bec5c18a1e320d987d7d85",
+      "source_uri": "https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2017.csv"
+    },
+    "target_source_receipt_hash": "fcab32fc882cbd9a4b862f3bf1340efdd1ab9ff434ad6cba7e99df2701a05758"
+  },
+  "2018": {
+    "historical_data_sha256": "86dbbb0ca3c97df61c93284d113e0b055315fe832996b349f23d61583509da6d",
+    "target_outcome_fingerprint": "6404bdccb985b6096d4970b0f1e353440365bc2f4a881017cee3451082c2e672",
+    "target_source_receipt": {
+      "configured_scoring_limitation": "configured-DK scorer; current dictionaries zero two-point and individual return/special-teams touchdown components",
+      "evaluation_audit": {
+        "all_played_full_horizon_player_week_rows": 3955,
+        "all_played_full_horizon_points": 40151.7,
+        "all_played_full_horizon_raw_rows": 3955,
+        "all_played_week1_16_player_week_rows": 3955,
+        "all_played_week1_16_points": 40151.7,
+        "all_played_week1_16_raw_rows": 3955,
+        "candidate_identity_sha256": "b3c8aae1e8744a02f4b969debac208880f44edb13da5261e45ec19986ddc0888",
+        "configured_dk_week1_16_outcome_frame_sha256": "c5815c4e0d6c90049bbd834a636c1de16088fb87fffe2691a558804bf92582f2",
+        "configured_scoring_limitation": "configured-DK scorer; current dictionaries zero two-point and individual return/special-teams touchdown components",
+        "decision_frame_sha256_revalidated": {
+          "Avg_ADPs": "9be9fc44312a48e8124144bb6ca484219c14b2129a6fbb79dc005059b627cf69",
+          "Best_Ball_Weekly_Player_Map": "810341b062cc3681caa821876674adb246d98eac8e2476c16dab02d921232074",
+          "Best_Ball_Weekly_Template_Pools": "48d4b4a5769c850f900b3832bc354e938c37ef6411a03b0244a5d04a25e58350",
+          "Best_Ball_Weekly_Templates": "bbf4392fee08e9bb5c011de73cddbbfc346b0961f56ce65982984d72e91c7a74",
+          "Final_Predictions_Resid": "a135c3fcd40c7e71b5038fd75ff5103b2133f75a2abb8392a6f1e7dd988194ce"
+        },
+        "exact_outcome_rows": 372,
+        "full_player_identity_sha256": "1812fa07b3e86abd46fe76402899fd8cc180306d7f3f7310eb6aaa3cd5ef59e2",
+        "governed_last_week": 16,
+        "governed_reconciliation_points": 40119.6,
+        "governed_reconciliation_rows": 3776,
+        "governed_seasonal_rows": 432,
+        "governed_seasonal_sha256": "41b9441bbef431aa1f0df9e2589436488b394211a02d6ca0bd651088d97ce578",
+        "known_mapping_regression_records": [
+          {
+            "display_name": "Tyler Ervin",
+            "mapped_points": 6.5,
+            "origin_year": 2018,
+            "player_key": "1e948a63-6d22-5701-8dbc-c955eac29f7b",
+            "points": 6.5,
+            "population": "all_played",
+            "position": "RB"
+          }
+        ],
+        "known_mapping_regression_rows_checked": 1,
+        "mapped_candidate_count": 379,
+        "mapped_full_horizon_points": 40151.7,
+        "mapped_full_horizon_rows": 3955,
+        "missing_required_weekly_mapping_rows": 0,
+        "opportunity_excluded_points": 32.099999999998545,
+        "opportunity_excluded_rows": 179,
+        "origin_regular_points": 47314.58,
+        "origin_regular_rows": 16728,
+        "outcome_reconciliation_atol": 1e-06,
+        "outcome_reconciliation_compared_rows": 432,
+        "outcome_reconciliation_max_abs_delta": 0.0,
+        "outcome_reconciliation_mismatch_rows": 0,
+        "outcome_rows": 432,
+        "raw_all_player_full_governed_horizon_points": 44597.4,
+        "raw_all_player_full_governed_horizon_rows": 15687,
+        "raw_candidate_position_mismatch_examples": [
+          {
+            "candidate_position": "WR",
+            "player_display_name": "Cordarrelle Patterson",
+            "player_key": "b16d3ba0-39d4-5a4b-bca8-ad15e147c96b",
+            "raw_position": "RB"
+          },
+          {
+            "candidate_position": "RB",
+            "player_display_name": "Ty Montgomery",
+            "player_key": "2f3a5f36-ad51-527b-8fdc-ca0a5e431ad6",
+            "raw_position": "WR"
+          }
+        ],
+        "raw_candidate_position_mismatch_players": 2,
+        "raw_candidate_position_mismatch_rows": 27,
+        "raw_payload_rows": 17414,
+        "raw_schema_columns": [
+          {
+            "column": "player_id",
+            "dtype": "object"
+          },
+          {
+            "column": "player_display_name",
+            "dtype": "object"
+          },
+          {
+            "column": "position_group",
+            "dtype": "object"
+          },
+          {
+            "column": "season",
+            "dtype": "int64"
+          },
+          {
+            "column": "week",
+            "dtype": "int64"
+          },
+          {
+            "column": "season_type",
+            "dtype": "object"
+          },
+          {
+            "column": "game_id",
+            "dtype": "object"
+          },
+          {
+            "column": "team",
+            "dtype": "object"
+          },
+          {
+            "column": "attempts",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_yards",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_interceptions",
+            "dtype": "int64"
+          },
+          {
+            "column": "sacks_suffered",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_2pt_conversions",
+            "dtype": "int64"
+          },
+          {
+            "column": "carries",
+            "dtype": "int64"
+          },
+          {
+            "column": "rushing_yards",
+            "dtype": "int64"
+          },
+          {
+            "column": "rushing_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "rushing_2pt_conversions",
+            "dtype": "int64"
+          },
+          {
+            "column": "receptions",
+            "dtype": "int64"
+          },
+          {
+            "column": "targets",
+            "dtype": "int64"
+          },
+          {
+            "column": "receiving_yards",
+            "dtype": "int64"
+          },
+          {
+            "column": "receiving_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "receiving_2pt_conversions",
+            "dtype": "int64"
+          },
+          {
+            "column": "special_teams_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "fumbles_lost_total",
+            "dtype": "int64"
+          }
+        ],
+        "raw_schema_sha256": "f1fbd1ba9f8c6f93478892a45703755d078dff7ecc5588e110358d325b64ef5d",
+        "required_weekly_mapping_rows": 372,
+        "target_alias_position_sha256": "c3222a11bfd23c5ea989eeee763443ebe758c26288a94e48537fcc3674d27fb4",
+        "unmapped_full_horizon_points": 4445.700000000001,
+        "unmapped_full_horizon_rows": 11732,
+        "week17_excluded_points": 0.0,
+        "week17_excluded_rows": 0
+      },
+      "foundation_run_id": "milestone_1_20260803T040839Z_23727751",
+      "governed_last_week": 16,
+      "mask_code_path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+      "mask_code_sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76",
+      "origin_year": 2018,
+      "reconciliation_population": "build_player_outcomes.aggregate_player_outcomes",
+      "roster_position_attribution": "candidate_preseason_position",
+      "roster_scoring_population": "configured_dk_all_regular_season_played_rows",
+      "row_count": 17414,
+      "scoring_code_path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+      "scoring_code_sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76",
+      "scoring_dependency_sha256": {
+        "build_player_outcomes": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+          "sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76"
+        },
+        "contracts": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\contracts.py",
+          "sha256": "b97a021b3dd6de1e80c38bd4b9157b6a0f15a07e28cec12c5c0aa179d7bec087"
+        },
+        "scripts_config": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\config.py",
+          "sha256": "e2c794260e7383dd2f8a8807d21bf94622812d78925c78e6f3e79c24cbcc62d9"
+        },
+        "v2_config": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\config.py",
+          "sha256": "d70731af80a39bf732e97efd71417905d7c7afa22470f795f1411ee64b983a43"
+        },
+        "weekly_builder": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\Modeling\\s4_Best_Ball_Weekly.py",
+          "sha256": "cdafae42b6cd3dacec32efd650454b857d4364b1efa16241b5ea4dae3d5f6bd3"
+        },
+        "weekly_config": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\config.py",
+          "sha256": "e2c794260e7383dd2f8a8807d21bf94622812d78925c78e6f3e79c24cbcc62d9"
+        }
+      },
+      "scoring_hash": "ffd5380565fe3f79beadf882313f7071e869807a3b684be52ca0f35394cf5f70",
+      "scoring_week_count": 16,
+      "source_name": "nflverse_weekly_stats_2018",
+      "source_sha256": "016a488cd7c187f0d0ba58ad1b8fad11b633d2050964fbb3009bd26ff9c82f95",
+      "source_uri": "https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2018.csv"
+    },
+    "target_source_receipt_hash": "cbedc0f7d46dd897f8cb1d5d1add9e72aae3b13c7cafcd8fe2b0e86db4e25fe8"
+  },
+  "2019": {
+    "historical_data_sha256": "86dbbb0ca3c97df61c93284d113e0b055315fe832996b349f23d61583509da6d",
+    "target_outcome_fingerprint": "ef4eb3ab6d9e9d0f49e077226a8153490bd2882b6f01e4217d0250e53bf73ae7",
+    "target_source_receipt": {
+      "configured_scoring_limitation": "configured-DK scorer; current dictionaries zero two-point and individual return/special-teams touchdown components",
+      "evaluation_audit": {
+        "all_played_full_horizon_player_week_rows": 4371,
+        "all_played_full_horizon_points": 40935.42,
+        "all_played_full_horizon_raw_rows": 4371,
+        "all_played_week1_16_player_week_rows": 4371,
+        "all_played_week1_16_points": 40935.42,
+        "all_played_week1_16_raw_rows": 4371,
+        "candidate_identity_sha256": "d26d84e3f2f74e50d9d318254a093bb0001d54fb1aa4128a60bfebcdcd447207",
+        "configured_dk_week1_16_outcome_frame_sha256": "2680bb7b1c96ff09af97aadc9330a845d31d9fcb639d6456d0ec5f70548d696f",
+        "configured_scoring_limitation": "configured-DK scorer; current dictionaries zero two-point and individual return/special-teams touchdown components",
+        "decision_frame_sha256_revalidated": {
+          "Avg_ADPs": "40e26d3a766c990091fe06ab2874dd49da6ba114b953b1c6aaa114b7f2befe52",
+          "Best_Ball_Weekly_Player_Map": "00b55c91c1cc6b78074f64009a3d22904244917f228922b6bf3c541f5f7dff42",
+          "Best_Ball_Weekly_Template_Pools": "b4e06b91cd8dd70b1030aab9a9a98b3bb3e14552592731c7519affe0068fff32",
+          "Best_Ball_Weekly_Templates": "84ee83e553218fe664e39dc8a7ce9eac91dadec881eb3430ae777c2531f32e1d",
+          "Final_Predictions_Resid": "a875fef91693c8d84751fe36956a1e6ac1d0e8afbb5bcd08f22eca7d021d9710"
+        },
+        "exact_outcome_rows": 415,
+        "full_player_identity_sha256": "1812fa07b3e86abd46fe76402899fd8cc180306d7f3f7310eb6aaa3cd5ef59e2",
+        "governed_last_week": 16,
+        "governed_reconciliation_points": 40887.14,
+        "governed_reconciliation_rows": 4059,
+        "governed_seasonal_rows": 551,
+        "governed_seasonal_sha256": "57c9434dc566d60c1bec9994be745be63c860cce8ce74963a522f22cceb95d83",
+        "known_mapping_regression_records": [
+          {
+            "alternate_display_names": [
+              "Robby Anderson",
+              "Robbie Anderson"
+            ],
+            "display_name": "Robbie Chosen",
+            "mapped_points": 164.5,
+            "origin_year": 2019,
+            "player_key": "b3a4e510-01f3-5651-91e2-7b4c468294da",
+            "points": 164.5,
+            "population": "governed",
+            "position": "WR"
+          },
+          {
+            "display_name": "Deonte Harty",
+            "mapped_points": 10.2,
+            "origin_year": 2019,
+            "player_key": "ef4cecd0-02dd-5ff1-a0eb-6e0522f8e719",
+            "points": 10.2,
+            "population": "governed",
+            "position": "WR"
+          }
+        ],
+        "known_mapping_regression_rows_checked": 2,
+        "mapped_candidate_count": 439,
+        "mapped_full_horizon_points": 40935.42,
+        "mapped_full_horizon_rows": 4371,
+        "missing_required_weekly_mapping_rows": 0,
+        "opportunity_excluded_points": 48.279999999998836,
+        "opportunity_excluded_rows": 312,
+        "origin_regular_points": 46441.14,
+        "origin_regular_rows": 16663,
+        "outcome_reconciliation_atol": 1e-06,
+        "outcome_reconciliation_compared_rows": 551,
+        "outcome_reconciliation_max_abs_delta": 0.0,
+        "outcome_reconciliation_mismatch_rows": 0,
+        "outcome_rows": 551,
+        "raw_all_player_full_governed_horizon_points": 43667.36,
+        "raw_all_player_full_governed_horizon_rows": 15644,
+        "raw_candidate_position_mismatch_examples": [
+          {
+            "candidate_position": "RB",
+            "player_display_name": "Ty Montgomery",
+            "player_key": "2f3a5f36-ad51-527b-8fdc-ca0a5e431ad6",
+            "raw_position": "WR"
+          },
+          {
+            "candidate_position": "QB",
+            "player_display_name": "Taysom Hill",
+            "player_key": "0c370254-2acd-5345-a009-d0744ed3affe",
+            "raw_position": "TE"
+          }
+        ],
+        "raw_candidate_position_mismatch_players": 2,
+        "raw_candidate_position_mismatch_rows": 29,
+        "raw_payload_rows": 17362,
+        "raw_schema_columns": [
+          {
+            "column": "player_id",
+            "dtype": "object"
+          },
+          {
+            "column": "player_display_name",
+            "dtype": "object"
+          },
+          {
+            "column": "position_group",
+            "dtype": "object"
+          },
+          {
+            "column": "season",
+            "dtype": "int64"
+          },
+          {
+            "column": "week",
+            "dtype": "int64"
+          },
+          {
+            "column": "season_type",
+            "dtype": "object"
+          },
+          {
+            "column": "game_id",
+            "dtype": "object"
+          },
+          {
+            "column": "team",
+            "dtype": "object"
+          },
+          {
+            "column": "attempts",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_yards",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_interceptions",
+            "dtype": "int64"
+          },
+          {
+            "column": "sacks_suffered",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_2pt_conversions",
+            "dtype": "int64"
+          },
+          {
+            "column": "carries",
+            "dtype": "int64"
+          },
+          {
+            "column": "rushing_yards",
+            "dtype": "int64"
+          },
+          {
+            "column": "rushing_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "rushing_2pt_conversions",
+            "dtype": "int64"
+          },
+          {
+            "column": "receptions",
+            "dtype": "int64"
+          },
+          {
+            "column": "targets",
+            "dtype": "int64"
+          },
+          {
+            "column": "receiving_yards",
+            "dtype": "int64"
+          },
+          {
+            "column": "receiving_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "receiving_2pt_conversions",
+            "dtype": "int64"
+          },
+          {
+            "column": "special_teams_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "fumbles_lost_total",
+            "dtype": "int64"
+          }
+        ],
+        "raw_schema_sha256": "f1fbd1ba9f8c6f93478892a45703755d078dff7ecc5588e110358d325b64ef5d",
+        "required_weekly_mapping_rows": 415,
+        "target_alias_position_sha256": "c3222a11bfd23c5ea989eeee763443ebe758c26288a94e48537fcc3674d27fb4",
+        "unmapped_full_horizon_points": 2731.94,
+        "unmapped_full_horizon_rows": 11273,
+        "week17_excluded_points": 0.0,
+        "week17_excluded_rows": 0
+      },
+      "foundation_run_id": "milestone_1_20260803T040839Z_23727751",
+      "governed_last_week": 16,
+      "mask_code_path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+      "mask_code_sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76",
+      "origin_year": 2019,
+      "reconciliation_population": "build_player_outcomes.aggregate_player_outcomes",
+      "roster_position_attribution": "candidate_preseason_position",
+      "roster_scoring_population": "configured_dk_all_regular_season_played_rows",
+      "row_count": 17362,
+      "scoring_code_path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+      "scoring_code_sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76",
+      "scoring_dependency_sha256": {
+        "build_player_outcomes": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+          "sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76"
+        },
+        "contracts": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\contracts.py",
+          "sha256": "b97a021b3dd6de1e80c38bd4b9157b6a0f15a07e28cec12c5c0aa179d7bec087"
+        },
+        "scripts_config": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\config.py",
+          "sha256": "e2c794260e7383dd2f8a8807d21bf94622812d78925c78e6f3e79c24cbcc62d9"
+        },
+        "v2_config": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\config.py",
+          "sha256": "d70731af80a39bf732e97efd71417905d7c7afa22470f795f1411ee64b983a43"
+        },
+        "weekly_builder": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\Modeling\\s4_Best_Ball_Weekly.py",
+          "sha256": "cdafae42b6cd3dacec32efd650454b857d4364b1efa16241b5ea4dae3d5f6bd3"
+        },
+        "weekly_config": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\config.py",
+          "sha256": "e2c794260e7383dd2f8a8807d21bf94622812d78925c78e6f3e79c24cbcc62d9"
+        }
+      },
+      "scoring_hash": "ffd5380565fe3f79beadf882313f7071e869807a3b684be52ca0f35394cf5f70",
+      "scoring_week_count": 16,
+      "source_name": "nflverse_weekly_stats_2019",
+      "source_sha256": "7e956affe5cdf93ea57261c90b8a4c77b9f8e6fe8e04a82459a295d45878a31d",
+      "source_uri": "https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2019.csv"
+    },
+    "target_source_receipt_hash": "21f1d19fdb26645f2016cbbcf8f154f0e18f371aa61a799e67992373a99c49cd"
+  },
+  "2020": {
+    "historical_data_sha256": "86dbbb0ca3c97df61c93284d113e0b055315fe832996b349f23d61583509da6d",
+    "target_outcome_fingerprint": "3029a886ac71aad63eac916cd987a812e14833dd97a7dd8e0283c789611dd63d",
+    "target_source_receipt": {
+      "configured_scoring_limitation": "configured-DK scorer; current dictionaries zero two-point and individual return/special-teams touchdown components",
+      "evaluation_audit": {
+        "all_played_full_horizon_player_week_rows": 3580,
+        "all_played_full_horizon_points": 38924.240000000005,
+        "all_played_full_horizon_raw_rows": 3580,
+        "all_played_week1_16_player_week_rows": 3580,
+        "all_played_week1_16_points": 38924.240000000005,
+        "all_played_week1_16_raw_rows": 3580,
+        "candidate_identity_sha256": "655a3462a6047acb219a85a5b40e4b47ecc63293af7149c129431b1d6cd02a8e",
+        "configured_dk_week1_16_outcome_frame_sha256": "e757131ce756b16eb5949ca99c4a989e56ac91d90789d350d47d028d385eba8e",
+        "configured_scoring_limitation": "configured-DK scorer; current dictionaries zero two-point and individual return/special-teams touchdown components",
+        "decision_frame_sha256_revalidated": {
+          "Avg_ADPs": "db7497faeec7ae1fb10bd274270229e228f17db1b297dcb0710c7291cc18ae75",
+          "Best_Ball_Weekly_Player_Map": "6a49f3fba7c01736bf61d355ceccd5543c95aaa2bcc3ff71a3054dbe545e3c3e",
+          "Best_Ball_Weekly_Template_Pools": "0adcd4515aa0320dd81feb3f1b4eaedcdc16a95b0ed9b7b9ef414c67b0f61fec",
+          "Best_Ball_Weekly_Templates": "866642e5675b28e588551e092b9fdf07ced97b1cd1b7064a8eaf06a83160c3f1",
+          "Final_Predictions_Resid": "55a67c787370c28e0cdc2958ec0d2012f5f9c23f2ec5f5ae9a005d472df934ed"
+        },
+        "exact_outcome_rows": 324,
+        "full_player_identity_sha256": "1812fa07b3e86abd46fe76402899fd8cc180306d7f3f7310eb6aaa3cd5ef59e2",
+        "governed_last_week": 16,
+        "governed_reconciliation_points": 38848.34,
+        "governed_reconciliation_rows": 3449,
+        "governed_seasonal_rows": 342,
+        "governed_seasonal_sha256": "2dff793cb783008fd87a3129b12924e4964e1433cb68b98a5955c7715321a305",
+        "known_mapping_regression_records": [
+          {
+            "display_name": "Lamar Miller",
+            "mapped_points": 2.6,
+            "origin_year": 2020,
+            "player_key": "3460ab43-a99c-573e-915c-7e99bade6d4d",
+            "points": 2.6,
+            "population": "all_played",
+            "position": "RB"
+          },
+          {
+            "display_name": "Chris Herndon",
+            "mapped_points": 56.4,
+            "origin_year": 2020,
+            "player_key": "f1627690-54f6-5ddc-9ec2-b9f969bb26d5",
+            "points": 56.4,
+            "population": "governed",
+            "position": "TE"
+          },
+          {
+            "display_name": "Deonte Harty",
+            "mapped_points": 48.7,
+            "origin_year": 2020,
+            "player_key": "ef4cecd0-02dd-5ff1-a0eb-6e0522f8e719",
+            "points": 48.7,
+            "population": "governed",
+            "position": "WR"
+          }
+        ],
+        "known_mapping_regression_rows_checked": 3,
+        "mapped_candidate_count": 326,
+        "mapped_full_horizon_points": 38924.240000000005,
+        "mapped_full_horizon_rows": 3580,
+        "missing_required_weekly_mapping_rows": 0,
+        "opportunity_excluded_points": 75.90000000000873,
+        "opportunity_excluded_rows": 131,
+        "origin_regular_points": 48627.8,
+        "origin_regular_rows": 16774,
+        "outcome_reconciliation_atol": 1e-06,
+        "outcome_reconciliation_compared_rows": 342,
+        "outcome_reconciliation_max_abs_delta": 0.0,
+        "outcome_reconciliation_mismatch_rows": 0,
+        "outcome_rows": 342,
+        "raw_all_player_full_governed_horizon_points": 45503.58,
+        "raw_all_player_full_governed_horizon_rows": 15749,
+        "raw_candidate_position_mismatch_examples": [
+          {
+            "candidate_position": "WR",
+            "player_display_name": "Cordarrelle Patterson",
+            "player_key": "b16d3ba0-39d4-5a4b-bca8-ad15e147c96b",
+            "raw_position": "RB"
+          },
+          {
+            "candidate_position": "QB",
+            "player_display_name": "Taysom Hill",
+            "player_key": "0c370254-2acd-5345-a009-d0744ed3affe",
+            "raw_position": "TE"
+          },
+          {
+            "candidate_position": "RB",
+            "player_display_name": "Lynn Bowden",
+            "player_key": "04e822ed-b973-558a-beef-f6f71ce5963f",
+            "raw_position": "WR"
+          }
+        ],
+        "raw_candidate_position_mismatch_players": 3,
+        "raw_candidate_position_mismatch_rows": 38,
+        "raw_payload_rows": 17602,
+        "raw_schema_columns": [
+          {
+            "column": "player_id",
+            "dtype": "object"
+          },
+          {
+            "column": "player_display_name",
+            "dtype": "object"
+          },
+          {
+            "column": "position_group",
+            "dtype": "object"
+          },
+          {
+            "column": "season",
+            "dtype": "int64"
+          },
+          {
+            "column": "week",
+            "dtype": "int64"
+          },
+          {
+            "column": "season_type",
+            "dtype": "object"
+          },
+          {
+            "column": "game_id",
+            "dtype": "object"
+          },
+          {
+            "column": "team",
+            "dtype": "object"
+          },
+          {
+            "column": "attempts",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_yards",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_interceptions",
+            "dtype": "int64"
+          },
+          {
+            "column": "sacks_suffered",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_2pt_conversions",
+            "dtype": "int64"
+          },
+          {
+            "column": "carries",
+            "dtype": "int64"
+          },
+          {
+            "column": "rushing_yards",
+            "dtype": "int64"
+          },
+          {
+            "column": "rushing_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "rushing_2pt_conversions",
+            "dtype": "int64"
+          },
+          {
+            "column": "receptions",
+            "dtype": "int64"
+          },
+          {
+            "column": "targets",
+            "dtype": "int64"
+          },
+          {
+            "column": "receiving_yards",
+            "dtype": "int64"
+          },
+          {
+            "column": "receiving_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "receiving_2pt_conversions",
+            "dtype": "int64"
+          },
+          {
+            "column": "special_teams_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "fumbles_lost_total",
+            "dtype": "int64"
+          }
+        ],
+        "raw_schema_sha256": "f1fbd1ba9f8c6f93478892a45703755d078dff7ecc5588e110358d325b64ef5d",
+        "required_weekly_mapping_rows": 324,
+        "target_alias_position_sha256": "c3222a11bfd23c5ea989eeee763443ebe758c26288a94e48537fcc3674d27fb4",
+        "unmapped_full_horizon_points": 6579.34,
+        "unmapped_full_horizon_rows": 12169,
+        "week17_excluded_points": 0.0,
+        "week17_excluded_rows": 0
+      },
+      "foundation_run_id": "milestone_1_20260803T040839Z_23727751",
+      "governed_last_week": 16,
+      "mask_code_path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+      "mask_code_sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76",
+      "origin_year": 2020,
+      "reconciliation_population": "build_player_outcomes.aggregate_player_outcomes",
+      "roster_position_attribution": "candidate_preseason_position",
+      "roster_scoring_population": "configured_dk_all_regular_season_played_rows",
+      "row_count": 17602,
+      "scoring_code_path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+      "scoring_code_sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76",
+      "scoring_dependency_sha256": {
+        "build_player_outcomes": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+          "sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76"
+        },
+        "contracts": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\contracts.py",
+          "sha256": "b97a021b3dd6de1e80c38bd4b9157b6a0f15a07e28cec12c5c0aa179d7bec087"
+        },
+        "scripts_config": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\config.py",
+          "sha256": "e2c794260e7383dd2f8a8807d21bf94622812d78925c78e6f3e79c24cbcc62d9"
+        },
+        "v2_config": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\config.py",
+          "sha256": "d70731af80a39bf732e97efd71417905d7c7afa22470f795f1411ee64b983a43"
+        },
+        "weekly_builder": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\Modeling\\s4_Best_Ball_Weekly.py",
+          "sha256": "cdafae42b6cd3dacec32efd650454b857d4364b1efa16241b5ea4dae3d5f6bd3"
+        },
+        "weekly_config": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\config.py",
+          "sha256": "e2c794260e7383dd2f8a8807d21bf94622812d78925c78e6f3e79c24cbcc62d9"
+        }
+      },
+      "scoring_hash": "ffd5380565fe3f79beadf882313f7071e869807a3b684be52ca0f35394cf5f70",
+      "scoring_week_count": 16,
+      "source_name": "nflverse_weekly_stats_2020",
+      "source_sha256": "54d9274dfda5637daf5675b41f682959b442ae94e9ea95bc0a779c2024e52d81",
+      "source_uri": "https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2020.csv"
+    },
+    "target_source_receipt_hash": "2f29596a144accb465a1c4f01a191b187f44b0cc627c200f810ebf85acf2da8f"
+  },
+  "2021": {
+    "historical_data_sha256": "86dbbb0ca3c97df61c93284d113e0b055315fe832996b349f23d61583509da6d",
+    "target_outcome_fingerprint": "3aaf2b4d106eff06f329b2cf6773ddc2bea8ecb571b48fc0994423c84947c403",
+    "target_source_receipt": {
+      "configured_scoring_limitation": "configured-DK scorer; current dictionaries zero two-point and individual return/special-teams touchdown components",
+      "evaluation_audit": {
+        "all_played_full_horizon_player_week_rows": 3748,
+        "all_played_full_horizon_points": 39092.84,
+        "all_played_full_horizon_raw_rows": 3748,
+        "all_played_week1_16_player_week_rows": 3543,
+        "all_played_week1_16_points": 36945.04,
+        "all_played_week1_16_raw_rows": 3543,
+        "candidate_identity_sha256": "05f73c9a258d0bac6cc69ed7d1f3cb21c97d607a24754edcf13db7c0e1a78dbe",
+        "configured_dk_week1_16_outcome_frame_sha256": "c82ba9c52099bb5ea7fa2b40224a48e0db3e6d2ef8bbdd535058cc57873f2c70",
+        "configured_scoring_limitation": "configured-DK scorer; current dictionaries zero two-point and individual return/special-teams touchdown components",
+        "decision_frame_sha256_revalidated": {
+          "Avg_ADPs": "28289daf288726b633b0ae66f4317379ccf5df7b44d77da8ad85a306e35aba7e",
+          "Best_Ball_Weekly_Player_Map": "e79d058a6492fcd96e513c5f573450da75162b8e44225bfe5c411ec506db7dee",
+          "Best_Ball_Weekly_Template_Pools": "d81e4851d81e5b066039b91accb9270505bebf465c84d768ef27f162dd1d84fe",
+          "Best_Ball_Weekly_Templates": "7a30d35689e94970972d0038e3c9748acb1819fc198702af9014ea30d25176ca",
+          "Final_Predictions_Resid": "26df1caaed939f63ce4902bbed0cc04b8fa35ef2c2131e5c20d0c881da086946"
+        },
+        "exact_outcome_rows": 321,
+        "full_player_identity_sha256": "1812fa07b3e86abd46fe76402899fd8cc180306d7f3f7310eb6aaa3cd5ef59e2",
+        "governed_last_week": 17,
+        "governed_reconciliation_points": 38993.88,
+        "governed_reconciliation_rows": 3597,
+        "governed_seasonal_rows": 346,
+        "governed_seasonal_sha256": "1ecf583d2c3d7700c30f787d9437fe8c47342cf052c0a8e1bc3ce413db905a71",
+        "known_mapping_regression_records": [],
+        "known_mapping_regression_rows_checked": 0,
+        "mapped_candidate_count": 329,
+        "mapped_full_horizon_points": 39092.84,
+        "mapped_full_horizon_rows": 3748,
+        "missing_required_weekly_mapping_rows": 0,
+        "opportunity_excluded_points": 98.95999999999913,
+        "opportunity_excluded_rows": 151,
+        "origin_regular_points": 48903.4,
+        "origin_regular_rows": 18128,
+        "outcome_reconciliation_atol": 1e-06,
+        "outcome_reconciliation_compared_rows": 346,
+        "outcome_reconciliation_max_abs_delta": 0.0,
+        "outcome_reconciliation_mismatch_rows": 0,
+        "outcome_rows": 346,
+        "raw_all_player_full_governed_horizon_points": 45992.659999999996,
+        "raw_all_player_full_governed_horizon_rows": 17074,
+        "raw_candidate_position_mismatch_examples": [
+          {
+            "candidate_position": "QB",
+            "player_display_name": "Taysom Hill",
+            "player_key": "0c370254-2acd-5345-a009-d0744ed3affe",
+            "raw_position": "TE"
+          }
+        ],
+        "raw_candidate_position_mismatch_players": 1,
+        "raw_candidate_position_mismatch_rows": 11,
+        "raw_payload_rows": 18969,
+        "raw_schema_columns": [
+          {
+            "column": "player_id",
+            "dtype": "object"
+          },
+          {
+            "column": "player_display_name",
+            "dtype": "object"
+          },
+          {
+            "column": "position_group",
+            "dtype": "object"
+          },
+          {
+            "column": "season",
+            "dtype": "int64"
+          },
+          {
+            "column": "week",
+            "dtype": "int64"
+          },
+          {
+            "column": "season_type",
+            "dtype": "object"
+          },
+          {
+            "column": "game_id",
+            "dtype": "object"
+          },
+          {
+            "column": "team",
+            "dtype": "object"
+          },
+          {
+            "column": "attempts",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_yards",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_interceptions",
+            "dtype": "int64"
+          },
+          {
+            "column": "sacks_suffered",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_2pt_conversions",
+            "dtype": "int64"
+          },
+          {
+            "column": "carries",
+            "dtype": "int64"
+          },
+          {
+            "column": "rushing_yards",
+            "dtype": "int64"
+          },
+          {
+            "column": "rushing_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "rushing_2pt_conversions",
+            "dtype": "int64"
+          },
+          {
+            "column": "receptions",
+            "dtype": "int64"
+          },
+          {
+            "column": "targets",
+            "dtype": "int64"
+          },
+          {
+            "column": "receiving_yards",
+            "dtype": "int64"
+          },
+          {
+            "column": "receiving_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "receiving_2pt_conversions",
+            "dtype": "int64"
+          },
+          {
+            "column": "special_teams_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "fumbles_lost_total",
+            "dtype": "int64"
+          }
+        ],
+        "raw_schema_sha256": "f1fbd1ba9f8c6f93478892a45703755d078dff7ecc5588e110358d325b64ef5d",
+        "required_weekly_mapping_rows": 321,
+        "target_alias_position_sha256": "c3222a11bfd23c5ea989eeee763443ebe758c26288a94e48537fcc3674d27fb4",
+        "unmapped_full_horizon_points": 6899.82,
+        "unmapped_full_horizon_rows": 13326,
+        "week17_excluded_points": 2147.8,
+        "week17_excluded_rows": 205
+      },
+      "foundation_run_id": "milestone_1_20260803T040839Z_23727751",
+      "governed_last_week": 17,
+      "mask_code_path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+      "mask_code_sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76",
+      "origin_year": 2021,
+      "reconciliation_population": "build_player_outcomes.aggregate_player_outcomes",
+      "roster_position_attribution": "candidate_preseason_position",
+      "roster_scoring_population": "configured_dk_all_regular_season_played_rows",
+      "row_count": 18969,
+      "scoring_code_path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+      "scoring_code_sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76",
+      "scoring_dependency_sha256": {
+        "build_player_outcomes": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+          "sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76"
+        },
+        "contracts": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\contracts.py",
+          "sha256": "b97a021b3dd6de1e80c38bd4b9157b6a0f15a07e28cec12c5c0aa179d7bec087"
+        },
+        "scripts_config": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\config.py",
+          "sha256": "e2c794260e7383dd2f8a8807d21bf94622812d78925c78e6f3e79c24cbcc62d9"
+        },
+        "v2_config": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\config.py",
+          "sha256": "d70731af80a39bf732e97efd71417905d7c7afa22470f795f1411ee64b983a43"
+        },
+        "weekly_builder": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\Modeling\\s4_Best_Ball_Weekly.py",
+          "sha256": "cdafae42b6cd3dacec32efd650454b857d4364b1efa16241b5ea4dae3d5f6bd3"
+        },
+        "weekly_config": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\config.py",
+          "sha256": "e2c794260e7383dd2f8a8807d21bf94622812d78925c78e6f3e79c24cbcc62d9"
+        }
+      },
+      "scoring_hash": "ffd5380565fe3f79beadf882313f7071e869807a3b684be52ca0f35394cf5f70",
+      "scoring_week_count": 16,
+      "source_name": "nflverse_weekly_stats_2021",
+      "source_sha256": "63cc3e2400307ee8c1fc5c6283c6c4223471111c0f4aedecd60c8db75c96a06d",
+      "source_uri": "https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2021.csv"
+    },
+    "target_source_receipt_hash": "a9d8ddbac76263e1173bd6598a4ce5d4abf40d232f095bde2a1529f39e3054ec"
+  },
+  "2022": {
+    "historical_data_sha256": "86dbbb0ca3c97df61c93284d113e0b055315fe832996b349f23d61583509da6d",
+    "target_outcome_fingerprint": "f9d4b999b90dc0fc7328b9781648d80e94ac5b4d88b31a9d8bc5ddd81f8b9907",
+    "target_source_receipt": {
+      "configured_scoring_limitation": "configured-DK scorer; current dictionaries zero two-point and individual return/special-teams touchdown components",
+      "evaluation_audit": {
+        "all_played_full_horizon_player_week_rows": 4494,
+        "all_played_full_horizon_points": 40659.16,
+        "all_played_full_horizon_raw_rows": 4494,
+        "all_played_week1_16_player_week_rows": 4241,
+        "all_played_week1_16_points": 38410.3,
+        "all_played_week1_16_raw_rows": 4241,
+        "candidate_identity_sha256": "e1596fcf2e8e083aec96e00f29aec0c67797e05274f131b6ab50f848786418e4",
+        "configured_dk_week1_16_outcome_frame_sha256": "9cf3b56ba92f9a5385b7ae0de3d1a1c982878a9b7a287d164e03dcd8d1a316c8",
+        "configured_scoring_limitation": "configured-DK scorer; current dictionaries zero two-point and individual return/special-teams touchdown components",
+        "decision_frame_sha256_revalidated": {
+          "Avg_ADPs": "feda1ae766bc9b39738e587a408823daeb2065af7c32e1d6c8d8ca6859b5e1bd",
+          "Best_Ball_Weekly_Player_Map": "048d0a6c9d4ce157dd1a11bb9dfd8d49d181c31a3b5f6725cd68c8c737d6334d",
+          "Best_Ball_Weekly_Template_Pools": "5da4c6e0ab65f91194d8e496d13fd6fa2b987ae24a5e8731a8c062021431cb73",
+          "Best_Ball_Weekly_Templates": "7795d3a5cf9b5271ddbc77bde541eaafd7d8c4c265943a6326159a25b4c691c9",
+          "Final_Predictions_Resid": "fadcb1abab98479bc70111784d8778b72927995557cc6bf90dea15e201cea1df"
+        },
+        "exact_outcome_rows": 406,
+        "full_player_identity_sha256": "1812fa07b3e86abd46fe76402899fd8cc180306d7f3f7310eb6aaa3cd5ef59e2",
+        "governed_last_week": 17,
+        "governed_reconciliation_points": 40611.399999999994,
+        "governed_reconciliation_rows": 4156,
+        "governed_seasonal_rows": 446,
+        "governed_seasonal_sha256": "f0276b64762024b90fbeeebe7abfa914389adb0d2d6ff0cca4a0c3f70111989f",
+        "known_mapping_regression_records": [],
+        "known_mapping_regression_rows_checked": 0,
+        "mapped_candidate_count": 417,
+        "mapped_full_horizon_points": 40659.16,
+        "mapped_full_horizon_rows": 4494,
+        "missing_required_weekly_mapping_rows": 0,
+        "opportunity_excluded_points": 47.76000000000931,
+        "opportunity_excluded_rows": 338,
+        "origin_regular_points": 46837.340000000004,
+        "origin_regular_rows": 17981,
+        "outcome_reconciliation_atol": 1e-06,
+        "outcome_reconciliation_compared_rows": 446,
+        "outcome_reconciliation_max_abs_delta": 0.0,
+        "outcome_reconciliation_mismatch_rows": 0,
+        "outcome_rows": 446,
+        "raw_all_player_full_governed_horizon_points": 44387.280000000006,
+        "raw_all_player_full_governed_horizon_rows": 16927,
+        "raw_candidate_position_mismatch_examples": [
+          {
+            "candidate_position": "TE",
+            "player_display_name": "Connor Heyward",
+            "player_key": "877cadec-3157-5007-9ed6-10243e581135",
+            "raw_position": "RB"
+          }
+        ],
+        "raw_candidate_position_mismatch_players": 1,
+        "raw_candidate_position_mismatch_rows": 14,
+        "raw_payload_rows": 18831,
+        "raw_schema_columns": [
+          {
+            "column": "player_id",
+            "dtype": "object"
+          },
+          {
+            "column": "player_display_name",
+            "dtype": "object"
+          },
+          {
+            "column": "position_group",
+            "dtype": "object"
+          },
+          {
+            "column": "season",
+            "dtype": "int64"
+          },
+          {
+            "column": "week",
+            "dtype": "int64"
+          },
+          {
+            "column": "season_type",
+            "dtype": "object"
+          },
+          {
+            "column": "game_id",
+            "dtype": "object"
+          },
+          {
+            "column": "team",
+            "dtype": "object"
+          },
+          {
+            "column": "attempts",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_yards",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_interceptions",
+            "dtype": "int64"
+          },
+          {
+            "column": "sacks_suffered",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_2pt_conversions",
+            "dtype": "int64"
+          },
+          {
+            "column": "carries",
+            "dtype": "int64"
+          },
+          {
+            "column": "rushing_yards",
+            "dtype": "int64"
+          },
+          {
+            "column": "rushing_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "rushing_2pt_conversions",
+            "dtype": "int64"
+          },
+          {
+            "column": "receptions",
+            "dtype": "int64"
+          },
+          {
+            "column": "targets",
+            "dtype": "int64"
+          },
+          {
+            "column": "receiving_yards",
+            "dtype": "int64"
+          },
+          {
+            "column": "receiving_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "receiving_2pt_conversions",
+            "dtype": "int64"
+          },
+          {
+            "column": "special_teams_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "fumbles_lost_total",
+            "dtype": "int64"
+          }
+        ],
+        "raw_schema_sha256": "f1fbd1ba9f8c6f93478892a45703755d078dff7ecc5588e110358d325b64ef5d",
+        "required_weekly_mapping_rows": 406,
+        "target_alias_position_sha256": "c3222a11bfd23c5ea989eeee763443ebe758c26288a94e48537fcc3674d27fb4",
+        "unmapped_full_horizon_points": 3728.1200000000003,
+        "unmapped_full_horizon_rows": 12433,
+        "week17_excluded_points": 2248.86,
+        "week17_excluded_rows": 253
+      },
+      "foundation_run_id": "milestone_1_20260803T040839Z_23727751",
+      "governed_last_week": 17,
+      "mask_code_path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+      "mask_code_sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76",
+      "origin_year": 2022,
+      "reconciliation_population": "build_player_outcomes.aggregate_player_outcomes",
+      "roster_position_attribution": "candidate_preseason_position",
+      "roster_scoring_population": "configured_dk_all_regular_season_played_rows",
+      "row_count": 18831,
+      "scoring_code_path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+      "scoring_code_sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76",
+      "scoring_dependency_sha256": {
+        "build_player_outcomes": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+          "sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76"
+        },
+        "contracts": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\contracts.py",
+          "sha256": "b97a021b3dd6de1e80c38bd4b9157b6a0f15a07e28cec12c5c0aa179d7bec087"
+        },
+        "scripts_config": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\config.py",
+          "sha256": "e2c794260e7383dd2f8a8807d21bf94622812d78925c78e6f3e79c24cbcc62d9"
+        },
+        "v2_config": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\config.py",
+          "sha256": "d70731af80a39bf732e97efd71417905d7c7afa22470f795f1411ee64b983a43"
+        },
+        "weekly_builder": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\Modeling\\s4_Best_Ball_Weekly.py",
+          "sha256": "cdafae42b6cd3dacec32efd650454b857d4364b1efa16241b5ea4dae3d5f6bd3"
+        },
+        "weekly_config": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\config.py",
+          "sha256": "e2c794260e7383dd2f8a8807d21bf94622812d78925c78e6f3e79c24cbcc62d9"
+        }
+      },
+      "scoring_hash": "ffd5380565fe3f79beadf882313f7071e869807a3b684be52ca0f35394cf5f70",
+      "scoring_week_count": 16,
+      "source_name": "nflverse_weekly_stats_2022",
+      "source_sha256": "9ee25c230db72c8b9cffc3ad3d218482c3ef53c8a06eadaee85f9e8163552f28",
+      "source_uri": "https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2022.csv"
+    },
+    "target_source_receipt_hash": "2459d17917be210421340035c7052c7d461a87e7fc257a6d9b6bb1f1e6ca995e"
+  },
+  "2023": {
+    "historical_data_sha256": "86dbbb0ca3c97df61c93284d113e0b055315fe832996b349f23d61583509da6d",
+    "target_outcome_fingerprint": "ccf7e2a99331708cb2eafbc67116ad8daf447ff18175baef3578edec07debf17",
+    "target_source_receipt": {
+      "configured_scoring_limitation": "configured-DK scorer; current dictionaries zero two-point and individual return/special-teams touchdown components",
+      "evaluation_audit": {
+        "all_played_full_horizon_player_week_rows": 4612,
+        "all_played_full_horizon_points": 41307.82,
+        "all_played_full_horizon_raw_rows": 4612,
+        "all_played_week1_16_player_week_rows": 4348,
+        "all_played_week1_16_points": 38821.7,
+        "all_played_week1_16_raw_rows": 4348,
+        "candidate_identity_sha256": "f690078f608132263a109aee922b55758fe03f83e2ab5ef4ecb1622a120bec77",
+        "configured_dk_week1_16_outcome_frame_sha256": "f12ab920bafbce25a437a7151c6384b0732ce3eb25016d3bd04e8365bb5e7303",
+        "configured_scoring_limitation": "configured-DK scorer; current dictionaries zero two-point and individual return/special-teams touchdown components",
+        "decision_frame_sha256_revalidated": {
+          "Avg_ADPs": "e04a1f75138e280dbe449ce33f4d00aab4412be3fcf2054e145f1ed68f7eed7b",
+          "Best_Ball_Weekly_Player_Map": "362d7f6fbf7b2981241950211163bc15f4bfb51dee45fadb0b8fb8f803f017ab",
+          "Best_Ball_Weekly_Template_Pools": "b03fa54bd34c85e7723ca065166d8f5fec097dd09fd163516911bb7b5caf3060",
+          "Best_Ball_Weekly_Templates": "5fa4c607e390c7bb519edbd97a13b04554e43db2755dafde77d57ea291d87775",
+          "Final_Predictions_Resid": "7a5869cdd17c7534e8cf22636b99f570c269baf1e40f5853ad0f85de0f8e70d1"
+        },
+        "exact_outcome_rows": 392,
+        "full_player_identity_sha256": "1812fa07b3e86abd46fe76402899fd8cc180306d7f3f7310eb6aaa3cd5ef59e2",
+        "governed_last_week": 17,
+        "governed_reconciliation_points": 41199.979999999996,
+        "governed_reconciliation_rows": 4316,
+        "governed_seasonal_rows": 426,
+        "governed_seasonal_sha256": "56af470b396622ce354c20e7ae571b756c56c324a6b9d13934e8a749ae2ed147",
+        "known_mapping_regression_records": [],
+        "known_mapping_regression_rows_checked": 0,
+        "mapped_candidate_count": 407,
+        "mapped_full_horizon_points": 41307.82,
+        "mapped_full_horizon_rows": 4612,
+        "missing_required_weekly_mapping_rows": 0,
+        "opportunity_excluded_points": 107.84000000000378,
+        "opportunity_excluded_rows": 296,
+        "origin_regular_points": 46684.08,
+        "origin_regular_rows": 17806,
+        "outcome_reconciliation_atol": 1e-06,
+        "outcome_reconciliation_compared_rows": 426,
+        "outcome_reconciliation_max_abs_delta": 0.0,
+        "outcome_reconciliation_mismatch_rows": 0,
+        "outcome_rows": 426,
+        "raw_all_player_full_governed_horizon_points": 44117.5,
+        "raw_all_player_full_governed_horizon_rows": 16776,
+        "raw_candidate_position_mismatch_examples": [
+          {
+            "candidate_position": "TE",
+            "player_display_name": "Connor Heyward",
+            "player_key": "877cadec-3157-5007-9ed6-10243e581135",
+            "raw_position": "RB"
+          }
+        ],
+        "raw_candidate_position_mismatch_players": 1,
+        "raw_candidate_position_mismatch_rows": 13,
+        "raw_payload_rows": 18643,
+        "raw_schema_columns": [
+          {
+            "column": "player_id",
+            "dtype": "object"
+          },
+          {
+            "column": "player_display_name",
+            "dtype": "object"
+          },
+          {
+            "column": "position_group",
+            "dtype": "object"
+          },
+          {
+            "column": "season",
+            "dtype": "int64"
+          },
+          {
+            "column": "week",
+            "dtype": "int64"
+          },
+          {
+            "column": "season_type",
+            "dtype": "object"
+          },
+          {
+            "column": "game_id",
+            "dtype": "object"
+          },
+          {
+            "column": "team",
+            "dtype": "object"
+          },
+          {
+            "column": "attempts",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_yards",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_interceptions",
+            "dtype": "int64"
+          },
+          {
+            "column": "sacks_suffered",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_2pt_conversions",
+            "dtype": "int64"
+          },
+          {
+            "column": "carries",
+            "dtype": "int64"
+          },
+          {
+            "column": "rushing_yards",
+            "dtype": "int64"
+          },
+          {
+            "column": "rushing_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "rushing_2pt_conversions",
+            "dtype": "int64"
+          },
+          {
+            "column": "receptions",
+            "dtype": "int64"
+          },
+          {
+            "column": "targets",
+            "dtype": "int64"
+          },
+          {
+            "column": "receiving_yards",
+            "dtype": "int64"
+          },
+          {
+            "column": "receiving_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "receiving_2pt_conversions",
+            "dtype": "int64"
+          },
+          {
+            "column": "special_teams_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "fumbles_lost_total",
+            "dtype": "int64"
+          }
+        ],
+        "raw_schema_sha256": "f1fbd1ba9f8c6f93478892a45703755d078dff7ecc5588e110358d325b64ef5d",
+        "required_weekly_mapping_rows": 392,
+        "target_alias_position_sha256": "c3222a11bfd23c5ea989eeee763443ebe758c26288a94e48537fcc3674d27fb4",
+        "unmapped_full_horizon_points": 2809.6800000000003,
+        "unmapped_full_horizon_rows": 12164,
+        "week17_excluded_points": 2486.12,
+        "week17_excluded_rows": 264
+      },
+      "foundation_run_id": "milestone_1_20260803T040839Z_23727751",
+      "governed_last_week": 17,
+      "mask_code_path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+      "mask_code_sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76",
+      "origin_year": 2023,
+      "reconciliation_population": "build_player_outcomes.aggregate_player_outcomes",
+      "roster_position_attribution": "candidate_preseason_position",
+      "roster_scoring_population": "configured_dk_all_regular_season_played_rows",
+      "row_count": 18643,
+      "scoring_code_path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+      "scoring_code_sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76",
+      "scoring_dependency_sha256": {
+        "build_player_outcomes": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+          "sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76"
+        },
+        "contracts": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\contracts.py",
+          "sha256": "b97a021b3dd6de1e80c38bd4b9157b6a0f15a07e28cec12c5c0aa179d7bec087"
+        },
+        "scripts_config": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\config.py",
+          "sha256": "e2c794260e7383dd2f8a8807d21bf94622812d78925c78e6f3e79c24cbcc62d9"
+        },
+        "v2_config": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\config.py",
+          "sha256": "d70731af80a39bf732e97efd71417905d7c7afa22470f795f1411ee64b983a43"
+        },
+        "weekly_builder": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\Modeling\\s4_Best_Ball_Weekly.py",
+          "sha256": "cdafae42b6cd3dacec32efd650454b857d4364b1efa16241b5ea4dae3d5f6bd3"
+        },
+        "weekly_config": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\config.py",
+          "sha256": "e2c794260e7383dd2f8a8807d21bf94622812d78925c78e6f3e79c24cbcc62d9"
+        }
+      },
+      "scoring_hash": "ffd5380565fe3f79beadf882313f7071e869807a3b684be52ca0f35394cf5f70",
+      "scoring_week_count": 16,
+      "source_name": "nflverse_weekly_stats_2023",
+      "source_sha256": "ee65341b2f28cfbf48df85571bf512ec62b281043623e7ffed2926e5569126b3",
+      "source_uri": "https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2023.csv"
+    },
+    "target_source_receipt_hash": "cace906ce0ba15280c04468253150d5d99015b667fd23885fa25b2fdb98177a4"
+  },
+  "2024": {
+    "historical_data_sha256": "86dbbb0ca3c97df61c93284d113e0b055315fe832996b349f23d61583509da6d",
+    "target_outcome_fingerprint": "168272f0d4b2f8195607141d31c744c359ad0cd1375455c17b9510bc2ae1b488",
+    "target_source_receipt": {
+      "configured_scoring_limitation": "configured-DK scorer; current dictionaries zero two-point and individual return/special-teams touchdown components",
+      "evaluation_audit": {
+        "all_played_full_horizon_player_week_rows": 4567,
+        "all_played_full_horizon_points": 42002.66,
+        "all_played_full_horizon_raw_rows": 4567,
+        "all_played_week1_16_player_week_rows": 4286,
+        "all_played_week1_16_points": 39333.64,
+        "all_played_week1_16_raw_rows": 4286,
+        "candidate_identity_sha256": "a32bd43723047758ac81fbaf39917e892c946f27552d876dd4a11793a6738540",
+        "configured_dk_week1_16_outcome_frame_sha256": "ece13a7a660c33548eae80b72b51fd3bff7ff49dba3615507287ff3c01f4bebf",
+        "configured_scoring_limitation": "configured-DK scorer; current dictionaries zero two-point and individual return/special-teams touchdown components",
+        "decision_frame_sha256_revalidated": {
+          "Avg_ADPs": "3740b3a2c130068231e277c3a053c3317114c5a8ade8a7519adf512a8f55dad9",
+          "Best_Ball_Weekly_Player_Map": "9227625d41253522a660957ad56b7eff41131dbdf6502e51b4bb93cc448b44b6",
+          "Best_Ball_Weekly_Template_Pools": "8fc07b1274ef34850df70ed4320dfd9bf6b77507cb3906efa8c99f34796160e8",
+          "Best_Ball_Weekly_Templates": "016a58e8a2fd7f4c1174a2f1138bf57f77b6957f26c35034712e3f636708d50c",
+          "Final_Predictions_Resid": "ed83bfe7076b6bd226457266db00aff294b41390c50818db5843d730e1c7bb49"
+        },
+        "exact_outcome_rows": 389,
+        "full_player_identity_sha256": "1812fa07b3e86abd46fe76402899fd8cc180306d7f3f7310eb6aaa3cd5ef59e2",
+        "governed_last_week": 17,
+        "governed_reconciliation_points": 41914.08,
+        "governed_reconciliation_rows": 4256,
+        "governed_seasonal_rows": 423,
+        "governed_seasonal_sha256": "9237aca5cc17480ab972d149e9e63f0349c25e9f361ba5ab3d6197a62c0ec231",
+        "known_mapping_regression_records": [],
+        "known_mapping_regression_rows_checked": 0,
+        "mapped_candidate_count": 402,
+        "mapped_full_horizon_points": 42002.66,
+        "mapped_full_horizon_rows": 4567,
+        "missing_required_weekly_mapping_rows": 0,
+        "opportunity_excluded_points": 88.58000000000175,
+        "opportunity_excluded_rows": 311,
+        "origin_regular_points": 47543.76,
+        "origin_regular_rows": 18128,
+        "outcome_reconciliation_atol": 1e-06,
+        "outcome_reconciliation_compared_rows": 423,
+        "outcome_reconciliation_max_abs_delta": 0.0,
+        "outcome_reconciliation_mismatch_rows": 0,
+        "outcome_rows": 423,
+        "raw_all_player_full_governed_horizon_points": 44704.22,
+        "raw_all_player_full_governed_horizon_rows": 17073,
+        "raw_candidate_position_mismatch_examples": [
+          {
+            "candidate_position": "WR",
+            "player_display_name": "Bo Melton",
+            "player_key": "fa5d6a11-e40a-56ae-aba2-e5edd2cea340",
+            "raw_position": "DB"
+          },
+          {
+            "candidate_position": "TE",
+            "player_display_name": "Connor Heyward",
+            "player_key": "877cadec-3157-5007-9ed6-10243e581135",
+            "raw_position": "RB"
+          }
+        ],
+        "raw_candidate_position_mismatch_players": 2,
+        "raw_candidate_position_mismatch_rows": 23,
+        "raw_payload_rows": 18981,
+        "raw_schema_columns": [
+          {
+            "column": "player_id",
+            "dtype": "object"
+          },
+          {
+            "column": "player_display_name",
+            "dtype": "object"
+          },
+          {
+            "column": "position_group",
+            "dtype": "object"
+          },
+          {
+            "column": "season",
+            "dtype": "int64"
+          },
+          {
+            "column": "week",
+            "dtype": "int64"
+          },
+          {
+            "column": "season_type",
+            "dtype": "object"
+          },
+          {
+            "column": "game_id",
+            "dtype": "object"
+          },
+          {
+            "column": "team",
+            "dtype": "object"
+          },
+          {
+            "column": "attempts",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_yards",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_interceptions",
+            "dtype": "int64"
+          },
+          {
+            "column": "sacks_suffered",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_2pt_conversions",
+            "dtype": "int64"
+          },
+          {
+            "column": "carries",
+            "dtype": "int64"
+          },
+          {
+            "column": "rushing_yards",
+            "dtype": "int64"
+          },
+          {
+            "column": "rushing_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "rushing_2pt_conversions",
+            "dtype": "int64"
+          },
+          {
+            "column": "receptions",
+            "dtype": "int64"
+          },
+          {
+            "column": "targets",
+            "dtype": "int64"
+          },
+          {
+            "column": "receiving_yards",
+            "dtype": "int64"
+          },
+          {
+            "column": "receiving_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "receiving_2pt_conversions",
+            "dtype": "int64"
+          },
+          {
+            "column": "special_teams_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "fumbles_lost_total",
+            "dtype": "int64"
+          }
+        ],
+        "raw_schema_sha256": "f1fbd1ba9f8c6f93478892a45703755d078dff7ecc5588e110358d325b64ef5d",
+        "required_weekly_mapping_rows": 389,
+        "target_alias_position_sha256": "c3222a11bfd23c5ea989eeee763443ebe758c26288a94e48537fcc3674d27fb4",
+        "unmapped_full_horizon_points": 2701.5600000000004,
+        "unmapped_full_horizon_rows": 12506,
+        "week17_excluded_points": 2669.02,
+        "week17_excluded_rows": 281
+      },
+      "foundation_run_id": "milestone_1_20260803T040839Z_23727751",
+      "governed_last_week": 17,
+      "mask_code_path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+      "mask_code_sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76",
+      "origin_year": 2024,
+      "reconciliation_population": "build_player_outcomes.aggregate_player_outcomes",
+      "roster_position_attribution": "candidate_preseason_position",
+      "roster_scoring_population": "configured_dk_all_regular_season_played_rows",
+      "row_count": 18981,
+      "scoring_code_path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+      "scoring_code_sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76",
+      "scoring_dependency_sha256": {
+        "build_player_outcomes": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+          "sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76"
+        },
+        "contracts": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\contracts.py",
+          "sha256": "b97a021b3dd6de1e80c38bd4b9157b6a0f15a07e28cec12c5c0aa179d7bec087"
+        },
+        "scripts_config": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\config.py",
+          "sha256": "e2c794260e7383dd2f8a8807d21bf94622812d78925c78e6f3e79c24cbcc62d9"
+        },
+        "v2_config": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\config.py",
+          "sha256": "d70731af80a39bf732e97efd71417905d7c7afa22470f795f1411ee64b983a43"
+        },
+        "weekly_builder": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\Modeling\\s4_Best_Ball_Weekly.py",
+          "sha256": "cdafae42b6cd3dacec32efd650454b857d4364b1efa16241b5ea4dae3d5f6bd3"
+        },
+        "weekly_config": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\config.py",
+          "sha256": "e2c794260e7383dd2f8a8807d21bf94622812d78925c78e6f3e79c24cbcc62d9"
+        }
+      },
+      "scoring_hash": "ffd5380565fe3f79beadf882313f7071e869807a3b684be52ca0f35394cf5f70",
+      "scoring_week_count": 16,
+      "source_name": "nflverse_weekly_stats_2024",
+      "source_sha256": "db6379707a8d520f7fb9a90eeacd8a98ec3d5cdca8b98e0943cab5a250d91a97",
+      "source_uri": "https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2024.csv"
+    },
+    "target_source_receipt_hash": "a022ba039448edd34a9a2724153a4e26b6253be877fbcdb3240d02e7a04e8187"
+  },
+  "2025": {
+    "historical_data_sha256": "86dbbb0ca3c97df61c93284d113e0b055315fe832996b349f23d61583509da6d",
+    "target_outcome_fingerprint": "bc0d409550de397208a4ef7638badc9bec4f8c6432200354c6085d13635b3915",
+    "target_source_receipt": {
+      "configured_scoring_limitation": "configured-DK scorer; current dictionaries zero two-point and individual return/special-teams touchdown components",
+      "evaluation_audit": {
+        "all_played_full_horizon_player_week_rows": 4560,
+        "all_played_full_horizon_points": 41199.479999999996,
+        "all_played_full_horizon_raw_rows": 4560,
+        "all_played_week1_16_player_week_rows": 4298,
+        "all_played_week1_16_points": 38851.78,
+        "all_played_week1_16_raw_rows": 4298,
+        "candidate_identity_sha256": "64b3a8d19995466c3f6414a20e5db1eb3f5249b3a29da0ccfef76cb60348857b",
+        "configured_dk_week1_16_outcome_frame_sha256": "9d944c24a3e47d89d9a0f1c41b044015a05a5706a9f9fe87224b211416e389ff",
+        "configured_scoring_limitation": "configured-DK scorer; current dictionaries zero two-point and individual return/special-teams touchdown components",
+        "decision_frame_sha256_revalidated": {
+          "Avg_ADPs": "c089d241034c820e944491459e9a31047707d43927ea14a3300b2824510613ef",
+          "Best_Ball_Weekly_Player_Map": "de21ca20fb538ee73964f50cf68a899937c63ae99bc3a21f2b87e2b9d076123e",
+          "Best_Ball_Weekly_Template_Pools": "c073227b731b06be4296f5f59d21cb9486833ac86c2f41515898827006f67650",
+          "Best_Ball_Weekly_Templates": "dee092804570447e3542994c808bff360d1e5b7583f5b198065c567e353b7e2a",
+          "Final_Predictions_Resid": "d75ce6f5a791ca45f243021767e8a2144920c4ccfc78b2243c4785e605d7d8d3"
+        },
+        "exact_outcome_rows": 385,
+        "full_player_identity_sha256": "1812fa07b3e86abd46fe76402899fd8cc180306d7f3f7310eb6aaa3cd5ef59e2",
+        "governed_last_week": 17,
+        "governed_reconciliation_points": 41104.759999999995,
+        "governed_reconciliation_rows": 4226,
+        "governed_seasonal_rows": 446,
+        "governed_seasonal_sha256": "53ac99ee183e44ae3cabf26a4d2de46e3d0f2ce17407eff212e941a892c7aa52",
+        "known_mapping_regression_records": [],
+        "known_mapping_regression_rows_checked": 0,
+        "mapped_candidate_count": 402,
+        "mapped_full_horizon_points": 41199.479999999996,
+        "mapped_full_horizon_rows": 4560,
+        "missing_required_weekly_mapping_rows": 0,
+        "opportunity_excluded_points": 94.72000000000116,
+        "opportunity_excluded_rows": 334,
+        "origin_regular_points": 46202.119999999995,
+        "origin_regular_rows": 18539,
+        "outcome_reconciliation_atol": 1e-06,
+        "outcome_reconciliation_compared_rows": 446,
+        "outcome_reconciliation_max_abs_delta": 0.0,
+        "outcome_reconciliation_mismatch_rows": 0,
+        "outcome_rows": 446,
+        "raw_all_player_full_governed_horizon_points": 43858.44,
+        "raw_all_player_full_governed_horizon_rows": 17472,
+        "raw_candidate_position_mismatch_examples": [
+          {
+            "candidate_position": "WR",
+            "player_display_name": "Travis Hunter",
+            "player_key": "e36034a5-fc78-5b29-90e0-66619310bb0b",
+            "raw_position": "DB"
+          }
+        ],
+        "raw_candidate_position_mismatch_players": 1,
+        "raw_candidate_position_mismatch_rows": 7,
+        "raw_payload_rows": 19421,
+        "raw_schema_columns": [
+          {
+            "column": "player_id",
+            "dtype": "object"
+          },
+          {
+            "column": "player_display_name",
+            "dtype": "object"
+          },
+          {
+            "column": "position_group",
+            "dtype": "object"
+          },
+          {
+            "column": "season",
+            "dtype": "int64"
+          },
+          {
+            "column": "week",
+            "dtype": "int64"
+          },
+          {
+            "column": "season_type",
+            "dtype": "object"
+          },
+          {
+            "column": "game_id",
+            "dtype": "object"
+          },
+          {
+            "column": "team",
+            "dtype": "object"
+          },
+          {
+            "column": "attempts",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_yards",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_interceptions",
+            "dtype": "int64"
+          },
+          {
+            "column": "sacks_suffered",
+            "dtype": "int64"
+          },
+          {
+            "column": "passing_2pt_conversions",
+            "dtype": "int64"
+          },
+          {
+            "column": "carries",
+            "dtype": "int64"
+          },
+          {
+            "column": "rushing_yards",
+            "dtype": "int64"
+          },
+          {
+            "column": "rushing_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "rushing_2pt_conversions",
+            "dtype": "int64"
+          },
+          {
+            "column": "receptions",
+            "dtype": "int64"
+          },
+          {
+            "column": "targets",
+            "dtype": "int64"
+          },
+          {
+            "column": "receiving_yards",
+            "dtype": "int64"
+          },
+          {
+            "column": "receiving_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "receiving_2pt_conversions",
+            "dtype": "int64"
+          },
+          {
+            "column": "special_teams_tds",
+            "dtype": "int64"
+          },
+          {
+            "column": "fumbles_lost_total",
+            "dtype": "int64"
+          }
+        ],
+        "raw_schema_sha256": "f1fbd1ba9f8c6f93478892a45703755d078dff7ecc5588e110358d325b64ef5d",
+        "required_weekly_mapping_rows": 385,
+        "target_alias_position_sha256": "c3222a11bfd23c5ea989eeee763443ebe758c26288a94e48537fcc3674d27fb4",
+        "unmapped_full_horizon_points": 2658.96,
+        "unmapped_full_horizon_rows": 12912,
+        "week17_excluded_points": 2347.7,
+        "week17_excluded_rows": 262
+      },
+      "foundation_run_id": "milestone_1_20260803T040839Z_23727751",
+      "governed_last_week": 17,
+      "mask_code_path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+      "mask_code_sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76",
+      "origin_year": 2025,
+      "reconciliation_population": "build_player_outcomes.aggregate_player_outcomes",
+      "roster_position_attribution": "candidate_preseason_position",
+      "roster_scoring_population": "configured_dk_all_regular_season_played_rows",
+      "row_count": 19421,
+      "scoring_code_path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+      "scoring_code_sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76",
+      "scoring_dependency_sha256": {
+        "build_player_outcomes": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+          "sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76"
+        },
+        "contracts": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\contracts.py",
+          "sha256": "b97a021b3dd6de1e80c38bd4b9157b6a0f15a07e28cec12c5c0aa179d7bec087"
+        },
+        "scripts_config": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\config.py",
+          "sha256": "e2c794260e7383dd2f8a8807d21bf94622812d78925c78e6f3e79c24cbcc62d9"
+        },
+        "v2_config": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\config.py",
+          "sha256": "d70731af80a39bf732e97efd71417905d7c7afa22470f795f1411ee64b983a43"
+        },
+        "weekly_builder": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\Modeling\\s4_Best_Ball_Weekly.py",
+          "sha256": "cdafae42b6cd3dacec32efd650454b857d4364b1efa16241b5ea4dae3d5f6bd3"
+        },
+        "weekly_config": {
+          "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\config.py",
+          "sha256": "e2c794260e7383dd2f8a8807d21bf94622812d78925c78e6f3e79c24cbcc62d9"
+        }
+      },
+      "scoring_hash": "ffd5380565fe3f79beadf882313f7071e869807a3b684be52ca0f35394cf5f70",
+      "scoring_week_count": 16,
+      "source_name": "nflverse_weekly_stats_2025",
+      "source_sha256": "40b67b296fda02c7f628741d4aa471208352dd42fb670d4854e7ba95295af1a6",
+      "source_uri": "https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_2025.csv"
+    },
+    "target_source_receipt_hash": "e643f7ea6db845007c3e72062ad06b7e08ee81a17a49bfc1273c5dc3b8a701ff"
+  }
+}

@@ -4,6 +4,21 @@ Streamlit draft assistant for snake-draft best ball. The app consumes the
 generated `app/Simulation.sqlite3` database owned by the sibling
 `Fantasy_Football` modeling repository.
 
+## Run
+
+Use the pinned Python 3.12 environment so the one-shot simulation workers inherit
+the validated NumPy/SciPy/CVXOPT stack:
+
+```powershell
+.venv_snake_312\Scripts\python.exe -m streamlit run app\snake_draft_app.py
+```
+
+Fresh sessions default to Sequential Preview. DK uses 24 rooms, 24 candidates,
+and the approved nested D256 decision bank; NFFC offense-only remains D128.
+Sequential and Legacy each run in a fresh subprocess with one inner worker and
+no automatic retry or method fallback. Legacy remains available as a
+fallback/diagnostic, not as the Sequential approval oracle.
+
 ## League Selector
 
 - `DK` remains the default format.

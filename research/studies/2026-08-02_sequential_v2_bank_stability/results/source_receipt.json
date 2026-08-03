@@ -1,0 +1,31 @@
+{
+  "created_at_utc": "2026-08-02T21:57:30.416375+00:00",
+  "git_head": "f7c709d829632a41d974c716b8727f24d3731f52",
+  "database": {
+    "path": "C:\\Users\\borys\\OneDrive\\Documents\\GitHub\\Fantasy_Football_Snake\\app\\Simulation.sqlite3",
+    "size_bytes": 59453440,
+    "sha256": "8e89f0d24561c0989af3bf7d661d399ada0f335d59a5b40783bbffaefa1ef029",
+    "quick_check": "ok",
+    "page_count": 14515,
+    "freelist_count": 0
+  },
+  "code": {
+    "zSim_Helper.py": "1d0843e1ac2834c1659b25a4587815613f719fc401c18f00c0363e73d294d325",
+    "snake_draft_app.py": "20d9c8a38c35810d8fe42d6a0fdd3f7649155b7fbcb2e3e95f749c654efad607",
+    "run_study.py": "a77127fb1be45007283337d8e9debc68126ee23d602bbd34295dbadabb0578ae"
+  },
+  "runtime": {
+    "python": "3.9.13 (tags/v3.9.13:6de2ca5, May 17 2022, 16:36:42) [MSC v.1929 64 bit (AMD64)]",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "numpy": "1.24.4",
+    "pandas": "1.4.0"
+  },
+  "model_contract": {
+    "league": "dk",
+    "player_count": 350,
+    "identity_column": "player_key",
+    "uses_v2_joint_template": true,
+    "template_resid_method_version": "joint_centered_template_v2_v1",
+    "weekly_horizon": 16
+  }
+}

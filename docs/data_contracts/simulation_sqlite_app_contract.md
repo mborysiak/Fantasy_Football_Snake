@@ -1,6 +1,6 @@
 # Simulation SQLite App Contract
 
-Last updated: 2026-07-31
+Last updated: 2026-08-03
 
 ## Owner
 
@@ -139,6 +139,10 @@ Expected columns include:
   `v2_template_center_position_mismatch`,
   `v2_template_center_position_mismatch_reason`,
   `historical_center_policy`, and `v2_recenter_promoted`
+- beta/NFFC scoring-context lineage fields, including
+  `projection_context_source`, `projection_context_scoring_hash`,
+  `projection_context_run_id`, `scoring_context_available`, and the exact
+  unavailable reason
 - `template_eligible`, `template_exclusion_reason`
 - `week_1` through the league horizon (`week_16` for DK and `week_17` for NFFC)
 - `managed_week_1` through the same league horizon
@@ -168,11 +172,12 @@ current declared exclusion. Ordinary zero-active seasons remain eligible as
 real downside outcomes. Runtime sampling follows the already-published pools;
 it must not independently filter templates.
 
-The V2 center-availability and position fields are source-owned audit columns;
-Snake does not use them to recenter or filter donors. A missing V2 diagnostic
-is permitted only for the 39 governed beta 2018 QB rows whose active center
-remains `legacy_validated_oos` and whose unavailable reason is tied to the
-FFToday vintage quarantine. The copied database also audits three exact
+The center/context availability and position fields are source-owned audit
+columns; Snake does not use them to recenter or filter donors. Missing beta
+context is permitted only for the 39 governed 2018 QB rows whose historical
+center remains auditable, whose unavailable reason is tied to the FFToday
+vintage quarantine, and whose `template_eligible` flag is zero. The copied
+database also audits three exact
 hybrid-role position differences: Cordarrelle Patterson's 2019/2021 template
 WR rows use locked RB centers, and Ty Montgomery's 2022 template RB row uses a
 locked WR center. Every other unavailable center or position mismatch fails in
@@ -230,15 +235,16 @@ pick.
 
 ## Current Validated Source Copy
 
-The live V2 production pools retain 351 unique non-null DK player keys
-(56 QB/101 RB/143 WR/51 TE) and 328 unique non-null beta player keys
+The live V2 production pools retain 350 unique non-null DK player keys
+(56 QB/100 RB/143 WR/51 TE), 383 NFFC offensive keys
+(61 QB/110 RB/154 WR/58 TE), and 328 unique non-null beta player keys
 (50 QB/95 RB/133 WR/50 TE).
 Tetairoa McMillan's provisional and GSIS aliases share one stable key, and
 truncated Amon-Ra St. Brown aliases no longer create a duplicate player.
 
-The weekly player context has 343 exact keyed ADP joins and eight governed
-player-map fallbacks for DK, plus 238 exact joins and 90 governed fallbacks for
-beta. These partitions cover all 351/328 production players; there are no
+The weekly player context has 342 exact keyed ADP joins and eight governed
+player-map fallbacks for DK, plus 237 exact joins and 91 governed fallbacks for
+beta. These partitions cover all 350/328 production players; there are no
 unresolved or generic-default runtime rows.
 
 The follow-up source build explicitly scores each weekly league, quarantines
@@ -247,6 +253,14 @@ the audit-only V2 center-availability/position columns above. It rebuilds 5,298
 DK and 5,298 beta templates; 5,120 paired `active_ppg` values and 5,147 paired
 weekly paths differ. These added columns do not change Snake's selected
 `week_*` profile query or its DK runtime-scoring semantics.
+
+The 2026-08-03 correction further removes mixed DK/beta matcher units from the
+shared source database. Beta historical/current matcher context is now exact
+beta V2 context; historical centers remain `legacy_validated_oos` for 2,696
+rows and use `beta_scored_expert_fallback` for 2,602 rows. The 39 unavailable
+2018 QBs are donor-ineligible. This is source provenance for Snake because the
+app exposes only DK and NFFC; it does not change either supported runtime
+scoring path.
 
 The copied database passed SQLite integrity and foreign-key checks and is
 table-identical to the frozen staged modeling source. Byte identity is not
@@ -312,11 +326,11 @@ or duplicated selections.
 - The production method is `joint_centered_template_v2_v1`. The former
   `full_scaled_v1` branch remains only for older databases without a V2
   production handoff; V2 rejects legacy template-residual blend settings.
-- Historical residuals remain centered on the validated legacy OOS center.
-  `v2_historical_pred_fp_per_game` is diagnostic and
-  `v2_recenter_promoted` must remain zero unless a new rolling replay clears
-  the calibration guardrail. A null V2 diagnostic on a governed beta fallback
-  does not make the active legacy center null.
+- DK historical residuals remain on the validated legacy/preseason policy;
+  NFFC uses its scoring-matched expert center. Beta uses validated legacy OOS
+  centers where available and `beta_scored_expert_fallback` otherwise.
+  `v2_historical_pred_fp_per_game` remains diagnostic and
+  `v2_recenter_promoted = 0`.
 - Treat the new V2 center-availability and position-mismatch fields as audit
   provenance. Do not use them to create an app-side fallback, cross-league
   center substitution, or template filter.

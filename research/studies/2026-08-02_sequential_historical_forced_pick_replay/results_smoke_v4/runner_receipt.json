@@ -1,0 +1,62 @@
+{
+  "created_at_utc": "2026-08-03T21:03:57.916649+00:00",
+  "immutable": {
+    "code_contract": {
+      "Scripts/Modeling/s4_Best_Ball_Weekly.py": {
+        "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\Modeling\\s4_Best_Ball_Weekly.py",
+        "sha256": "cdafae42b6cd3dacec32efd650454b857d4364b1efa16241b5ea4dae3d5f6bd3"
+      },
+      "Scripts/V2/build_player_outcomes.py": {
+        "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\build_player_outcomes.py",
+        "sha256": "fad10f38f3a0fa37be5d37e2b7c1137381e95df290c62964cb865d31d9b8fe76"
+      },
+      "Scripts/V2/config.py": {
+        "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\config.py",
+        "sha256": "d70731af80a39bf732e97efd71417905d7c7afa22470f795f1411ee64b983a43"
+      },
+      "Scripts/V2/contracts.py": {
+        "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\V2\\contracts.py",
+        "sha256": "b97a021b3dd6de1e80c38bd4b9157b6a0f15a07e28cec12c5c0aa179d7bec087"
+      },
+      "Scripts/config.py": {
+        "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\Scripts\\config.py",
+        "sha256": "e2c794260e7383dd2f8a8807d21bf94622812d78925c78e6f3e79c24cbcc62d9"
+      },
+      "app/simulation_worker.py": {
+        "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\app\\simulation_worker.py",
+        "sha256": "909cbec9d9e18a6c8ae842b56dfdf6001756305eb77f8ca03f6af42e5a62dd0b"
+      },
+      "app/zSim_Helper.py": {
+        "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\app\\zSim_Helper.py",
+        "sha256": "b738598fe70380b3062136f64811805be7891650a0551f4c0929d11720327114"
+      },
+      "historical_data.py": {
+        "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\research\\studies\\2026-08-02_sequential_historical_forced_pick_replay\\historical_data.py",
+        "sha256": "86dbbb0ca3c97df61c93284d113e0b055315fe832996b349f23d61583509da6d"
+      },
+      "run_study.py": {
+        "path": "C:\\Users\\borys\\GitHub\\Fantasy_Football_Snake\\research\\studies\\2026-08-02_sequential_historical_forced_pick_replay\\run_study.py",
+        "sha256": "67c740baefa1d8feb27184af84f1eebe0f13fb5cc7d77421cec0cfe5404e9107"
+      }
+    },
+    "design_hash": "336e4149d7230a067cda094fc9e4b7a76a9d8e23d7c77635ee2b9cdd47f9eddb",
+    "git_head": "f7c709d829632a41d974c716b8727f24d3731f52",
+    "runtime": {
+      "distributions": {
+        "PuLP": null,
+        "cvxopt": "1.3.2",
+        "numpy": "2.2.6",
+        "pandas": "2.3.1",
+        "scikit-learn": "1.7.1",
+        "scipy": "1.13.1"
+      },
+      "executable": "C:\\Users\\borys\\GitHub\\Fantasy_Football\\.venv_ff_312\\Scripts\\python.exe",
+      "executable_sha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14",
+      "implementation": "CPython",
+      "platform": "Windows-11-10.0.26200-SP0",
+      "python": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+      "python_version": "3.12.10"
+    }
+  },
+  "receipt_hash": "075f4c46c293708807ffd16bbc7f207bf6ee7f6412ef61b3b0634ae155f75878"
+}

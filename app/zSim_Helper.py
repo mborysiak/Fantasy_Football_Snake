@@ -14,12 +14,39 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 # scipy imports
 import scipy.stats as stats
 
-# linear optimization
-from cvxopt import matrix, spmatrix
-from cvxopt.glpk import ilp
+# Linear optimization is Legacy-only. Keep CVXOPT/GLPK out of Sequential
+# processes so their separate native BLAS runtime cannot contaminate a policy
+# recommendation that never calls the ILP solver.
+_CVXOPT_MATRIX = None
+_CVXOPT_SPMATRIX = None
+_CVXOPT_ILP = None
 
-import cvxopt
-cvxopt.glpk.options['msg_lev'] = 'GLP_MSG_OFF'
+
+def _load_cvxopt_api():
+    global _CVXOPT_MATRIX, _CVXOPT_SPMATRIX, _CVXOPT_ILP
+    if _CVXOPT_MATRIX is None:
+        import cvxopt as cvxopt_module
+        from cvxopt import matrix as cvxopt_matrix
+        from cvxopt import spmatrix as cvxopt_spmatrix
+        from cvxopt.glpk import ilp as cvxopt_ilp
+
+        cvxopt_module.glpk.options['msg_lev'] = 'GLP_MSG_OFF'
+        _CVXOPT_MATRIX = cvxopt_matrix
+        _CVXOPT_SPMATRIX = cvxopt_spmatrix
+        _CVXOPT_ILP = cvxopt_ilp
+    return _CVXOPT_MATRIX, _CVXOPT_SPMATRIX, _CVXOPT_ILP
+
+
+def matrix(*args, **kwargs):
+    return _load_cvxopt_api()[0](*args, **kwargs)
+
+
+def spmatrix(*args, **kwargs):
+    return _load_cvxopt_api()[1](*args, **kwargs)
+
+
+def ilp(*args, **kwargs):
+    return _load_cvxopt_api()[2](*args, **kwargs)
 
 BASE_PRED_COL = 'base_pred_fp_per_game'
 PREDICTION_HORIZON_COL = '_prediction_horizon'
@@ -38,9 +65,19 @@ SEQUENTIAL_POLICY_HORIZON_BY_LEAGUE = {
 SEQUENTIAL_CONSTRUCTION_SAMPLES = 16
 SEQUENTIAL_EVALUATION_SAMPLES = 64
 SEQUENTIAL_DECISION_SAMPLES = 128
+SEQUENTIAL_DECISION_SAMPLES_BY_LEAGUE = {
+    'dk': 256,
+    'nffc': 128,
+}
+SEQUENTIAL_DECISION_PREFIX_SAMPLES = 128
+SEQUENTIAL_DECISION_EXTENSION_SEED_OFFSET = 1_000_003
 SEQUENTIAL_DRAFT_ROOMS = 24
 SEQUENTIAL_CANDIDATE_POOL_SIZE = 24
 SEQUENTIAL_DECISION_CANDIDATES = SEQUENTIAL_CANDIDATE_POOL_SIZE
+SEQUENTIAL_POLICY_VERSION_BY_LEAGUE = {
+    'dk': 'sequential_dk_nested_d256_candidate_v1',
+    'nffc': 'sequential_nffc_d128_preview_v1',
+}
 SEQUENTIAL_SCARCITY_WEIGHT = 0.50
 SEQUENTIAL_URGENCY_WEIGHT = 0.25
 SEQUENTIAL_POLICY_SEED = 20260719
@@ -3949,12 +3986,39 @@ class FootballSimulation:
                 f"{bank_name} samples exceed the prediction columns remaining "
                 "after earlier policy-bank allocation."
             )
-        rng = np.random.default_rng(seed)
-        columns = rng.choice(
-            available_columns,
-            size=samples,
-            replace=False,
-        ).astype(np.int64)
+        if bank_name == 'Decision':
+            prefix_samples = min(
+                samples,
+                SEQUENTIAL_DECISION_PREFIX_SAMPLES,
+            )
+            prefix = np.random.default_rng(seed).choice(
+                available_columns,
+                size=prefix_samples,
+                replace=False,
+            ).astype(np.int64)
+            extension_samples = samples - prefix_samples
+            if extension_samples > 0:
+                extension_pool = np.setdiff1d(
+                    available_columns,
+                    prefix,
+                    assume_unique=True,
+                )
+                extension = np.random.default_rng(
+                    int(seed) + SEQUENTIAL_DECISION_EXTENSION_SEED_OFFSET
+                ).choice(
+                    extension_pool,
+                    size=extension_samples,
+                    replace=False,
+                ).astype(np.int64)
+                columns = np.concatenate([prefix, extension])
+            else:
+                columns = prefix
+        else:
+            columns = np.random.default_rng(seed).choice(
+                available_columns,
+                size=samples,
+                replace=False,
+            ).astype(np.int64)
         if np.intersect1d(excluded_columns, columns).size:
             raise AssertionError(f"{bank_name} PPG columns overlap an earlier bank.")
         return columns
@@ -4813,6 +4877,14 @@ class FootballSimulation:
         results.attrs['timings'] = {
             'mode': 'best_ball_policy_sequential',
             'release_stage': 'preview',
+            'policy_version': SEQUENTIAL_POLICY_VERSION_BY_LEAGUE.get(
+                self.league,
+                'sequential_unregistered_preview',
+            ),
+            'decision_bank_version': 'nested_d128_extension_v1',
+            'decision_prefix_samples': int(
+                min(decision_samples, SEQUENTIAL_DECISION_PREFIX_SAMPLES)
+            ),
             'horizon_label': f'sequential_template_{num_weeks}',
             'template_resid_method_version': self.template_resid_method_version,
             'template_resid_blend': self.template_resid_blend,
@@ -5072,6 +5144,10 @@ class FootballSimulation:
                 to_drop,
                 num_iters=num_iters,
                 next_year_frac=next_year_frac,
+                decision_samples=SEQUENTIAL_DECISION_SAMPLES_BY_LEAGUE.get(
+                    self.league,
+                    SEQUENTIAL_DECISION_SAMPLES,
+                ),
             )
 
         if scoring_mode in ('best_ball_marginal', 'best_ball_lookahead'):

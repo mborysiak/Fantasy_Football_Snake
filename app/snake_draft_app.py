@@ -5,10 +5,15 @@ import numpy as np
 import sqlite3
 from zSim_Helper import (
     FootballSimulation,
+    SEQUENTIAL_CANDIDATE_POOL_SIZE,
+    SEQUENTIAL_DECISION_SAMPLES_BY_LEAGUE,
+    SEQUENTIAL_DRAFT_ROOMS,
+    SEQUENTIAL_POLICY_VERSION_BY_LEAGUE,
     SEQUENTIAL_STACK_BONUS_PCT,
     SEQUENTIAL_STACK_PAIR_CAP,
     SEQUENTIAL_STACK_TEAM_CAP,
 )
+from simulation_worker import SimulationWorkerError, run_isolated_simulation
 import io
 import os
 from datetime import datetime
@@ -279,18 +284,29 @@ def run_simulation(
         selected_data['OtherTeam'] == True
     ][identity_column].astype(str).str.strip().tolist()
     
-    # Run simulation
-    results = sim.run_sim(
-        to_add=my_team, 
-        to_drop=other_teams, 
-        num_iters=num_iters, 
-        num_avg_pts=3, 
-        scoring_mode=scoring_mode,
-        current_pick_ev=current_pick_ev,
-        ev_shortlist_size=ev_shortlist_size,
-        weekly_score_mode=weekly_score_mode,
-        parallel_workers=parallel_workers,
-    )
+    if scoring_mode in ('best_ball_policy', 'best_ball_ilp'):
+        results = run_isolated_simulation(
+            sim,
+            my_team,
+            other_teams,
+            num_iters=num_iters,
+            scoring_mode=scoring_mode,
+            current_pick_ev=current_pick_ev,
+            ev_shortlist_size=ev_shortlist_size,
+            weekly_score_mode=weekly_score_mode,
+        )
+    else:
+        results = sim.run_sim(
+            to_add=my_team,
+            to_drop=other_teams,
+            num_iters=num_iters,
+            num_avg_pts=3,
+            scoring_mode=scoring_mode,
+            current_pick_ev=current_pick_ev,
+            ev_shortlist_size=ev_shortlist_size,
+            weekly_score_mode=weekly_score_mode,
+            parallel_workers=parallel_workers,
+        )
     
     # Keep all the round-specific columns
     return results
@@ -302,7 +318,10 @@ def render_timing_summary(results):
         return
 
     sections = timings.get('sections', {})
-    total_sec = sections.get('total', sum(sections.values()))
+    total_sec = timings.get(
+        'parent_end_to_end_seconds',
+        sections.get('total', sum(sections.values())),
+    )
     requested_iters = max(int(timings.get('requested_iters', 1)), 1)
     success_trials = int(timings.get('success_trials', 0))
     model = timings.get('model', {})
@@ -361,6 +380,8 @@ def render_timing_summary(results):
 
         st.caption(
             f"Mode: {timings.get('mode')} | Horizon: {timings.get('horizon_label', timings.get('weekly_score_mode'))} | "
+            f"Policy: {timings.get('policy_version', 'legacy')} | "
+            f"Isolation: {timings.get('execution_isolation', 'in_process')} | "
             f"Workers: {timings.get('parallel_workers', 1)} | "
             f"Status counts: {timings.get('status_counts', {})} | "
             f"Exceptions: {timings.get('failed_exception_count', 0)}"
@@ -639,6 +660,31 @@ def save_draft_state(selected_data, settings):
         'TE_Min': position_ranges['TE'][0],
         'TE_Max': position_ranges['TE'][1],
         'NumIters': settings['num_iters'],
+        'PolicyVersion': (
+            SEQUENTIAL_POLICY_VERSION_BY_LEAGUE.get(settings['league'])
+            if settings['scoring_mode'] == 'best_ball_policy'
+            else 'legacy_ilp'
+        ),
+        'DecisionSamples': (
+            SEQUENTIAL_DECISION_SAMPLES_BY_LEAGUE.get(settings['league'])
+            if settings['scoring_mode'] == 'best_ball_policy'
+            else None
+        ),
+        'CandidateCount': (
+            SEQUENTIAL_CANDIDATE_POOL_SIZE
+            if settings['scoring_mode'] == 'best_ball_policy'
+            else None
+        ),
+        'ExecutionIsolation': (
+            'fresh_subprocess_per_run'
+            if settings['scoring_mode'] in ('best_ball_policy', 'best_ball_ilp')
+            else 'in_process'
+        ),
+        'ReleaseStage': (
+            'preview'
+            if settings['scoring_mode'] == 'best_ball_policy'
+            else 'legacy'
+        ),
         'ParallelWorkers': settings.get('parallel_workers', 1),
         'CurrentPickEV': settings.get('current_pick_ev', False),
         'EVShortlistSize': settings.get('ev_shortlist_size', 8),
@@ -791,6 +837,27 @@ def get_setting_float(settings, key, default):
         return default
 
     return float(value)
+
+
+def resolve_sequential_room_default(loaded_settings, default_scoring_mode, default_num_iters):
+    """Resolve the Draft-room Samples default for the Sequential policy mode.
+
+    NumIters is only a draft-room count when it was saved from a policy
+    session; a fresh session must open at the validated room constant.
+    """
+    if loaded_settings is not None and default_scoring_mode == 'best_ball_policy':
+        return default_num_iters
+    return SEQUENTIAL_DRAFT_ROOMS
+
+
+def resolve_legacy_simulation_default(
+    loaded_settings,
+    default_scoring_mode,
+    default_num_iters,
+):
+    if loaded_settings is not None and default_scoring_mode == 'best_ball_ilp':
+        return default_num_iters
+    return 50
 
 #------------------
 # App Components
@@ -999,30 +1066,41 @@ def sidebar_controls(prediction_options):
     scoring_mode = scoring_options[scoring_label]
 
     if scoring_mode == 'best_ball_policy':
-        policy_default = (
-            default_num_iters
-            if default_scoring_mode == 'best_ball_policy'
-            else 24
+        policy_default = resolve_sequential_room_default(
+            loaded_settings, default_scoring_mode, default_num_iters
         )
-        num_iters = st.sidebar.number_input(
-            'Draft-room Samples',
-            min_value=8,
-            max_value=64,
-            value=min(max(policy_default, 8), 64),
-            step=4,
-            help=(
-                'Each current candidate is completed through this many shared noisy-ADP '
-                'draft rooms. The default 24-room Preview commonly takes several seconds '
-                'and can approach 10-12 seconds near the opening pick, depending on the machine.'
-            ),
-        )
+        with st.sidebar.expander('Advanced Sequential Settings', expanded=False):
+            num_iters = st.number_input(
+                'Draft-room Samples',
+                min_value=8,
+                max_value=64,
+                value=min(max(policy_default, 8), 64),
+                step=4,
+                help=(
+                    'Each current candidate is completed through this many shared noisy-ADP '
+                    'draft rooms. Only 24 rooms are covered by release evidence.'
+                ),
+            )
+            if int(num_iters) != SEQUENTIAL_DRAFT_ROOMS:
+                st.warning(
+                    'Custom room counts are outside the release-tested policy configuration.'
+                )
         parallel_workers = 1
     else:
+        simulation_default = (
+            resolve_legacy_simulation_default(
+                loaded_settings,
+                default_scoring_mode,
+                default_num_iters,
+            )
+            if scoring_mode == 'best_ball_ilp'
+            else default_num_iters
+        )
         num_iters = st.sidebar.number_input(
             'Number of Simulations',
             min_value=10,
             max_value=500,
-            value=default_num_iters,
+            value=simulation_default,
             step=10,
             help=(
                 'Best-ball ILP is more expensive than lookahead; 50-100 simulations '
@@ -1030,17 +1108,9 @@ def sidebar_controls(prediction_options):
             ),
         )
         if scoring_mode == 'best_ball_ilp':
-            max_workers = max(1, min(12, os.cpu_count() or 1))
-            parallel_workers = st.sidebar.number_input(
-                'Parallel Workers',
-                min_value=1,
-                max_value=max_workers,
-                value=min(max(default_parallel_workers, 1), max_workers),
-                step=1,
-                help=(
-                    'Best-ball ILP simulations can run across processes. '
-                    'Use 1 to disable parallel execution.'
-                ),
+            parallel_workers = 1
+            st.sidebar.caption(
+                'Legacy runs in one fresh simulation worker with one inner ILP worker.'
             )
         else:
             parallel_workers = 1
@@ -1157,7 +1227,8 @@ def sidebar_controls(prediction_options):
             '24 current candidates, '
             'a roster-need-balanced root screen, empirical next-pick replacement value, '
             'symmetric QB-pass catcher stack utility, candidate-consistent noisy-ADP '
-            'rooms, a 64-season pilot, and a separate 128-season decision score for '
+            f'rooms, a 64-season pilot, and a separate '
+            f'{SEQUENTIAL_DECISION_SAMPLES_BY_LEAGUE[league]}-season decision score for '
             'every completed candidate. Fixed common-random-number seeds keep repeat '
             'runs on the same draft state stable.'
         )
@@ -1476,21 +1547,6 @@ def main():
                     st.info("All picks completed! No more recommendations needed.")
                 else:
                     with st.spinner("Running simulation..."):
-                        if (
-                            settings['weekly_score_mode'] == 'template'
-                            and settings['scoring_mode'] in (
-                                'best_ball_ilp',
-                                'best_ball_policy',
-                            )
-                        ):
-                            hydrate_weekly_template_profiles(
-                                sim,
-                                db_name,
-                                settings['year'],
-                                settings['league'],
-                                pred_vers,
-                            )
-
                         try:
                             results = run_simulation(
                                 sim,
@@ -1502,7 +1558,7 @@ def main():
                                 settings['weekly_score_mode'],
                                 settings['parallel_workers'],
                             )
-                        except ValueError as exc:
+                        except (ValueError, SimulationWorkerError) as exc:
                             st.error(str(exc))
                             return
 
