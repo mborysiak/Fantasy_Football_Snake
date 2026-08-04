@@ -1,6 +1,6 @@
 # Sequential Best-Ball Policy Runbook
 
-Last updated: 2026-08-03
+Last updated: 2026-08-04
 
 ## Release Status
 
@@ -16,6 +16,16 @@ as if their players were fixed in advance.
 Every Sequential or Legacy click runs in one fresh Python subprocess, forces
 numeric thread counts to one, uses one inner worker, and has no automatic retry
 or cross-method fallback. A failed worker leaves the draft selections unchanged.
+
+## ADP Distribution Input
+
+NFFC runtime ADP is the equal-center/equal-bound aggregate of Best Ball Overall
+and Best Ball $25/$50. Its standard deviation combines within-feed draft range
+with between-feed center disagreement. DraftKings uses its direct market center
+with the two-feed NFFC distribution scaled around that center. The app reads
+the established `Avg_ADPs.avg_pick`, `min_pick`, `max_pick`, and `std_dev`
+columns; additive policy/provenance fields are audit-only and do not change the
+sampling algorithm. Rotowire Online and Cutline are not current runtime inputs.
 
 ## League-Aware Pick Schedule
 

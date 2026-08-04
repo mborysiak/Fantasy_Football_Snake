@@ -1,6 +1,6 @@
 # Simulation SQLite App Contract
 
-Last updated: 2026-08-03
+Last updated: 2026-08-04
 
 ## Owner
 
@@ -201,6 +201,17 @@ The source weekly builder may use it to fill an otherwise unassigned current
 team, but it must not override an assigned Model Inputs/V2 team and must retain
 the choice in `Best_Ball_Weekly_Player_Map.current_team_source`. The Snake app
 consumes the published map and does not perform its own team inference.
+
+For NFFC, `avg_pick`, `min_pick`, and `max_pick` are equal averages of Best
+Ball Overall and Best Ball $25/$50. `std_dev` pools each feed's range-derived
+spread with the disagreement between their ADP centers. The additive
+`source_count`, `feed_gap`, `aggregation_policy`, `bounds_policy`,
+`std_dev_policy`, and `adp_policy_version` columns disclose that construction.
+DraftKings retains its direct API center and scales the same NFFC two-feed
+bounds/pooled SD to that center; its policy columns explicitly mark those
+distribution fields as synthetic. The Snake sampler continues to consume the
+existing `avg_pick`, `min_pick`, `max_pick`, and `std_dev` fields and requires
+no runtime branching on the provenance labels.
 
 Formats may retain non-offensive draft entities such as NFFC kicker (`TK`) and
 team-defense (`TDSP`) rows in `Avg_ADPs`. When those rows are present, the table
