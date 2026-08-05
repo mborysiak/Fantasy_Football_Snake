@@ -8,7 +8,6 @@ from zSim_Helper import (
     SEQUENTIAL_CANDIDATE_POOL_SIZE,
     SEQUENTIAL_DECISION_SAMPLES_BY_LEAGUE,
     SEQUENTIAL_DRAFT_ROOMS,
-    SEQUENTIAL_FUTURE_MIN_AVAILABILITY_PCT,
     SEQUENTIAL_POLICY_VERSION_BY_LEAGUE,
     SEQUENTIAL_STACK_BONUS_PCT,
     SEQUENTIAL_STACK_PAIR_CAP,
@@ -22,6 +21,10 @@ from datetime import datetime
 # Configuration
 db_name = os.environ.get('SNAKE_SIMULATION_DB', 'Simulation.sqlite3')
 pred_vers = 'final_ensemble'
+# Keep this display fallback local so a Streamlit hot reload can tolerate a
+# pre-update zSim_Helper module still held in sys.modules. Fresh worker payloads
+# carry the same configured floor and override this value.
+SEQUENTIAL_FUTURE_MIN_AVAILABILITY_PCT = 10.0
 
 #-----------------
 # Helper Functions

@@ -1,3 +1,4 @@
+import subprocess
 import sys
 from pathlib import Path
 
@@ -12,6 +13,26 @@ if str(APP_DIR) not in sys.path:
 
 from snake_draft_app import get_sequential_future_recommendations  # noqa: E402
 from zSim_Helper import FootballSimulation  # noqa: E402
+
+
+def test_app_import_tolerates_stale_helper_without_future_floor_constant():
+    probe = (
+        "import sys; "
+        f"sys.path.insert(0, {str(APP_DIR)!r}); "
+        "import zSim_Helper; "
+        "del zSim_Helper.SEQUENTIAL_FUTURE_MIN_AVAILABILITY_PCT; "
+        "import snake_draft_app; "
+        "assert snake_draft_app.SEQUENTIAL_FUTURE_MIN_AVAILABILITY_PCT == 10.0"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", probe],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_future_summary_separates_room_availability_from_roster_legality():
