@@ -2,6 +2,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 
@@ -11,6 +12,7 @@ if str(APP_DIR) not in sys.path:
 
 from simulation_worker import (  # noqa: E402
     SimulationWorkerError,
+    _result_attrs,
     build_request,
     run_isolated_simulation,
 )
@@ -44,6 +46,22 @@ def test_worker_request_forces_one_inner_worker(tmp_path):
         "to_drop": ["other-player"],
     }
     assert request["request_sha256"]
+
+
+def test_worker_transmits_only_small_display_attrs():
+    frame = pd.DataFrame({"player": ["A"]})
+    frame.attrs["sequential_future_picks"] = {
+        "schema_version": "sequential-future-picks-v1",
+        "candidates": {"A": {"turns": []}},
+    }
+    frame.attrs["policy_paths"] = {"A": ["large research-only payload"]}
+
+    assert _result_attrs(frame) == {
+        "sequential_future_picks": {
+            "schema_version": "sequential-future-picks-v1",
+            "candidates": {"A": {"turns": []}},
+        }
+    }
 
 
 def test_native_exit_is_not_retried_and_keeps_input_state(tmp_path):

@@ -1,6 +1,6 @@
 # Session Notes Landing
 
-Last updated: 2026-08-03
+Last updated: 2026-08-05
 
 ## Project Objective
 
@@ -117,6 +117,10 @@ outcomes, and solves roster recommendations with the ILP optimizer.
 - Sequential Preview uses default-on symmetric QB-WR/TE tournament utility at
   every pick and in the final rank. Raw EV, immediate stack value, average
   final-roster stack utility, and the combined decision score remain separate.
+- Sequential results now add probabilistic next-pick and pick-after tabs for the
+  top current recommendation, plus top-three next-pick paths conditional on each
+  of the top five current choices. True room availability is reported separately
+  from roster legality, with a disclosed 10% availability display floor.
 
 ## Key Links
 

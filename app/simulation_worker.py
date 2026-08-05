@@ -23,6 +23,7 @@ import pandas as pd
 REQUEST_SCHEMA = "snake-simulation-request-v1"
 RESULT_SCHEMA = "snake-simulation-result-v1"
 DEFAULT_TIMEOUT_SECONDS = 60.0
+RESULT_ATTR_KEYS = ("sequential_future_picks",)
 WORKER_ENVIRONMENT = {
     "PYTHONHASHSEED": "1",
     "OPENBLAS_NUM_THREADS": "1",
@@ -103,6 +104,15 @@ def _encode_frame(frame: pd.DataFrame) -> str:
 
 def _decode_frame(payload: str) -> pd.DataFrame:
     return pd.read_json(io.StringIO(payload), orient="split")
+
+
+def _result_attrs(frame: pd.DataFrame) -> dict:
+    """Return the small, JSON-safe display attrs allowed across the worker."""
+    return {
+        key: _json_safe(frame.attrs[key])
+        for key in RESULT_ATTR_KEYS
+        if key in frame.attrs
+    }
 
 
 def build_request(
@@ -196,6 +206,7 @@ def _worker_execute(request):
         "request_sha256": request["request_sha256"],
         "frame_json": _encode_frame(frame),
         "timings": timings,
+        "frame_attrs": _result_attrs(frame),
     }
 
 
@@ -296,6 +307,12 @@ def run_isolated_simulation(
     timings["parent_end_to_end_seconds"] = float(parent_seconds)
     timings["worker_return_code"] = int(completed.returncode)
     frame.attrs["timings"] = timings
+    frame_attrs = result.get("frame_attrs", {})
+    if not isinstance(frame_attrs, dict):
+        raise SimulationWorkerError("Simulation worker returned invalid frame attrs.")
+    for key in RESULT_ATTR_KEYS:
+        if key in frame_attrs:
+            frame.attrs[key] = frame_attrs[key]
     return frame
 
 

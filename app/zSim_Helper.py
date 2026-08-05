@@ -84,6 +84,8 @@ SEQUENTIAL_POLICY_SEED = 20260719
 SEQUENTIAL_STACK_BONUS_PCT = 0.20
 SEQUENTIAL_STACK_PAIR_CAP = 8.0
 SEQUENTIAL_STACK_TEAM_CAP = 12.0
+SEQUENTIAL_FUTURE_SUMMARY_PICKS = 2
+SEQUENTIAL_FUTURE_MIN_AVAILABILITY_PCT = 10.0
 SUPPORTED_OFFENSIVE_POSITIONS = frozenset({'QB', 'RB', 'WR', 'TE'})
 
 class FootballSimulation:
@@ -4078,6 +4080,7 @@ class FootballSimulation:
         remaining = np.asarray(base_remaining, dtype=bool).copy()
         path = []
         available_by_pick = []
+        room_available_by_pick = []
         opponent_picks_by_turn = []
         order_pointer = 0
 
@@ -4101,6 +4104,7 @@ class FootballSimulation:
                 opponent_pick_count,
             )
             opponent_picks_by_turn.append(opponent_picks)
+            room_available_by_pick.append(np.flatnonzero(remaining))
 
             picks_left = len(adjusted_picks) - pick_idx
             legal_candidates = self.sequential_legal_candidate_indices(
@@ -4115,6 +4119,7 @@ class FootballSimulation:
                 return None, {
                     'path': np.asarray(path, dtype=np.int64),
                     'available_by_pick': available_by_pick,
+                    'room_available_by_pick': room_available_by_pick,
                     'opponent_picks_by_turn': opponent_picks_by_turn,
                 }, False
 
@@ -4177,9 +4182,85 @@ class FootballSimulation:
         details = {
             'path': np.asarray(path, dtype=np.int64),
             'available_by_pick': available_by_pick,
+            'room_available_by_pick': room_available_by_pick,
             'opponent_picks_by_turn': opponent_picks_by_turn,
         }
         return selected_array if success else None, details, success
+
+    @staticmethod
+    def summarize_sequential_future_picks(
+        player_names,
+        player_positions,
+        adjusted_picks,
+        current_round_num,
+        room_details,
+        max_future_picks=SEQUENTIAL_FUTURE_SUMMARY_PICKS,
+    ):
+        """Aggregate future user choices and true room availability by turn."""
+        player_names = np.asarray(player_names)
+        player_positions = np.asarray(player_positions)
+        completed_rooms = len(room_details)
+        future_pick_count = min(
+            max(0, int(max_future_picks)),
+            max(0, len(adjusted_picks) - 1),
+        )
+        turns = []
+
+        for future_offset in range(1, future_pick_count + 1):
+            selected_counts = Counter()
+            available_counts = Counter()
+            legal_counts = Counter()
+
+            for details in room_details:
+                path = np.asarray(details.get('path', []), dtype=np.int64)
+                if len(path) <= future_offset:
+                    continue
+                selected_idx = int(path[future_offset])
+                selected_counts[selected_idx] += 1
+
+                availability_turns = details.get(
+                    'room_available_by_pick',
+                    details.get('available_by_pick', []),
+                )
+                availability_idx = future_offset - 1
+                if len(availability_turns) > availability_idx:
+                    available_counts.update(
+                        map(int, availability_turns[availability_idx])
+                    )
+
+                legal_turns = details.get('available_by_pick', [])
+                if len(legal_turns) > availability_idx:
+                    legal_counts.update(map(int, legal_turns[availability_idx]))
+
+            rows = []
+            for player_idx, selected_rooms in selected_counts.items():
+                rows.append({
+                    'player': str(player_names[player_idx]),
+                    'pos': str(player_positions[player_idx]),
+                    'selected_rooms': int(selected_rooms),
+                    'available_rooms': int(available_counts[player_idx]),
+                    'legal_rooms': int(legal_counts[player_idx]),
+                    'completed_rooms': int(completed_rooms),
+                })
+            rows.sort(
+                key=lambda row: (
+                    -row['selected_rooms'],
+                    -row['available_rooms'],
+                    row['player'],
+                )
+            )
+            turns.append({
+                'future_offset': int(future_offset),
+                'round': int(current_round_num + future_offset),
+                'pick': int(adjusted_picks[future_offset]),
+                'completed_rooms': int(completed_rooms),
+                'rows': rows,
+            })
+
+        return {
+            'completed_rooms': int(completed_rooms),
+            'turns': turns,
+        }
 
     @staticmethod
     def approximate_two_way_se(values):
@@ -4517,6 +4598,7 @@ class FootballSimulation:
         policy_paths = {}
         candidate_value_matrices = {}
         candidate_rosters = {}
+        candidate_future_summaries = {}
         t0 = time.perf_counter()
         for root_candidate_idx in root_candidates:
             room_values = []
@@ -4524,6 +4606,7 @@ class FootballSimulation:
             completed_room_indices = []
             completed_rosters = []
             candidate_paths = []
+            candidate_future_room_details = []
             for room_idx in range(num_rooms):
                 roster, details, success = (
                     self.complete_sequential_best_ball_rollout(
@@ -4565,6 +4648,7 @@ class FootballSimulation:
                 )
                 completed_room_indices.append(room_idx)
                 completed_rosters.append(roster.copy())
+                candidate_future_room_details.append(details)
                 candidate_paths.append({
                     'room_idx': room_idx,
                     'path': player_names[details['path']].tolist(),
@@ -4635,6 +4719,15 @@ class FootballSimulation:
                 ),
                 'stack_utilities': stack_utility_values,
             }
+            candidate_future_summaries[player_names[candidate_idx]] = (
+                self.summarize_sequential_future_picks(
+                    player_names,
+                    player_positions,
+                    adjusted_picks,
+                    len(to_add) + 1,
+                    candidate_future_room_details,
+                )
+            )
         timings['candidate_rollouts'] += time.perf_counter() - t0
 
         results = pd.DataFrame(records)
@@ -4936,6 +5029,18 @@ class FootballSimulation:
             'disjoint': True,
         }
         results.attrs['draft_room_adp_columns'] = adp_cols.tolist()
+        results.attrs['sequential_future_picks'] = {
+            'schema_version': 'sequential-future-picks-v1',
+            'availability_definition': (
+                'Still undrafted after opponent picks and before the future '
+                'user selection; independent of roster-position legality.'
+            ),
+            'recommended_min_availability_pct': float(
+                SEQUENTIAL_FUTURE_MIN_AVAILABILITY_PCT
+            ),
+            'current_round': int(len(to_add) + 1),
+            'candidates': candidate_future_summaries,
+        }
         results.attrs['warnings'] = (
             [draft_state_warning] if draft_state_warning else []
         )

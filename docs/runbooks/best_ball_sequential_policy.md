@@ -1,6 +1,6 @@
 # Sequential Best-Ball Policy Runbook
 
-Last updated: 2026-08-04
+Last updated: 2026-08-05
 
 ## Release Status
 
@@ -9,9 +9,11 @@ DK uses the approved nested D256 decision bank with 24 rooms and 24 candidates.
 The experimental governed NFFC offense-only adapter remains D128 against
 independently scored NFFC projections, current canonical NFFC ADP, and 17-week
 modern-era templates. Legacy `best_ball_ilp` remains available as a fallback
-and diagnostic, but is not an approval oracle. The Preview is limited to the
-current-pick recommendation; it does not present future-round recommendations
-as if their players were fixed in advance.
+and diagnostic, but is not an approval oracle. The ranked recommendation is
+still limited to the current pick. The UI also presents the next two user turns
+as probabilistic planning summaries from completed candidate-specific paths;
+these future players are neither reserved nor independently ranked as current
+recommendations.
 
 Every Sequential or Legacy click runs in one fresh Python subprocess, forces
 numeric thread counts to one, uses one inner worker, and has no automatic retry
@@ -99,6 +101,23 @@ pilot/decision bank. Candidate differences are therefore paired. `Paired SE` is 
 approximate two-way standard error of the difference versus the observed best,
 with draft-room and evaluation-season components. It is diagnostic rather than
 a formal posterior probability that a candidate is optimal.
+
+## Future-Round Planning Display
+
+The result UI summarizes the first two future user turns for the top-ranked
+current-pick branch. It reports each player's share of completed room paths,
+probability of still being undrafted when the user is on the clock, conditional
+selection rate when available, and roster-legality rate. A separate tab reports
+the top three next-pick paths conditional on each of the five highest-ranked
+current recommendations.
+
+Availability is captured immediately after opponents act and before roster
+position constraints are applied. It is therefore distinct from legality. The
+display hides players below 10% simulated availability to avoid elevating
+one-room tails, while retaining room counts so the coarse 24-room resolution is
+visible. These summaries reuse completed policy paths and do not alter the root
+screen, rollout choices, decision scoring, recommendation, or downstream draft
+state.
 
 ## Explicit Horizons
 

@@ -8,6 +8,7 @@ from zSim_Helper import (
     SEQUENTIAL_CANDIDATE_POOL_SIZE,
     SEQUENTIAL_DECISION_SAMPLES_BY_LEAGUE,
     SEQUENTIAL_DRAFT_ROOMS,
+    SEQUENTIAL_FUTURE_MIN_AVAILABILITY_PCT,
     SEQUENTIAL_POLICY_VERSION_BY_LEAGUE,
     SEQUENTIAL_STACK_BONUS_PCT,
     SEQUENTIAL_STACK_PAIR_CAP,
@@ -576,6 +577,243 @@ def get_round_recommendations(results, sim, my_team_count, max_rounds=3):
                 round_data[round_num] = top_picks
     
     return adjusted_picks, round_data
+
+
+def get_sequential_future_recommendations(
+    results,
+    min_availability_pct=None,
+    current_candidate_limit=5,
+    per_candidate_limit=3,
+    recommended_path_limit=10,
+):
+    """Build display tables from candidate-conditional sequential paths."""
+    payload = getattr(results, 'attrs', {}).get('sequential_future_picks')
+    if not isinstance(payload, dict):
+        return None
+    candidates = payload.get('candidates')
+    if not isinstance(candidates, dict) or not candidates:
+        return None
+
+    if min_availability_pct is None:
+        min_availability_pct = payload.get(
+            'recommended_min_availability_pct',
+            SEQUENTIAL_FUTURE_MIN_AVAILABILITY_PCT,
+        )
+    min_availability_pct = float(min_availability_pct)
+
+    ranked_results = results.copy()
+    if 'DecisionEV' in ranked_results.columns:
+        ranked_results = ranked_results[ranked_results.DecisionEV.notna()]
+    if 'RecommendationRank' in ranked_results.columns:
+        ranked_results = ranked_results.sort_values('RecommendationRank')
+    elif 'StackAdjustedDecisionScore' in ranked_results.columns:
+        ranked_results = ranked_results.sort_values(
+            'StackAdjustedDecisionScore',
+            ascending=False,
+        )
+    elif 'CurrentPickEV' in ranked_results.columns:
+        ranked_results = ranked_results.sort_values(
+            'CurrentPickEV',
+            ascending=False,
+        )
+
+    top_current_players = (
+        ranked_results['player'].astype(str).head(current_candidate_limit).tolist()
+    )
+    summary_rows = []
+    turn_metadata = {}
+    for current_rank, current_player in enumerate(top_current_players, start=1):
+        candidate_summary = candidates.get(current_player, {})
+        for turn in candidate_summary.get('turns', []):
+            future_offset = int(turn.get('future_offset', 0))
+            if future_offset <= 0:
+                continue
+            turn_metadata[future_offset] = {
+                'round': int(turn.get('round', 0)),
+                'pick': int(turn.get('pick', 0)),
+            }
+            for row in turn.get('rows', []):
+                completed_rooms = int(row.get('completed_rooms', 0))
+                selected_rooms = int(row.get('selected_rooms', 0))
+                available_rooms = int(row.get('available_rooms', 0))
+                legal_rooms = int(row.get('legal_rooms', 0))
+                if completed_rooms <= 0 or available_rooms <= 0:
+                    continue
+                availability_pct = 100.0 * available_rooms / completed_rooms
+                if availability_pct < min_availability_pct:
+                    continue
+                summary_rows.append({
+                    'Current Rank': current_rank,
+                    'Current Pick': current_player,
+                    'Future Offset': future_offset,
+                    'Player': str(row.get('player', '')),
+                    'Pos': str(row.get('pos', '')),
+                    'Pick Rate': 100.0 * selected_rooms / completed_rooms,
+                    'Available': availability_pct,
+                    'Pick If Available': 100.0 * selected_rooms / available_rooms,
+                    'Roster Legal': 100.0 * legal_rooms / completed_rooms,
+                    'Selected Rooms': selected_rooms,
+                    'Draft Rooms': completed_rooms,
+                })
+
+    if not summary_rows or not top_current_players:
+        return None
+
+    summary = pd.DataFrame(summary_rows)
+    sort_columns = ['Pick Rate', 'Available', 'Player']
+    sort_ascending = [False, False, True]
+    recommended_player = top_current_players[0]
+    future_rounds = {}
+    for future_offset in sorted(turn_metadata):
+        future_rows = summary[
+            (summary['Current Pick'] == recommended_player)
+            & (summary['Future Offset'] == future_offset)
+        ].copy()
+        if future_rows.empty:
+            continue
+        future_rows = future_rows.sort_values(
+            sort_columns,
+            ascending=sort_ascending,
+        ).head(recommended_path_limit)
+        future_rounds[future_offset] = {
+            **turn_metadata[future_offset],
+            'data': future_rows[[
+                'Player',
+                'Pos',
+                'Pick Rate',
+                'Available',
+                'Pick If Available',
+                'Roster Legal',
+                'Selected Rooms',
+                'Draft Rooms',
+            ]],
+        }
+
+    conditional_parts = []
+    next_pick_rows = summary[summary['Future Offset'] == 1]
+    for current_rank, current_player in enumerate(top_current_players, start=1):
+        player_rows = next_pick_rows[
+            next_pick_rows['Current Pick'] == current_player
+        ].sort_values(sort_columns, ascending=sort_ascending).head(
+            per_candidate_limit
+        ).copy()
+        if player_rows.empty:
+            continue
+        player_rows['Next Rank'] = np.arange(1, len(player_rows) + 1)
+        conditional_parts.append(player_rows)
+    conditional_next = (
+        pd.concat(conditional_parts, ignore_index=True)
+        if conditional_parts
+        else pd.DataFrame()
+    )
+    if not conditional_next.empty:
+        conditional_next = conditional_next[[
+            'Current Rank',
+            'Current Pick',
+            'Next Rank',
+            'Player',
+            'Pos',
+            'Pick Rate',
+            'Available',
+            'Pick If Available',
+            'Draft Rooms',
+        ]].rename(columns={'Player': 'Next Pick'})
+
+    return {
+        'recommended_player': recommended_player,
+        'min_availability_pct': min_availability_pct,
+        'future_rounds': future_rounds,
+        'conditional_next': conditional_next,
+    }
+
+
+def render_sequential_future_recommendations(results):
+    """Render future-round summaries without implying future players are fixed."""
+    future = get_sequential_future_recommendations(results)
+    if not future:
+        return
+
+    tab_specs = []
+    for future_offset, round_summary in future['future_rounds'].items():
+        label_prefix = 'Next pick' if future_offset == 1 else f'+{future_offset} picks'
+        tab_specs.append((
+            f"{label_prefix}: Round {round_summary['round']} "
+            f"(Pick #{round_summary['pick']})",
+            'future',
+            round_summary,
+        ))
+    if not future['conditional_next'].empty:
+        tab_specs.append((
+            'Next pick by current choice',
+            'conditional',
+            future['conditional_next'],
+        ))
+    if not tab_specs:
+        return
+
+    st.write("**Probabilistic future-round plan**")
+    st.caption(
+        f"Future choices come from completed sequential draft paths. Players below "
+        f"{future['min_availability_pct']:.0f}% simulated availability are hidden; "
+        "Available means still undrafted after opponents act, before roster-position "
+        "constraints are applied."
+    )
+    tabs = st.tabs([spec[0] for spec in tab_specs])
+    percent_columns = {
+        'Pick Rate': st.column_config.ProgressColumn(
+            'Pick Rate',
+            help='Percentage of completed draft rooms in which the policy selected this player at this future pick',
+            format='%.1f%%',
+            min_value=0,
+            max_value=100,
+        ),
+        'Available': st.column_config.ProgressColumn(
+            'Available',
+            help='Percentage of completed draft rooms in which this player remained undrafted at this future pick',
+            format='%.1f%%',
+            min_value=0,
+            max_value=100,
+        ),
+        'Pick If Available': st.column_config.ProgressColumn(
+            'Pick If Available',
+            help='Percentage selected among rooms where the player was still undrafted',
+            format='%.1f%%',
+            min_value=0,
+            max_value=100,
+        ),
+        'Roster Legal': st.column_config.ProgressColumn(
+            'Roster Legal',
+            help='Percentage of completed rooms in which the player was both undrafted and legal under roster limits',
+            format='%.1f%%',
+            min_value=0,
+            max_value=100,
+        ),
+    }
+    for tab, (_, tab_type, tab_data) in zip(tabs, tab_specs):
+        with tab:
+            if tab_type == 'future':
+                st.write(
+                    f"Most common choices if you select "
+                    f"**{future['recommended_player']}** now."
+                )
+                display_data = tab_data['data']
+            else:
+                st.write(
+                    "Top three next-pick paths for each of the five highest-ranked "
+                    "current recommendations."
+                )
+                display_data = tab_data
+            st.dataframe(
+                display_data,
+                column_config={
+                    key: config
+                    for key, config in percent_columns.items()
+                    if key in display_data.columns
+                },
+                use_container_width=True,
+                hide_index=True,
+                height=390,
+            )
 
 def create_my_team_display(selected_data, pos_require, position_ranges=None):
     """Create display of current team with position requirements"""
@@ -1570,7 +1808,15 @@ def main():
                     )
                     
                     if round_recommendations:
-                        st.write("**Top recommendations by round** (based on optimal draft simulations)")
+                        if settings['scoring_mode'] == 'best_ball_policy':
+                            st.write(
+                                "**Current recommendation and conditional future-round plan**"
+                            )
+                        else:
+                            st.write(
+                                "**Top recommendations by round** "
+                                "(based on optimal draft simulations)"
+                            )
                         
                         # Add explanation
                         if settings['scoring_mode'] == 'best_ball_policy':
@@ -1673,6 +1919,8 @@ def main():
                                 hide_index=True,
                                 height=400
                             )
+                            if settings['scoring_mode'] == 'best_ball_policy':
+                                render_sequential_future_recommendations(results)
                         else:
                             # Multiple rounds - use tabs
                             tab_labels = []

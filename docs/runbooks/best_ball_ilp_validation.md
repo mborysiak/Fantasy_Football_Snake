@@ -36,6 +36,10 @@ Then confirm:
 - the DK-only Sequential best-ball policy (Preview) renders all completed
   decision candidates with raw EV, roster stack utility, immediate stack
   utility, stack-adjusted decision score, paired SE, survival, and room coverage
+- Sequential renders next-pick and pick-after planning tabs for the top current
+  branch plus top-three next-pick paths for each of the top five current choices;
+  availability is true room survival, not roster legality, and the 10% display
+  floor is disclosed
 - selecting NFFC loads independently scored NFFC offensive projections, the
   current canonical NFFC ADP feed, and a 17-week modern-era template horizon
   with 17 populated weekly columns, without falling back to DK data
