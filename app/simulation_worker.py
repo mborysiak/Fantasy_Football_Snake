@@ -24,6 +24,9 @@ REQUEST_SCHEMA = "snake-simulation-request-v1"
 RESULT_SCHEMA = "snake-simulation-result-v1"
 DEFAULT_TIMEOUT_SECONDS = 60.0
 RESULT_ATTR_KEYS = ("sequential_future_picks",)
+FRAME_ATTR_TRANSPORT_COLUMNS = {
+    "sequential_future_picks": "_sequential_future_picks_json",
+}
 WORKER_ENVIRONMENT = {
     "PYTHONHASHSEED": "1",
     "OPENBLAS_NUM_THREADS": "1",
@@ -99,11 +102,37 @@ def _write_json_atomic(path: Path, payload) -> None:
 
 
 def _encode_frame(frame: pd.DataFrame) -> str:
-    return frame.to_json(orient="split", double_precision=15)
+    transport_frame = frame.copy()
+    if len(transport_frame) > 0:
+        first_index = transport_frame.index[0]
+        for attr_key, column in FRAME_ATTR_TRANSPORT_COLUMNS.items():
+            if attr_key not in frame.attrs:
+                continue
+            transport_frame[column] = None
+            transport_frame.at[first_index, column] = json.dumps(
+                _json_safe(frame.attrs[attr_key]),
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+    return transport_frame.to_json(orient="split", double_precision=15)
 
 
 def _decode_frame(payload: str) -> pd.DataFrame:
-    return pd.read_json(io.StringIO(payload), orient="split")
+    frame = pd.read_json(io.StringIO(payload), orient="split")
+    for attr_key, column in FRAME_ATTR_TRANSPORT_COLUMNS.items():
+        if column not in frame.columns:
+            continue
+        encoded_values = frame[column].dropna()
+        if len(encoded_values) > 0:
+            try:
+                frame.attrs[attr_key] = json.loads(str(encoded_values.iloc[0]))
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise SimulationWorkerError(
+                    f"Simulation worker returned invalid {attr_key} transport data."
+                ) from exc
+        frame = frame.drop(columns=[column])
+    return frame
 
 
 def _result_attrs(frame: pd.DataFrame) -> dict:

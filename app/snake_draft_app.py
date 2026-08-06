@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import sqlite3
+import json
 from zSim_Helper import (
     FootballSimulation,
     SEQUENTIAL_CANDIDATE_POOL_SIZE,
@@ -25,6 +26,7 @@ pred_vers = 'final_ensemble'
 # pre-update zSim_Helper module still held in sys.modules. Fresh worker payloads
 # carry the same configured floor and override this value.
 SEQUENTIAL_FUTURE_MIN_AVAILABILITY_PCT = 10.0
+SEQUENTIAL_FUTURE_TRANSPORT_COLUMN = '_sequential_future_picks_json'
 
 #-----------------
 # Helper Functions
@@ -591,6 +593,16 @@ def get_sequential_future_recommendations(
 ):
     """Build display tables from candidate-conditional sequential paths."""
     payload = getattr(results, 'attrs', {}).get('sequential_future_picks')
+    if (
+        not isinstance(payload, dict)
+        and SEQUENTIAL_FUTURE_TRANSPORT_COLUMN in results.columns
+    ):
+        encoded_values = results[SEQUENTIAL_FUTURE_TRANSPORT_COLUMN].dropna()
+        if len(encoded_values) > 0:
+            try:
+                payload = json.loads(str(encoded_values.iloc[0]))
+            except (TypeError, ValueError, json.JSONDecodeError):
+                payload = None
     if not isinstance(payload, dict):
         return None
     candidates = payload.get('candidates')
@@ -730,13 +742,117 @@ def get_sequential_future_recommendations(
     }
 
 
-def render_sequential_future_recommendations(results):
-    """Render future-round summaries without implying future players are fixed."""
+def current_recommendation_column_config():
+    """Column configuration shared by standalone and tabbed current results."""
+    return {
+        "Decision Score": st.column_config.NumberColumn(
+            "Decision Score",
+            help="Raw completed-roster EV plus average QB-pass catcher stack utility",
+            format="%.1f",
+        ),
+        "Raw EV": st.column_config.NumberColumn(
+            "Raw EV",
+            help="Average completed-roster best-ball points without heuristic stack utility",
+            format="%.1f",
+        ),
+        "Roster Stack": st.column_config.NumberColumn(
+            "Roster Stack",
+            help="Average capped tournament utility from final-roster QB-WR/TE pairings",
+            format="%+.1f",
+        ),
+        "Stack Now": st.column_config.NumberColumn(
+            "Stack Now",
+            help="Incremental utility if this pick immediately completes a QB-WR/TE pairing already on your roster",
+            format="%+.1f",
+        ),
+        "Score vs Best": st.column_config.NumberColumn(
+            "Score vs Best",
+            help="Stack-adjusted decision-score gap versus the top recommendation",
+            format="%+.1f",
+        ),
+        "Pct Selected": st.column_config.ProgressColumn(
+            "Pct Selected",
+            help="Percentage selected when available in this round",
+            format="%.1f%%",
+            min_value=0,
+            max_value=100,
+        ),
+        "EV": st.column_config.NumberColumn(
+            "EV",
+            help="Average final roster score when this player is forced as the current pick",
+            format="%.1f",
+        ),
+        "EV vs Best": st.column_config.NumberColumn(
+            "EV vs Best",
+            help="Expected score gap versus the best current-pick candidate",
+            format="%.1f",
+        ),
+        "EV Samples": st.column_config.NumberColumn(
+            "EV Samples",
+            help="Number of scenario solves used for this EV estimate",
+            format="%d",
+        ),
+        "Paired SE": st.column_config.NumberColumn(
+            "Paired SE",
+            help="Approximate paired standard error of EV versus the observed best candidate",
+            format="%.1f",
+        ),
+        "Survive Next": st.column_config.ProgressColumn(
+            "Survive Next",
+            help="Conditional probability the player remains available at your next pick",
+            format="%.0f%%",
+            min_value=0.0,
+            max_value=100.0,
+        ),
+        "Wait Replacement": st.column_config.NumberColumn(
+            "Wait Replacement",
+            help="Expected stack-adjusted marginal utility of the best same-position option at your next pick",
+            format="%.1f",
+        ),
+        "Draft-Now Edge": st.column_config.NumberColumn(
+            "Draft-Now Edge",
+            help="Positive stack-adjusted utility lost by waiting until your next pick",
+            format="%.1f",
+        ),
+    }
+
+
+def render_sequential_future_recommendations(
+    results,
+    current_round_data,
+    current_round_num,
+    current_pick_num,
+):
+    """Render current and future Sequential results as one visible tab set."""
+    has_future_payload = (
+        isinstance(
+            getattr(results, 'attrs', {}).get('sequential_future_picks'),
+            dict,
+        )
+        or SEQUENTIAL_FUTURE_TRANSPORT_COLUMN in results.columns
+    )
     future = get_sequential_future_recommendations(results)
     if not future:
+        st.subheader(f"Round {current_round_num} (Pick #{current_pick_num})")
+        st.dataframe(
+            current_round_data,
+            column_config=current_recommendation_column_config(),
+            use_container_width=True,
+            hide_index=True,
+            height=400,
+        )
+        if not has_future_payload:
+            st.warning(
+                "Future-round path data did not reach this app process. "
+                "Rerun after the deployment finishes or reboot the Streamlit app."
+            )
         return
 
-    tab_specs = []
+    tab_specs = [(
+        f"Current: Round {current_round_num} (Pick #{current_pick_num})",
+        'current',
+        current_round_data,
+    )]
     for future_offset, round_summary in future['future_rounds'].items():
         label_prefix = 'Next pick' if future_offset == 1 else f'+{future_offset} picks'
         tab_specs.append((
@@ -754,7 +870,7 @@ def render_sequential_future_recommendations(results):
     if not tab_specs:
         return
 
-    st.write("**Probabilistic future-round plan**")
+    st.write("**Current and probabilistic future-round recommendations**")
     st.caption(
         f"Future choices come from completed sequential draft paths. Players below "
         f"{future['min_availability_pct']:.0f}% simulated availability are hidden; "
@@ -794,23 +910,29 @@ def render_sequential_future_recommendations(results):
     }
     for tab, (_, tab_type, tab_data) in zip(tabs, tab_specs):
         with tab:
-            if tab_type == 'future':
+            if tab_type == 'current':
+                st.write("**Current round - ranked by full draft-path outcome.**")
+                display_data = tab_data
+                column_config = current_recommendation_column_config()
+            elif tab_type == 'future':
                 st.write(
                     f"Most common choices if you select "
                     f"**{future['recommended_player']}** now."
                 )
                 display_data = tab_data['data']
+                column_config = percent_columns
             else:
                 st.write(
                     "Top three next-pick paths for each of the five highest-ranked "
                     "current recommendations."
                 )
                 display_data = tab_data
+                column_config = percent_columns
             st.dataframe(
                 display_data,
                 column_config={
                     key: config
-                    for key, config in percent_columns.items()
+                    for key, config in column_config.items()
                     if key in display_data.columns
                 },
                 use_container_width=True,
@@ -1839,91 +1961,26 @@ def main():
                         
                         # Create tabs for each round
                         if len(round_recommendations) == 1:
-                            # Single round - no tabs needed
+                            # Sequential adds conditional future tabs here.
                             round_num = list(round_recommendations.keys())[0]
                             pick_num = picks_remaining[0] if picks_remaining else "Unknown"
-                            st.subheader(f"Round {round_num} (Pick #{pick_num})")
-                            
                             round_data = round_recommendations[round_num]
-                            st.dataframe(
-                                round_data,
-                                column_config={
-                                    "Decision Score": st.column_config.NumberColumn(
-                                        "Decision Score",
-                                        help="Raw completed-roster EV plus average QB-pass catcher stack utility",
-                                        format="%.1f",
-                                    ),
-                                    "Raw EV": st.column_config.NumberColumn(
-                                        "Raw EV",
-                                        help="Average completed-roster best-ball points without heuristic stack utility",
-                                        format="%.1f",
-                                    ),
-                                    "Roster Stack": st.column_config.NumberColumn(
-                                        "Roster Stack",
-                                        help="Average capped tournament utility from final-roster QB-WR/TE pairings",
-                                        format="%+.1f",
-                                    ),
-                                    "Stack Now": st.column_config.NumberColumn(
-                                        "Stack Now",
-                                        help="Incremental utility if this pick immediately completes a QB-WR/TE pairing already on your roster",
-                                        format="%+.1f",
-                                    ),
-                                    "Score vs Best": st.column_config.NumberColumn(
-                                        "Score vs Best",
-                                        help="Stack-adjusted decision-score gap versus the top recommendation",
-                                        format="%+.1f",
-                                    ),
-                                    "Pct Selected": st.column_config.ProgressColumn(
-                                        "Pct Selected",
-                                        help="Percentage selected when available in this round",
-                                        format="%.1f%%",
-                                        min_value=0,
-                                        max_value=100,
-                                    ),
-                                    "EV": st.column_config.NumberColumn(
-                                        "EV",
-                                        help="Average final roster score when this player is forced as the current pick",
-                                        format="%.1f",
-                                    ),
-                                    "EV vs Best": st.column_config.NumberColumn(
-                                        "EV vs Best",
-                                        help="Expected score gap versus the best current-pick candidate",
-                                        format="%.1f",
-                                    ),
-                                    "EV Samples": st.column_config.NumberColumn(
-                                        "EV Samples",
-                                        help="Number of scenario solves used for this EV estimate",
-                                        format="%d",
-                                    ),
-                                    "Paired SE": st.column_config.NumberColumn(
-                                        "Paired SE",
-                                        help="Approximate paired standard error of EV versus the observed best candidate",
-                                        format="%.1f",
-                                    ),
-                                    "Survive Next": st.column_config.ProgressColumn(
-                                        "Survive Next",
-                                        help="Conditional probability the player remains available at your next pick",
-                                        format="%.0f%%",
-                                        min_value=0.0,
-                                        max_value=100.0,
-                                    ),
-                                    "Wait Replacement": st.column_config.NumberColumn(
-                                        "Wait Replacement",
-                                        help="Expected stack-adjusted marginal utility of the best same-position option at your next pick",
-                                        format="%.1f",
-                                    ),
-                                    "Draft-Now Edge": st.column_config.NumberColumn(
-                                        "Draft-Now Edge",
-                                        help="Positive stack-adjusted utility lost by waiting until your next pick",
-                                        format="%.1f",
-                                    ),
-                                },
-                                use_container_width=True,
-                                hide_index=True,
-                                height=400
-                            )
                             if settings['scoring_mode'] == 'best_ball_policy':
-                                render_sequential_future_recommendations(results)
+                                render_sequential_future_recommendations(
+                                    results,
+                                    round_data,
+                                    round_num,
+                                    pick_num,
+                                )
+                            else:
+                                st.subheader(f"Round {round_num} (Pick #{pick_num})")
+                                st.dataframe(
+                                    round_data,
+                                    column_config=current_recommendation_column_config(),
+                                    use_container_width=True,
+                                    hide_index=True,
+                                    height=400,
+                                )
                         else:
                             # Multiple rounds - use tabs
                             tab_labels = []

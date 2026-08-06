@@ -104,8 +104,9 @@ a formal posterior probability that a candidate is optimal.
 
 ## Future-Round Planning Display
 
-The result UI summarizes the first two future user turns for the top-ranked
-current-pick branch. It reports each player's share of completed room paths,
+The result UI uses one visible tab set for the current recommendation, the first
+two future user turns for the top-ranked current-pick branch, and conditional
+next-pick paths. It reports each player's share of completed room paths,
 probability of still being undrafted when the user is on the clock, conditional
 selection rate when available, and roster-legality rate. A separate tab reports
 the top three next-pick paths conditional on each of the five highest-ranked

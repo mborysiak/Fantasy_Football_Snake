@@ -1,3 +1,4 @@
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -172,3 +173,16 @@ def test_future_display_uses_top_current_branch_and_conditional_top_three():
         "Current B": 2,
     }
     assert "Filtered" not in conditional["Next Pick"].tolist()
+
+    transport_payload = results.attrs.pop("sequential_future_picks")
+    results["_sequential_future_picks_json"] = [
+        json.dumps(transport_payload),
+        None,
+    ]
+    transport_display = get_sequential_future_recommendations(
+        results,
+        current_candidate_limit=2,
+        per_candidate_limit=3,
+    )
+    assert transport_display["recommended_player"] == "Current A"
+    assert list(transport_display["future_rounds"]) == [1, 2]

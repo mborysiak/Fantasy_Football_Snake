@@ -1,3 +1,4 @@
+import io
 import sqlite3
 import sys
 from pathlib import Path
@@ -12,6 +13,8 @@ if str(APP_DIR) not in sys.path:
 
 from simulation_worker import (  # noqa: E402
     SimulationWorkerError,
+    _decode_frame,
+    _encode_frame,
     _result_attrs,
     build_request,
     run_isolated_simulation,
@@ -62,6 +65,16 @@ def test_worker_transmits_only_small_display_attrs():
             "candidates": {"A": {"turns": []}},
         }
     }
+
+    encoded_frame = _encode_frame(frame)
+    stale_parent_frame = pd.read_json(io.StringIO(encoded_frame), orient="split")
+    assert "_sequential_future_picks_json" in stale_parent_frame.columns
+
+    decoded_frame = _decode_frame(encoded_frame)
+    assert "_sequential_future_picks_json" not in decoded_frame.columns
+    assert decoded_frame.attrs["sequential_future_picks"] == (
+        frame.attrs["sequential_future_picks"]
+    )
 
 
 def test_native_exit_is_not_retried_and_keeps_input_state(tmp_path):
