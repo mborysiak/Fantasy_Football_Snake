@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import sqlite3
 import json
+import hashlib
 from zSim_Helper import (
     FootballSimulation,
     SEQUENTIAL_CANDIDATE_POOL_SIZE,
@@ -999,12 +1000,13 @@ def save_draft_state(selected_data, settings):
             pos: (count, count)
             for pos, count in settings['pos_require'].items()
         }
+    league = get_setting_text(settings, 'league', 'dk').lower()
     
     # Add settings as metadata (we'll store this in the CSV as well)
     settings_data = pd.DataFrame([{
         'Type': 'Settings',
         'Year': settings['year'],
-        'League': settings['league'],
+        'League': league,
         'NumTeams': settings['num_teams'],
         'MyPickPosition': settings['my_pick_position'],
         'NumRounds': settings['num_rounds'],
@@ -1024,12 +1026,12 @@ def save_draft_state(selected_data, settings):
         'TE_Max': position_ranges['TE'][1],
         'NumIters': settings['num_iters'],
         'PolicyVersion': (
-            SEQUENTIAL_POLICY_VERSION_BY_LEAGUE.get(settings['league'])
+            SEQUENTIAL_POLICY_VERSION_BY_LEAGUE.get(league)
             if settings['scoring_mode'] == 'best_ball_policy'
             else 'legacy_ilp'
         ),
         'DecisionSamples': (
-            SEQUENTIAL_DECISION_SAMPLES_BY_LEAGUE.get(settings['league'])
+            SEQUENTIAL_DECISION_SAMPLES_BY_LEAGUE.get(league)
             if settings['scoring_mode'] == 'best_ball_policy'
             else None
         ),
@@ -1075,7 +1077,12 @@ def load_draft_state(uploaded_file):
         if 'Type' in df.columns:
             settings_rows = df[df['Type'] == 'Settings']
             if len(settings_rows) > 0:
-                settings_data = settings_rows.iloc[0]
+                settings_data = settings_rows.iloc[0].copy()
+                settings_data['League'] = get_setting_text(
+                    settings_data,
+                    'League',
+                    'dk',
+                ).lower()
                 # Remove settings rows from main data
                 df = df[df['Type'] != 'Settings']
         
@@ -1176,6 +1183,18 @@ def get_setting_int(settings, key, default):
         return default
 
     return int(value)
+
+
+def get_setting_text(settings, key, default):
+    """Read text from saved settings, treating missing/blank values as default."""
+    if settings is None or key not in settings:
+        return str(default)
+
+    value = settings.get(key, default)
+    if pd.isna(value):
+        return str(default)
+    value = str(value).strip()
+    return value if value else str(default)
 
 def get_setting_bool(settings, key, default):
     """Read a boolean setting from a loaded CSV row with backward-compatible defaults."""
@@ -1287,7 +1306,11 @@ def sidebar_controls(prediction_options):
     default_ilp_ranges = FootballSimulation.default_best_ball_position_ranges()
     if loaded_settings is not None:
         default_year = get_setting_int(loaded_settings, 'Year', int(prediction_options.year.max()))
-        default_league = str(loaded_settings.get('League', 'dk')).strip().lower()
+        default_league = get_setting_text(
+            loaded_settings,
+            'League',
+            'dk',
+        ).lower()
         default_num_teams = get_setting_int(loaded_settings, 'NumTeams', 12)
         default_my_pick = get_setting_int(loaded_settings, 'MyPickPosition', 1)
         default_qb = get_setting_int(loaded_settings, 'QB', 3)
@@ -1354,17 +1377,25 @@ def sidebar_controls(prediction_options):
         if default_league in available_leagues
         else 0
     )
-    league = st.sidebar.selectbox(
-        'League Type',
-        options=available_leagues,
-        index=league_index,
-        format_func=str.upper,
-        help=(
+    if (
+        loaded_settings is not None
+        and not st.session_state.get('settings_applied_to_ui', False)
+        and default_league in available_leagues
+    ):
+        st.session_state.league_type = default_league
+    league_widget_options = {
+        'options': available_leagues,
+        'key': 'league_type',
+        'format_func': str.upper,
+        'help': (
             "DK is the full production format. NFFC is an offense-only scoring "
             "adapter; it uses governed NFFC inputs but is not a complete NFFC "
             "contest implementation."
         ),
-    )
+    }
+    if 'league_type' not in st.session_state:
+        league_widget_options['index'] = league_index
+    league = st.sidebar.selectbox('League Type', **league_widget_options)
     scoring_week_count = 17 if league == 'nffc' else 16
     if league == 'nffc':
         st.sidebar.caption(
@@ -1659,24 +1690,44 @@ def sidebar_controls(prediction_options):
     )
     
     if uploaded_file is not None:
-        loaded_data, loaded_settings, error = load_draft_state(uploaded_file)
-        if error:
-            st.sidebar.error(error)
+        upload_signature = (
+            int(st.session_state.file_uploader_key),
+            str(uploaded_file.name),
+            hashlib.sha256(uploaded_file.getvalue()).hexdigest(),
+        )
+        if upload_signature != st.session_state.loaded_upload_signature:
+            loaded_data, loaded_settings, error = load_draft_state(uploaded_file)
+            st.session_state.loaded_upload_signature = upload_signature
+            st.session_state.loaded_upload_error = error
+            if error is None:
+                st.session_state.loaded_draft_data = loaded_data
+                st.session_state.loaded_settings_data = loaded_settings
+                st.session_state.data_loaded_applied = False
+                st.session_state.settings_applied_to_ui = False
+            st.rerun()
+
+        if st.session_state.loaded_upload_error:
+            st.sidebar.error(st.session_state.loaded_upload_error)
         else:
-            st.session_state.loaded_draft_data = loaded_data
-            st.session_state.loaded_settings_data = loaded_settings
-            st.session_state.data_loaded_applied = False  # Reset flag to allow reapplication
-            st.session_state.settings_applied_to_ui = False  # Reset settings application flag
             st.sidebar.success("Draft state loaded successfully!")
-            
-            # Show loaded info
+            loaded_settings = st.session_state.loaded_settings_data
+            loaded_data = st.session_state.loaded_draft_data
             if loaded_settings is not None:
-                st.sidebar.write(f"**Loaded:** {loaded_settings.get('SavedDate', 'Unknown date')}")
-                st.sidebar.write(f"**League:** {loaded_settings.get('League', 'Unknown').upper()}")
-                st.sidebar.write(f"**Draft Position:** {loaded_settings.get('MyPickPosition', 'Unknown')}")
-                st.sidebar.write(f"**Team Size:** {loaded_settings.get('NumTeams', 'Unknown')}")
-            
-            st.sidebar.write(f"**Players loaded:** {len(loaded_data) if loaded_data is not None else 0}")
+                st.sidebar.write(
+                    f"**Loaded:** {loaded_settings.get('SavedDate', 'Unknown date')}"
+                )
+                st.sidebar.write(
+                    f"**League:** {get_setting_text(loaded_settings, 'League', 'dk').upper()}"
+                )
+                st.sidebar.write(
+                    f"**Draft Position:** {loaded_settings.get('MyPickPosition', 'Unknown')}"
+                )
+                st.sidebar.write(
+                    f"**Team Size:** {loaded_settings.get('NumTeams', 'Unknown')}"
+                )
+            st.sidebar.write(
+                f"**Players loaded:** {len(loaded_data) if loaded_data is not None else 0}"
+            )
     
     # Save draft state section
     st.sidebar.subheader("Save Current Draft")
@@ -1715,6 +1766,8 @@ def sidebar_controls(prediction_options):
                     st.session_state.loaded_settings_data = None
                     st.session_state.data_loaded_applied = False
                     st.session_state.settings_applied_to_ui = False
+                    st.session_state.loaded_upload_signature = None
+                    st.session_state.loaded_upload_error = None
                     # Reset file uploader by changing its key
                     st.session_state.file_uploader_key += 1
             with col2:
@@ -1780,6 +1833,10 @@ def main():
         st.session_state.data_loaded_applied = False
     if 'settings_applied_to_ui' not in st.session_state:
         st.session_state.settings_applied_to_ui = False
+    if 'loaded_upload_signature' not in st.session_state:
+        st.session_state.loaded_upload_signature = None
+    if 'loaded_upload_error' not in st.session_state:
+        st.session_state.loaded_upload_error = None
     
     # Custom CSS to reduce padding
     st.markdown(

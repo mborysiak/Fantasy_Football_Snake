@@ -1,3 +1,4 @@
+import io
 import sqlite3
 import sys
 from pathlib import Path
@@ -5,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+from streamlit.testing.v1 import AppTest
 
 from app.zSim_Helper import (
     BASE_PRED_COL,
@@ -21,6 +23,7 @@ from snake_draft_app import (
     apply_loaded_state,
     get_prediction_options,
     get_player_data,
+    load_draft_state,
     run_simulation,
     save_draft_state,
 )
@@ -711,6 +714,86 @@ def _app_player_data():
     )
 
 
+def _draft_settings(league):
+    return {
+        "year": 2026,
+        "league": league,
+        "num_teams": 12,
+        "my_pick_position": 1,
+        "num_rounds": 20,
+        "scoring_mode": "best_ball_policy",
+        "weekly_score_mode": "template",
+        "pos_require": {"QB": 3, "RB": 6, "WR": 8, "TE": 3},
+        "num_iters": 24,
+    }
+
+
+def _csv_buffer(frame):
+    buffer = io.StringIO()
+    frame.to_csv(buffer, index=False)
+    buffer.seek(0)
+    return buffer
+
+
+def test_saved_csv_round_trips_league_and_old_csv_defaults_to_dk():
+    selected = _app_player_data()
+    selected.loc[0, "MyTeam"] = True
+    draft_data, settings_data = save_draft_state(
+        selected,
+        _draft_settings("nffc"),
+    )
+    assert settings_data.loc[0, "League"] == "nffc"
+
+    combined = pd.concat([draft_data, settings_data], ignore_index=True)
+    _, loaded_settings, error = load_draft_state(_csv_buffer(combined))
+    assert error is None
+    assert loaded_settings["League"] == "nffc"
+
+    legacy_combined = combined.drop(columns=["League"])
+    _, legacy_settings, legacy_error = load_draft_state(
+        _csv_buffer(legacy_combined)
+    )
+    assert legacy_error is None
+    assert legacy_settings["League"] == "dk"
+
+    blank_combined = combined.copy()
+    blank_combined.loc[blank_combined.Type == "Settings", "League"] = ""
+    _, blank_settings, blank_error = load_draft_state(
+        _csv_buffer(blank_combined)
+    )
+    assert blank_error is None
+    assert blank_settings["League"] == "dk"
+
+
+def test_csv_upload_applies_saved_league_and_legacy_upload_restores_dk():
+    app = AppTest.from_file(
+        str(APP_DIR / "snake_draft_app.py"),
+        default_timeout=30,
+    )
+    app.run()
+    nffc_csv = (
+        "Type,Team,League,Year,NumTeams,MyPickPosition,NumRounds,"
+        "ScoringMode,WeeklyScoreMode,QB,RB,WR,TE,NumIters\n"
+        "Settings,,nffc,2026,12,3,20,best_ball_policy,template,3,6,8,3,24\n"
+    ).encode("utf-8")
+    app.file_uploader[0].set_value(
+        ("nffc.csv", nffc_csv, "text/csv")
+    ).run(timeout=30)
+    assert len(app.exception) == 0
+    assert app.selectbox[0].value == "nffc"
+
+    legacy_csv = (
+        "Type,Team,Year,NumTeams,MyPickPosition,NumRounds,"
+        "ScoringMode,WeeklyScoreMode,QB,RB,WR,TE,NumIters\n"
+        "Settings,,2026,12,3,20,best_ball_policy,template,3,6,8,3,24\n"
+    ).encode("utf-8")
+    app.file_uploader[0].set_value(
+        ("legacy.csv", legacy_csv, "text/csv")
+    ).run(timeout=30)
+    assert len(app.exception) == 0
+    assert app.selectbox[0].value == "dk"
+
+
 def test_saved_state_and_simulation_use_player_key(monkeypatch):
     loaded = pd.DataFrame(
         {
@@ -722,16 +805,9 @@ def test_saved_state_and_simulation_use_player_key(monkeypatch):
     applied = apply_loaded_state(_app_player_data(), loaded)
     assert applied.loc[applied.PlayerKey == "key-1", "MyTeam"].item()
 
-    settings = {
-        "year": 2026,
-        "league": "dk",
-        "num_teams": 12,
-        "my_pick_position": 1,
-        "num_rounds": 20,
-        "scoring_mode": "best_ball_ilp",
-        "pos_require": {"QB": 3, "RB": 6, "WR": 8, "TE": 3},
-        "num_iters": 1,
-    }
+    settings = _draft_settings("dk")
+    settings["scoring_mode"] = "best_ball_ilp"
+    settings["num_iters"] = 1
     draft_data, _ = save_draft_state(applied, settings)
     assert draft_data.loc[0, "PlayerKey"] == "key-1"
 

@@ -1,6 +1,6 @@
 # Session Notes Landing
 
-Last updated: 2026-08-05
+Last updated: 2026-08-06
 
 ## Project Objective
 
@@ -121,6 +121,9 @@ outcomes, and solves roster recommendations with the ILP optimizer.
   top current recommendation, plus top-three next-pick paths conditional on each
   of the top five current choices. True room availability is reported separately
   from roster legality, with a disclosed 10% availability display floor.
+- Saved draft CSV settings persist the active DK/NFFC league. Upload applies the
+  saved league before rebuilding the player surface; older or blank league fields
+  resolve to DK without invalidating the CSV.
 
 ## Key Links
 
