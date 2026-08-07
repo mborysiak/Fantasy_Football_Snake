@@ -1702,8 +1702,10 @@ def sidebar_controls(prediction_options):
             if error is None:
                 st.session_state.loaded_draft_data = loaded_data
                 st.session_state.loaded_settings_data = loaded_settings
-                st.session_state.data_loaded_applied = False
                 st.session_state.settings_applied_to_ui = False
+                # A newly loaded file is a new editor baseline; discard any
+                # checkbox deltas retained under the prior widget key.
+                st.session_state.grid_key_counter += 1
             st.rerun()
 
         if st.session_state.loaded_upload_error:
@@ -1764,7 +1766,6 @@ def sidebar_controls(prediction_options):
                     # Clear any loaded data to ensure it doesn't interfere
                     st.session_state.loaded_draft_data = None
                     st.session_state.loaded_settings_data = None
-                    st.session_state.data_loaded_applied = False
                     st.session_state.settings_applied_to_ui = False
                     st.session_state.loaded_upload_signature = None
                     st.session_state.loaded_upload_error = None
@@ -1829,8 +1830,6 @@ def main():
         st.session_state.grid_key_counter = 0
     if 'league_changed' not in st.session_state:
         st.session_state.league_changed = False
-    if 'data_loaded_applied' not in st.session_state:
-        st.session_state.data_loaded_applied = False
     if 'settings_applied_to_ui' not in st.session_state:
         st.session_state.settings_applied_to_ui = False
     if 'loaded_upload_signature' not in st.session_state:
@@ -1882,12 +1881,14 @@ def main():
         # Get player data
         player_data = get_player_data(sim)
         
-        # Apply loaded draft state if available and not yet applied
-        if (st.session_state.loaded_draft_data is not None and 
-            not st.session_state.data_loaded_applied):
-            player_data = apply_loaded_state(player_data, st.session_state.loaded_draft_data)
-            # Mark as applied but don't clear the data yet
-            st.session_state.data_loaded_applied = True
+        # data_editor persists only cell deltas, so the uploaded selections must
+        # remain its input baseline on every rerun. Otherwise the first click is
+        # applied to a freshly rebuilt all-false table and the CSV picks vanish.
+        if st.session_state.loaded_draft_data is not None:
+            player_data = apply_loaded_state(
+                player_data,
+                st.session_state.loaded_draft_data,
+            )
         
         # Handle clear selections if requested (before creating the grid)
         if st.session_state.clear_selections:

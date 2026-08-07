@@ -794,6 +794,49 @@ def test_csv_upload_applies_saved_league_and_legacy_upload_restores_dk():
     assert app.selectbox[0].value == "dk"
 
 
+def test_uploaded_player_selections_survive_the_next_widget_rerun():
+    app = AppTest.from_file(
+        str(APP_DIR / "snake_draft_app.py"),
+        default_timeout=30,
+    )
+    app.run()
+    selected = app.dataframe[0].value.copy()
+    selected.loc[selected.index[0], "MyTeam"] = True
+    selected.loc[selected.index[1], "OtherTeam"] = True
+    expected_my_key = selected.iloc[0].PlayerKey
+    expected_other_key = selected.iloc[1].PlayerKey
+    draft_data, settings_data = save_draft_state(
+        selected,
+        _draft_settings("dk"),
+    )
+    payload = pd.concat(
+        [draft_data, settings_data],
+        ignore_index=True,
+    ).to_csv(index=False).encode("utf-8")
+
+    app.file_uploader[0].set_value(
+        ("selected-draft.csv", payload, "text/csv")
+    ).run(timeout=30)
+    loaded_grid = app.dataframe[0].value
+    assert set(loaded_grid.loc[loaded_grid.MyTeam, "PlayerKey"]) == {
+        expected_my_key
+    }
+    assert set(loaded_grid.loc[loaded_grid.OtherTeam, "PlayerKey"]) == {
+        expected_other_key
+    }
+
+    # Any widget interaction causes the same rerun as a data-editor checkbox.
+    app.text_input[0].set_value("force-rerun").run(timeout=30)
+    rerun_grid = app.dataframe[0].value
+    assert len(app.exception) == 0
+    assert set(rerun_grid.loc[rerun_grid.MyTeam, "PlayerKey"]) == {
+        expected_my_key
+    }
+    assert set(rerun_grid.loc[rerun_grid.OtherTeam, "PlayerKey"]) == {
+        expected_other_key
+    }
+
+
 def test_saved_state_and_simulation_use_player_key(monkeypatch):
     loaded = pd.DataFrame(
         {

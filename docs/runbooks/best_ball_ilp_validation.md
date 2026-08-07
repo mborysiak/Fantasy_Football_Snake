@@ -30,6 +30,9 @@ Then confirm:
   is present; do not use the historical DK-clone preview artifact for release
   smoke checks
 - draft controls render
+- loading a saved CSV restores its league and player selections; at least one
+  subsequent checkbox/sidebar rerun preserves every imported My Team and Other
+  Team selection
 - optimizer can run at least one recommendation
 - weekly template controls do not error
 - stack bonus controls render when enabled

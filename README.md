@@ -32,6 +32,8 @@ The selector shows only year/league prediction slices backed by the current
 weekly player map; older maps are removed when annual template IDs are rebuilt.
 Saved draft CSVs record the selected league and restore it on upload. CSVs from
 before the league field was added remain valid and load with DK as the default.
+Imported My Team and Other Team selections remain the data-editor baseline, so
+subsequent checkbox or sidebar interactions do not clear the loaded draft.
 
 The NFFC mode is intentionally offense-only: it supports `QB`, `RB`, `WR`, and
 `TE`, but not kicker or team defense. It is therefore not a complete

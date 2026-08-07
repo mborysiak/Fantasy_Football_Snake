@@ -1,6 +1,6 @@
 # Session Notes Landing
 
-Last updated: 2026-08-06
+Last updated: 2026-08-07
 
 ## Project Objective
 
@@ -124,6 +124,9 @@ outcomes, and solves roster recommendations with the ILP optimizer.
 - Saved draft CSV settings persist the active DK/NFFC league. Upload applies the
   saved league before rebuilding the player surface; older or blank league fields
   resolve to DK without invalidating the CSV.
+- Uploaded My Team and Other Team selections remain the data editor's baseline
+  on every rerun. Loading a new file starts a fresh editor key, while subsequent
+  checkbox and sidebar interactions preserve the imported selections.
 
 ## Key Links
 
