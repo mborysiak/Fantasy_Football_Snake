@@ -117,10 +117,12 @@ outcomes, and solves roster recommendations with the ILP optimizer.
 - Sequential Preview uses default-on symmetric QB-WR/TE tournament utility at
   every pick and in the final rank. Raw EV, immediate stack value, average
   final-roster stack utility, and the combined decision score remain separate.
-- Sequential results now add probabilistic next-pick and pick-after tabs for the
-  top current recommendation, plus top-three next-pick paths conditional on each
-  of the top five current choices. True room availability is reported separately
-  from roster legality, with a disclosed 10% availability display floor.
+- Sequential results now add unconditional probabilistic next-pick and
+  pick-after tabs that equally weight the top five current choices, plus
+  top-three next-pick paths conditional on each choice. True room availability
+  remains separate from roster legality, with a disclosed 10% availability
+  display floor. Future rows also expose Draft-Now Edge and an
+  availability-adjusted version as planning signals, not causal final-roster EV.
 - Saved draft CSV settings persist the active DK/NFFC league. Upload applies the
   saved league before rebuilding the player surface; older or blank league fields
   resolve to DK without invalidating the CSV.

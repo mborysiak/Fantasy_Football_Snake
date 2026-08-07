@@ -592,7 +592,7 @@ def get_sequential_future_recommendations(
     per_candidate_limit=3,
     recommended_path_limit=10,
 ):
-    """Build display tables from candidate-conditional sequential paths."""
+    """Build unconditional and current-choice-conditional future tables."""
     payload = getattr(results, 'attrs', {}).get('sequential_future_picks')
     if (
         not isinstance(payload, dict)
@@ -655,9 +655,6 @@ def get_sequential_future_recommendations(
                 legal_rooms = int(row.get('legal_rooms', 0))
                 if completed_rooms <= 0 or available_rooms <= 0:
                     continue
-                availability_pct = 100.0 * available_rooms / completed_rooms
-                if availability_pct < min_availability_pct:
-                    continue
                 summary_rows.append({
                     'Current Rank': current_rank,
                     'Current Pick': current_player,
@@ -665,9 +662,11 @@ def get_sequential_future_recommendations(
                     'Player': str(row.get('player', '')),
                     'Pos': str(row.get('pos', '')),
                     'Pick Rate': 100.0 * selected_rooms / completed_rooms,
-                    'Available': availability_pct,
+                    'Available': 100.0 * available_rooms / completed_rooms,
                     'Pick If Available': 100.0 * selected_rooms / available_rooms,
                     'Roster Legal': 100.0 * legal_rooms / completed_rooms,
+                    'Draft-Now Edge': row.get('avg_draft_now_edge'),
+                    'Avail-Adjusted Edge': row.get('expected_edge'),
                     'Selected Rooms': selected_rooms,
                     'Draft Rooms': completed_rooms,
                 })
@@ -680,33 +679,89 @@ def get_sequential_future_recommendations(
     sort_ascending = [False, False, True]
     recommended_player = top_current_players[0]
     future_rounds = {}
-    for future_offset in sorted(turn_metadata):
-        future_rows = summary[
-            (summary['Current Pick'] == recommended_player)
-            & (summary['Future Offset'] == future_offset)
-        ].copy()
-        if future_rows.empty:
-            continue
-        future_rows = future_rows.sort_values(
-            sort_columns,
-            ascending=sort_ascending,
-        ).head(recommended_path_limit)
-        future_rounds[future_offset] = {
-            **turn_metadata[future_offset],
-            'data': future_rows[[
-                'Player',
-                'Pos',
-                'Pick Rate',
-                'Available',
-                'Pick If Available',
-                'Roster Legal',
-                'Selected Rooms',
-                'Draft Rooms',
-            ]],
-        }
+    unconditional = payload.get('unconditional')
+    unconditional_choices = []
+    if isinstance(unconditional, dict):
+        unconditional_choices = [
+            str(player)
+            for player in unconditional.get('current_choices', [])
+        ]
+        for turn in unconditional.get('turns', []):
+            future_offset = int(turn.get('future_offset', 0))
+            if future_offset <= 0:
+                continue
+            unconditional_rows = []
+            for row in turn.get('rows', []):
+                availability_pct = 100.0 * float(
+                    row.get('availability_rate', 0.0)
+                )
+                if availability_pct < min_availability_pct:
+                    continue
+                unconditional_rows.append({
+                    'Player': str(row.get('player', '')),
+                    'Pos': str(row.get('pos', '')),
+                    'Pick Rate': 100.0 * float(row.get('selection_rate', 0.0)),
+                    'Available': availability_pct,
+                    'Pick If Available': 100.0 * float(
+                        row.get('pick_if_available', 0.0)
+                    ),
+                    'Roster Legal': 100.0 * float(
+                        row.get('legality_rate', 0.0)
+                    ),
+                    'Draft-Now Edge': row.get('avg_draft_now_edge'),
+                    'Avail-Adjusted Edge': row.get('expected_edge'),
+                    'Selected Rooms': int(row.get('selected_rooms', 0)),
+                    'Draft Rooms': int(row.get('completed_rooms', 0)),
+                    'Current Choices': int(row.get('completed_branches', 0)),
+                })
+            if not unconditional_rows:
+                continue
+            future_rows = pd.DataFrame(unconditional_rows).sort_values(
+                sort_columns,
+                ascending=sort_ascending,
+            ).head(recommended_path_limit)
+            future_rounds[future_offset] = {
+                'round': int(turn.get('round', 0)),
+                'pick': int(turn.get('pick', 0)),
+                'data': future_rows,
+            }
+
+    # Compatibility fallback for a result produced by the pre-v2 worker.
+    if not future_rounds:
+        unconditional_choices = [recommended_player]
+        for future_offset in sorted(turn_metadata):
+            future_rows = summary[
+                (summary['Current Pick'] == recommended_player)
+                & (summary['Future Offset'] == future_offset)
+                & (summary['Available'] >= min_availability_pct)
+            ].copy()
+            if future_rows.empty:
+                continue
+            future_rows = future_rows.sort_values(
+                sort_columns,
+                ascending=sort_ascending,
+            ).head(recommended_path_limit)
+            future_rounds[future_offset] = {
+                **turn_metadata[future_offset],
+                'data': future_rows[[
+                    'Player',
+                    'Pos',
+                    'Pick Rate',
+                    'Available',
+                    'Pick If Available',
+                    'Roster Legal',
+                    'Draft-Now Edge',
+                    'Avail-Adjusted Edge',
+                    'Selected Rooms',
+                    'Draft Rooms',
+                ]],
+            }
 
     conditional_parts = []
-    next_pick_rows = summary[summary['Future Offset'] == 1]
+    next_pick_rows = summary[
+        (summary['Future Offset'] == 1)
+        & (summary['Available'] >= min_availability_pct)
+    ]
     for current_rank, current_player in enumerate(top_current_players, start=1):
         player_rows = next_pick_rows[
             next_pick_rows['Current Pick'] == current_player
@@ -732,11 +787,14 @@ def get_sequential_future_recommendations(
             'Pick Rate',
             'Available',
             'Pick If Available',
+            'Draft-Now Edge',
+            'Avail-Adjusted Edge',
             'Draft Rooms',
         ]].rename(columns={'Player': 'Next Pick'})
 
     return {
         'recommended_player': recommended_player,
+        'unconditional_choices': unconditional_choices,
         'min_availability_pct': min_availability_pct,
         'future_rounds': future_rounds,
         'conditional_next': conditional_next,
@@ -872,11 +930,16 @@ def render_sequential_future_recommendations(
         return
 
     st.write("**Current and probabilistic future-round recommendations**")
+    current_choice_count = len(future['unconditional_choices'])
     st.caption(
-        f"Future choices come from completed sequential draft paths. Players below "
+        f"Next-pick tables equally weight completed paths across the top "
+        f"{current_choice_count} current choice{'s' if current_choice_count != 1 else ''}. "
+        f"Players below "
         f"{future['min_availability_pct']:.0f}% simulated availability are hidden; "
         "Available means still undrafted after opponents act, before roster-position "
-        "constraints are applied."
+        "constraints are applied. Draft-Now Edge is the stack-adjusted value expected "
+        "to be lost by waiting one more turn; Avail-Adjusted Edge also weights it by "
+        "how often the path actually selects that player, and is not final-roster EV."
     )
     tabs = st.tabs([spec[0] for spec in tab_specs])
     percent_columns = {
@@ -908,6 +971,22 @@ def render_sequential_future_recommendations(
             min_value=0,
             max_value=100,
         ),
+        'Draft-Now Edge': st.column_config.NumberColumn(
+            'Draft-Now Edge',
+            help=(
+                'Average stack-adjusted marginal utility expected to be lost by '
+                'waiting one more user turn in rooms where this player was selected'
+            ),
+            format='%.2f',
+        ),
+        'Avail-Adjusted Edge': st.column_config.NumberColumn(
+            'Avail-Adjusted Edge',
+            help=(
+                'Draft-Now Edge weighted by path selection rate, which incorporates '
+                'availability at this pick; this is a planning signal, not causal EV'
+            ),
+            format='%.2f',
+        ),
     }
     for tab, (_, tab_type, tab_data) in zip(tabs, tab_specs):
         with tab:
@@ -917,8 +996,8 @@ def render_sequential_future_recommendations(
                 column_config = current_recommendation_column_config()
             elif tab_type == 'future':
                 st.write(
-                    f"Most common choices if you select "
-                    f"**{future['recommended_player']}** now."
+                    "Most common choices across the displayed current-pick options, "
+                    "with each current choice weighted equally."
                 )
                 display_data = tab_data['data']
                 column_config = percent_columns
@@ -929,6 +1008,13 @@ def render_sequential_future_recommendations(
                 )
                 display_data = tab_data
                 column_config = percent_columns
+            display_data = display_data.copy()
+            for optional_column in ('Draft-Now Edge', 'Avail-Adjusted Edge'):
+                if (
+                    optional_column in display_data.columns
+                    and display_data[optional_column].isna().all()
+                ):
+                    display_data = display_data.drop(columns=[optional_column])
             st.dataframe(
                 display_data,
                 column_config={

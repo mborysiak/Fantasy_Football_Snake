@@ -40,8 +40,9 @@ Then confirm:
   decision candidates with raw EV, roster stack utility, immediate stack
   utility, stack-adjusted decision score, paired SE, survival, and room coverage
 - Sequential renders one visible Current/Next pick/+2 picks/conditional tab set;
-  future tabs use the top current branch, and the conditional tab shows the top
-  three next-pick paths for each of the top five current choices. Availability
+  future tabs equally aggregate the top five current branches, and the
+  conditional tab shows the top three next-pick paths for each of the top five
+  current choices. Availability
   is true room survival, not roster legality, and the 10% display floor is
   disclosed
 - selecting NFFC loads independently scored NFFC offensive projections, the

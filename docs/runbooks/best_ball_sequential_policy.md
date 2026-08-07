@@ -104,13 +104,21 @@ a formal posterior probability that a candidate is optimal.
 
 ## Future-Round Planning Display
 
-The result UI uses one visible tab set for the current recommendation, the first
-two future user turns for the top-ranked current-pick branch, and conditional
-next-pick paths. It reports each player's share of completed room paths,
-probability of still being undrafted when the user is on the clock, conditional
-selection rate when available, and roster-legality rate. A separate tab reports
-the top three next-pick paths conditional on each of the five highest-ranked
-current recommendations.
+The result UI uses one visible tab set for the current recommendation, two
+unconditional future user turns, and conditional next-pick paths. The two future
+tabs marginalize over the five highest-ranked current choices with equal weight
+per current choice, so a branch with fewer completed rooms cannot dominate the
+summary. A separate tab reports the top three next-pick paths conditional on
+each of those five current recommendations.
+
+Future rows report each player's share of completed room paths, probability of
+still being undrafted when the user is on the clock, conditional selection rate
+when available, and roster-legality rate. `Draft-Now Edge` reuses the policy's
+stack-adjusted same-position replacement calculation and estimates the marginal
+utility lost by waiting one more user turn in rooms where the player is chosen.
+`Avail-Adjusted Edge` multiplies that edge by path selection frequency. It is a
+planning/urgency signal rather than a forced-pick estimate of causal final-roster
+EV; a true +EV estimate would require separately rescoring forced future actions.
 
 Availability is captured immediately after opponents act and before roster
 position constraints are applied. It is therefore distinct from legality. The

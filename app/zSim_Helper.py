@@ -4082,6 +4082,7 @@ class FootballSimulation:
         available_by_pick = []
         room_available_by_pick = []
         opponent_picks_by_turn = []
+        decision_metrics_by_pick = []
         order_pointer = 0
 
         root_candidate_idx = int(root_candidate_idx)
@@ -4148,7 +4149,13 @@ class FootballSimulation:
                 if pick_idx + 1 < len(adjusted_picks)
                 else None
             )
-            policy_scores, _, _, _, _ = self.sequential_policy_scores(
+            (
+                policy_scores,
+                survival,
+                replacement_values,
+                draft_now_advantages,
+                urgency_values,
+            ) = self.sequential_policy_scores(
                 legal_candidates,
                 policy_immediate_values,
                 player_positions,
@@ -4163,7 +4170,17 @@ class FootballSimulation:
                     else None
                 ),
             )
-            chosen_idx = int(legal_candidates[int(np.argmax(policy_scores))])
+            chosen_loc = int(np.argmax(policy_scores))
+            chosen_idx = int(legal_candidates[chosen_loc])
+            decision_metrics_by_pick.append({
+                'selected_idx': chosen_idx,
+                'immediate_value': float(policy_immediate_values[chosen_loc]),
+                'survive_next': float(survival[chosen_loc]),
+                'replacement_value': float(replacement_values[chosen_loc]),
+                'draft_now_edge': float(draft_now_advantages[chosen_loc]),
+                'urgency_value': float(urgency_values[chosen_loc]),
+                'policy_score': float(policy_scores[chosen_loc]),
+            })
             selected_indices.append(chosen_idx)
             path.append(chosen_idx)
             remaining[chosen_idx] = False
@@ -4184,6 +4201,7 @@ class FootballSimulation:
             'available_by_pick': available_by_pick,
             'room_available_by_pick': room_available_by_pick,
             'opponent_picks_by_turn': opponent_picks_by_turn,
+            'decision_metrics_by_pick': decision_metrics_by_pick,
         }
         return selected_array if success else None, details, success
 
@@ -4210,6 +4228,8 @@ class FootballSimulation:
             selected_counts = Counter()
             available_counts = Counter()
             legal_counts = Counter()
+            draft_now_edge_sums = Counter()
+            draft_now_edge_counts = Counter()
 
             for details in room_details:
                 path = np.asarray(details.get('path', []), dtype=np.int64)
@@ -4217,6 +4237,16 @@ class FootballSimulation:
                     continue
                 selected_idx = int(path[future_offset])
                 selected_counts[selected_idx] += 1
+
+                decision_metrics = details.get('decision_metrics_by_pick', [])
+                metrics_idx = future_offset - 1
+                if len(decision_metrics) > metrics_idx:
+                    metrics = decision_metrics[metrics_idx]
+                    if int(metrics.get('selected_idx', selected_idx)) == selected_idx:
+                        draft_now_edge = metrics.get('draft_now_edge')
+                        if draft_now_edge is not None and np.isfinite(draft_now_edge):
+                            draft_now_edge_sums[selected_idx] += float(draft_now_edge)
+                            draft_now_edge_counts[selected_idx] += 1
 
                 availability_turns = details.get(
                     'room_available_by_pick',
@@ -4234,6 +4264,8 @@ class FootballSimulation:
 
             rows = []
             for player_idx, selected_rooms in selected_counts.items():
+                edge_count = int(draft_now_edge_counts[player_idx])
+                edge_sum = float(draft_now_edge_sums[player_idx])
                 rows.append({
                     'player': str(player_names[player_idx]),
                     'pos': str(player_positions[player_idx]),
@@ -4241,6 +4273,14 @@ class FootballSimulation:
                     'available_rooms': int(available_counts[player_idx]),
                     'legal_rooms': int(legal_counts[player_idx]),
                     'completed_rooms': int(completed_rooms),
+                    'avg_draft_now_edge': (
+                        edge_sum / edge_count if edge_count > 0 else None
+                    ),
+                    'expected_edge': (
+                        edge_sum / completed_rooms
+                        if completed_rooms > 0 and edge_count > 0
+                        else None
+                    ),
                 })
             rows.sort(
                 key=lambda row: (
@@ -4259,6 +4299,170 @@ class FootballSimulation:
 
         return {
             'completed_rooms': int(completed_rooms),
+            'turns': turns,
+        }
+
+    @staticmethod
+    def summarize_sequential_unconditional_future_picks(
+        player_names,
+        player_positions,
+        adjusted_picks,
+        current_round_num,
+        branch_room_details,
+        max_future_picks=SEQUENTIAL_FUTURE_SUMMARY_PICKS,
+    ):
+        """Equal-weight future choices across alternative current-pick branches."""
+        player_names = np.asarray(player_names)
+        player_positions = np.asarray(player_positions)
+        branches = [
+            (str(branch_name), list(room_details))
+            for branch_name, room_details in branch_room_details.items()
+            if room_details
+        ]
+        future_pick_count = min(
+            max(0, int(max_future_picks)),
+            max(0, len(adjusted_picks) - 1),
+        )
+        turns = []
+
+        for future_offset in range(1, future_pick_count + 1):
+            selected_players = set()
+            for _, room_details in branches:
+                for details in room_details:
+                    path = np.asarray(details.get('path', []), dtype=np.int64)
+                    if len(path) > future_offset:
+                        selected_players.add(int(path[future_offset]))
+
+            rows = []
+            for player_idx in selected_players:
+                selection_rate_sum = 0.0
+                availability_rate_sum = 0.0
+                legality_rate_sum = 0.0
+                expected_edge_sum = 0.0
+                edge_rate_denominator = 0.0
+                selected_rooms_total = 0
+                available_rooms_total = 0
+                legal_rooms_total = 0
+                completed_rooms_total = 0
+                completed_branches = 0
+
+                for _, room_details in branches:
+                    completed_rooms = len(room_details)
+                    if completed_rooms <= 0:
+                        continue
+                    completed_branches += 1
+                    completed_rooms_total += completed_rooms
+                    selected_rooms = 0
+                    available_rooms = 0
+                    legal_rooms = 0
+                    edge_sum = 0.0
+                    edge_selected_rooms = 0
+
+                    for details in room_details:
+                        path = np.asarray(details.get('path', []), dtype=np.int64)
+                        if (
+                            len(path) > future_offset
+                            and int(path[future_offset]) == player_idx
+                        ):
+                            selected_rooms += 1
+                            decision_metrics = details.get(
+                                'decision_metrics_by_pick',
+                                [],
+                            )
+                            metrics_idx = future_offset - 1
+                            if len(decision_metrics) > metrics_idx:
+                                metrics = decision_metrics[metrics_idx]
+                                draft_now_edge = metrics.get('draft_now_edge')
+                                if (
+                                    int(metrics.get('selected_idx', player_idx))
+                                    == player_idx
+                                    and draft_now_edge is not None
+                                    and np.isfinite(draft_now_edge)
+                                ):
+                                    edge_sum += float(draft_now_edge)
+                                    edge_selected_rooms += 1
+
+                        availability_turns = details.get(
+                            'room_available_by_pick',
+                            details.get('available_by_pick', []),
+                        )
+                        availability_idx = future_offset - 1
+                        if (
+                            len(availability_turns) > availability_idx
+                            and player_idx in availability_turns[availability_idx]
+                        ):
+                            available_rooms += 1
+
+                        legal_turns = details.get('available_by_pick', [])
+                        if (
+                            len(legal_turns) > availability_idx
+                            and player_idx in legal_turns[availability_idx]
+                        ):
+                            legal_rooms += 1
+
+                    branch_selection_rate = selected_rooms / completed_rooms
+                    selection_rate_sum += branch_selection_rate
+                    availability_rate_sum += available_rooms / completed_rooms
+                    legality_rate_sum += legal_rooms / completed_rooms
+                    expected_edge_sum += edge_sum / completed_rooms
+                    edge_rate_denominator += edge_selected_rooms / completed_rooms
+                    selected_rooms_total += selected_rooms
+                    available_rooms_total += available_rooms
+                    legal_rooms_total += legal_rooms
+
+                if completed_branches <= 0:
+                    continue
+                selection_rate = selection_rate_sum / completed_branches
+                availability_rate = availability_rate_sum / completed_branches
+                legality_rate = legality_rate_sum / completed_branches
+                expected_edge = expected_edge_sum / completed_branches
+                rows.append({
+                    'player': str(player_names[player_idx]),
+                    'pos': str(player_positions[player_idx]),
+                    'selection_rate': float(selection_rate),
+                    'availability_rate': float(availability_rate),
+                    'pick_if_available': float(
+                        selection_rate / availability_rate
+                        if availability_rate > 0
+                        else 0.0
+                    ),
+                    'legality_rate': float(legality_rate),
+                    'avg_draft_now_edge': (
+                        float(expected_edge_sum / edge_rate_denominator)
+                        if edge_rate_denominator > 0
+                        else None
+                    ),
+                    'expected_edge': (
+                        float(expected_edge)
+                        if edge_rate_denominator > 0
+                        else None
+                    ),
+                    'selected_rooms': int(selected_rooms_total),
+                    'available_rooms': int(available_rooms_total),
+                    'legal_rooms': int(legal_rooms_total),
+                    'completed_rooms': int(completed_rooms_total),
+                    'completed_branches': int(completed_branches),
+                })
+            rows.sort(
+                key=lambda row: (
+                    -row['selection_rate'],
+                    -row['availability_rate'],
+                    row['player'],
+                )
+            )
+            turns.append({
+                'future_offset': int(future_offset),
+                'round': int(current_round_num + future_offset),
+                'pick': int(adjusted_picks[future_offset]),
+                'completed_branches': int(len(branches)),
+                'completed_rooms': int(sum(len(details) for _, details in branches)),
+                'rows': rows,
+            })
+
+        return {
+            'weighting': 'equal_current_choice',
+            'current_choices': [branch_name for branch_name, _ in branches],
+            'completed_branches': int(len(branches)),
             'turns': turns,
         }
 
@@ -4599,6 +4803,7 @@ class FootballSimulation:
         candidate_value_matrices = {}
         candidate_rosters = {}
         candidate_future_summaries = {}
+        candidate_future_room_details_by_player = {}
         t0 = time.perf_counter()
         for root_candidate_idx in root_candidates:
             room_values = []
@@ -4727,6 +4932,9 @@ class FootballSimulation:
                     len(to_add) + 1,
                     candidate_future_room_details,
                 )
+            )
+            candidate_future_room_details_by_player[player_names[candidate_idx]] = (
+                candidate_future_room_details
             )
         timings['candidate_rollouts'] += time.perf_counter() - t0
 
@@ -5029,8 +5237,34 @@ class FootballSimulation:
             'disjoint': True,
         }
         results.attrs['draft_room_adp_columns'] = adp_cols.tolist()
+        if 'DecisionEV' in results.columns:
+            future_current_choices = (
+                results.loc[results.DecisionEV.notna(), 'player']
+                .astype(str)
+                .head(5)
+                .tolist()
+            )
+        elif 'player' in results.columns:
+            future_current_choices = (
+                results['player'].astype(str).head(5).tolist()
+            )
+        else:
+            future_current_choices = []
+        unconditional_future_summary = (
+            self.summarize_sequential_unconditional_future_picks(
+                player_names,
+                player_positions,
+                adjusted_picks,
+                len(to_add) + 1,
+                {
+                    player: candidate_future_room_details_by_player[player]
+                    for player in future_current_choices
+                    if player in candidate_future_room_details_by_player
+                },
+            )
+        )
         results.attrs['sequential_future_picks'] = {
-            'schema_version': 'sequential-future-picks-v1',
+            'schema_version': 'sequential-future-picks-v2',
             'availability_definition': (
                 'Still undrafted after opponent picks and before the future '
                 'user selection; independent of roster-position legality.'
@@ -5039,6 +5273,7 @@ class FootballSimulation:
                 SEQUENTIAL_FUTURE_MIN_AVAILABILITY_PCT
             ),
             'current_round': int(len(to_add) + 1),
+            'unconditional': unconditional_future_summary,
             'candidates': candidate_future_summaries,
         }
         results.attrs['warnings'] = (
