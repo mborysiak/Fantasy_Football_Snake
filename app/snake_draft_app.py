@@ -1861,15 +1861,14 @@ def sidebar_controls(prediction_options):
                 if st.button("❌ Cancel", key="confirm_clear_no"):
                     st.session_state.confirm_clear = False
     
-    # Clear loaded settings after they've been used for default values
-    # This prevents them from overriding user changes on subsequent runs
-    if loaded_settings is not None:
-        # Only clear if this is not the first run after loading (to allow the values to be applied)
-        if st.session_state.get('settings_applied_to_ui', False):
-            st.session_state.loaded_settings_data = None
-            st.session_state.settings_applied_to_ui = False
-        else:
-            st.session_state.settings_applied_to_ui = True
+    # Retain uploaded settings as stable widget defaults. Streamlit keeps user
+    # edits in widget state, while settings_applied_to_ui prevents the saved
+    # league from being force-applied again after the initial upload rerun.
+    if (
+        loaded_settings is not None
+        and not st.session_state.get('settings_applied_to_ui', False)
+    ):
+        st.session_state.settings_applied_to_ui = True
     
     return {
         'year': year,

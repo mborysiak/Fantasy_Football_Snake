@@ -32,6 +32,8 @@ The selector shows only year/league prediction slices backed by the current
 weekly player map; older maps are removed when annual template IDs are rebuilt.
 Saved draft CSVs record the selected league and restore it on upload. CSVs from
 before the league field was added remain valid and load with DK as the default.
+Uploaded team-count and draft-position settings remain the active control
+baseline across reruns while still allowing the user to edit either control.
 Imported My Team and Other Team selections remain the data-editor baseline, so
 subsequent checkbox or sidebar interactions do not clear the loaded draft.
 

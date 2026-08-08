@@ -126,6 +126,9 @@ outcomes, and solves roster recommendations with the ILP optimizer.
 - Saved draft CSV settings persist the active DK/NFFC league. Upload applies the
   saved league before rebuilding the player surface; older or blank league fields
   resolve to DK without invalidating the CSV.
+- Uploaded team count and draft position remain stable widget defaults across
+  later reruns. User edits still take precedence, and loading a new file replaces
+  the prior baseline with the new file's settings.
 - Uploaded My Team and Other Team selections remain the data editor's baseline
   on every rerun. Loading a new file starts a fresh editor key, while subsequent
   checkbox and sidebar interactions preserve the imported selections.

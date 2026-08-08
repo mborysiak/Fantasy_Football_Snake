@@ -765,7 +765,7 @@ def test_saved_csv_round_trips_league_and_old_csv_defaults_to_dk():
     assert blank_settings["League"] == "dk"
 
 
-def test_csv_upload_applies_saved_league_and_legacy_upload_restores_dk():
+def test_csv_upload_keeps_saved_league_teams_and_pick_position_across_reruns():
     app = AppTest.from_file(
         str(APP_DIR / "snake_draft_app.py"),
         default_timeout=30,
@@ -774,24 +774,42 @@ def test_csv_upload_applies_saved_league_and_legacy_upload_restores_dk():
     nffc_csv = (
         "Type,Team,League,Year,NumTeams,MyPickPosition,NumRounds,"
         "ScoringMode,WeeklyScoreMode,QB,RB,WR,TE,NumIters\n"
-        "Settings,,nffc,2026,12,3,20,best_ball_policy,template,3,6,8,3,24\n"
+        "Settings,,nffc,2026,14,7,20,best_ball_policy,template,3,6,8,3,24\n"
     ).encode("utf-8")
     app.file_uploader[0].set_value(
         ("nffc.csv", nffc_csv, "text/csv")
     ).run(timeout=30)
     assert len(app.exception) == 0
     assert app.selectbox[0].value == "nffc"
+    assert app.number_input[0].label == "Number of Teams"
+    assert app.number_input[0].value == 14
+    assert app.number_input[1].label == "My Pick Position"
+    assert app.number_input[1].value == 7
+
+    # Loaded widget defaults must remain stable after the settings-application
+    # rerun and another ordinary app interaction.
+    app.text_input[0].set_value("first-rerun").run(timeout=30)
+    app.text_input[0].set_value("second-rerun").run(timeout=30)
+    assert app.number_input[0].value == 14
+    assert app.number_input[1].value == 7
+
+    # The retained upload baseline must not override a subsequent user edit.
+    app.number_input[1].set_value(5).run(timeout=30)
+    app.text_input[0].set_value("after-user-edit").run(timeout=30)
+    assert app.number_input[1].value == 5
 
     legacy_csv = (
         "Type,Team,Year,NumTeams,MyPickPosition,NumRounds,"
         "ScoringMode,WeeklyScoreMode,QB,RB,WR,TE,NumIters\n"
-        "Settings,,2026,12,3,20,best_ball_policy,template,3,6,8,3,24\n"
+        "Settings,,2026,10,4,20,best_ball_policy,template,3,6,8,3,24\n"
     ).encode("utf-8")
     app.file_uploader[0].set_value(
         ("legacy.csv", legacy_csv, "text/csv")
     ).run(timeout=30)
     assert len(app.exception) == 0
     assert app.selectbox[0].value == "dk"
+    assert app.number_input[0].value == 10
+    assert app.number_input[1].value == 4
 
 
 def test_uploaded_player_selections_survive_the_next_widget_rerun():
