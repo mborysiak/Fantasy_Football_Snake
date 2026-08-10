@@ -5461,6 +5461,7 @@ class FootballSimulation:
         ev_shortlist_size=8,
         weekly_score_mode='residual',
         parallel_workers=1,
+        seed=None,
     ):
         to_add, to_drop = self.validate_selection_coverage(
             to_add,
@@ -5479,6 +5480,11 @@ class FootballSimulation:
             )
 
         if scoring_mode == 'best_ball_policy':
+            policy_seed = (
+                SEQUENTIAL_POLICY_SEED
+                if seed is None
+                else int(seed)
+            )
             return self.run_sim_best_ball_policy(
                 to_add,
                 to_drop,
@@ -5488,6 +5494,7 @@ class FootballSimulation:
                     self.league,
                     SEQUENTIAL_DECISION_SAMPLES,
                 ),
+                seed=policy_seed,
             )
 
         if scoring_mode in ('best_ball_marginal', 'best_ball_lookahead'):

@@ -18,6 +18,10 @@ recommendations.
 Every Sequential or Legacy click runs in one fresh Python subprocess, forces
 numeric thread counts to one, uses one inner worker, and has no automatic retry
 or cross-method fallback. A failed worker leaves the draft selections unchanged.
+Sequential displays its active common-random-number seed beside the launch
+controls. `Run Simulation` reuses that seed; `Run New Seed` advances it and
+immediately runs the same marked draft state. The executed seed is carried in
+the sealed worker request and reported in timing diagnostics.
 
 ## ADP Distribution Input
 
@@ -91,6 +95,12 @@ use separate seeds. `evaluation_seed`, `decision_seed`, and `audit_seed` are
 independent of the construction/draft seed. Changing audit alone changes only
 audit scores; changing pilot or decision may change the recommendation but
 never the candidate-specific rollout paths.
+
+The UI seed is the root for the full operational seed family, so Run New Seed
+resamples construction outcomes, opponent rooms, the pilot bank, and the
+decision bank together while preserving their disjointness. It is intended for
+checking recommendation stability or surfacing alternative close options; each
+run remains reproducible from the displayed seed.
 
 The pilot and decision banks are never passed to the rollout policy. Weekly best-ball
 lineup selection may use realized weekly scores because that is the contest's

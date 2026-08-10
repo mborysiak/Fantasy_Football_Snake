@@ -41,9 +41,11 @@ def test_worker_request_forces_one_inner_worker(tmp_path):
         ["other-player"],
         num_iters=24,
         scoring_mode="best_ball_policy",
+        seed=20260720,
     )
 
     assert request["run"]["parallel_workers"] == 1
+    assert request["run"]["seed"] == 20260720
     assert request["selection"] == {
         "to_add": ["my-player"],
         "to_drop": ["other-player"],

@@ -34,6 +34,8 @@ Then confirm:
   player selections; repeated checkbox/sidebar reruns preserve those settings
   and every imported My Team and Other Team selection
 - optimizer can run at least one recommendation
+- Sequential shows its active seed, repeats it with Run Simulation, advances it
+  with Run New Seed, and reports the executed seed in timing diagnostics
 - weekly template controls do not error
 - stack bonus controls render when enabled
 - the DK-only Sequential best-ball policy (Preview) renders all completed

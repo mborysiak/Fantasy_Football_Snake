@@ -10,6 +10,7 @@ from zSim_Helper import (
     SEQUENTIAL_CANDIDATE_POOL_SIZE,
     SEQUENTIAL_DECISION_SAMPLES_BY_LEAGUE,
     SEQUENTIAL_DRAFT_ROOMS,
+    SEQUENTIAL_POLICY_SEED,
     SEQUENTIAL_POLICY_VERSION_BY_LEAGUE,
     SEQUENTIAL_STACK_BONUS_PCT,
     SEQUENTIAL_STACK_PAIR_CAP,
@@ -28,6 +29,7 @@ pred_vers = 'final_ensemble'
 # carry the same configured floor and override this value.
 SEQUENTIAL_FUTURE_MIN_AVAILABILITY_PCT = 10.0
 SEQUENTIAL_FUTURE_TRANSPORT_COLUMN = '_sequential_future_picks_json'
+MAX_SIMULATION_SEED = 2**31 - 1
 
 #-----------------
 # Helper Functions
@@ -279,6 +281,7 @@ def run_simulation(
     ev_shortlist_size=8,
     weekly_score_mode='residual',
     parallel_workers=1,
+    seed=None,
 ):
     """Run the snake draft simulation"""
     
@@ -301,6 +304,7 @@ def run_simulation(
             current_pick_ev=current_pick_ev,
             ev_shortlist_size=ev_shortlist_size,
             weekly_score_mode=weekly_score_mode,
+            seed=seed,
         )
     else:
         results = sim.run_sim(
@@ -313,10 +317,20 @@ def run_simulation(
             ev_shortlist_size=ev_shortlist_size,
             weekly_score_mode=weekly_score_mode,
             parallel_workers=parallel_workers,
+            seed=seed,
         )
     
     # Keep all the round-specific columns
     return results
+
+
+def advance_simulation_seed(seed):
+    """Return the next positive reproducible simulation seed."""
+    seed = int(seed)
+    if seed < 1 or seed >= MAX_SIMULATION_SEED:
+        return 1
+    return seed + 1
+
 
 def render_timing_summary(results):
     """Display timing diagnostics attached by the simulation helper."""
@@ -388,6 +402,7 @@ def render_timing_summary(results):
         st.caption(
             f"Mode: {timings.get('mode')} | Horizon: {timings.get('horizon_label', timings.get('weekly_score_mode'))} | "
             f"Policy: {timings.get('policy_version', 'legacy')} | "
+            f"Seed: {timings.get('seed', 'unfixed')} | "
             f"Isolation: {timings.get('execution_isolation', 'in_process')} | "
             f"Workers: {timings.get('parallel_workers', 1)} | "
             f"Status counts: {timings.get('status_counts', {})} | "
@@ -1709,8 +1724,8 @@ def sidebar_controls(prediction_options):
             'symmetric QB-pass catcher stack utility, candidate-consistent noisy-ADP '
             f'rooms, a 64-season pilot, and a separate '
             f'{SEQUENTIAL_DECISION_SAMPLES_BY_LEAGUE[league]}-season decision score for '
-            'every completed candidate. Fixed common-random-number seeds keep repeat '
-            'runs on the same draft state stable.'
+            'every completed candidate. The active common-random-number seed keeps '
+            'repeat runs stable; Run New Seed resamples the same draft state.'
         )
 
     st.sidebar.header("Roster Construction")
@@ -1921,6 +1936,8 @@ def main():
         st.session_state.loaded_upload_signature = None
     if 'loaded_upload_error' not in st.session_state:
         st.session_state.loaded_upload_error = None
+    if 'simulation_seed' not in st.session_state:
+        st.session_state.simulation_seed = SEQUENTIAL_POLICY_SEED
     
     # Custom CSS to reduce padding
     st.markdown(
@@ -2048,7 +2065,39 @@ def main():
             # Run simulation section
             st.header("2. Optimal Recommendations")
             
-            if st.button("🚀 Run Simulation", type="primary"):
+            if settings['scoring_mode'] == 'best_ball_policy':
+                run_col, seed_col = st.columns(2)
+                with run_col:
+                    run_requested = st.button(
+                        "🚀 Run Simulation",
+                        type="primary",
+                        width="stretch",
+                        help="Repeat the current draft state with the active seed.",
+                    )
+                with seed_col:
+                    new_seed_requested = st.button(
+                        "🎲 Run New Seed",
+                        width="stretch",
+                        help=(
+                            "Advance to a different reproducible seed and rerun the "
+                            "same marked draft state."
+                        ),
+                    )
+                if new_seed_requested:
+                    st.session_state.simulation_seed = advance_simulation_seed(
+                        st.session_state.simulation_seed
+                    )
+                active_seed = int(st.session_state.simulation_seed)
+                st.caption(
+                    f"Active simulation seed: {active_seed:,}. Run Simulation repeats "
+                    "it; Run New Seed changes only the simulated outcomes and draft rooms."
+                )
+                run_requested = run_requested or new_seed_requested
+            else:
+                run_requested = st.button("🚀 Run Simulation", type="primary")
+                active_seed = None
+
+            if run_requested:
                 if len(adjusted_picks) == 0:
                     st.info("All picks completed! No more recommendations needed.")
                 else:
@@ -2063,6 +2112,7 @@ def main():
                                 settings['ev_shortlist_size'],
                                 settings['weekly_score_mode'],
                                 settings['parallel_workers'],
+                                seed=active_seed,
                             )
                         except (ValueError, SimulationWorkerError) as exc:
                             st.error(str(exc))

@@ -1,6 +1,6 @@
 # Session Notes Landing
 
-Last updated: 2026-08-07
+Last updated: 2026-08-09
 
 ## Project Objective
 
@@ -75,6 +75,9 @@ outcomes, and solves roster recommendations with the ILP optimizer.
 
 ## Recent Durable Decisions
 
+- Sequential Preview exposes an explicit active simulation seed. `Run Simulation`
+  repeats that seed; `Run New Seed` advances it and reruns the unchanged marked
+  draft state through the same isolated-worker policy path.
 - Sample weekly templates with `template_sample_prob` when available, preserving
   all selected templates while making closer matches more prevalent.
 - V2 production weekly templates use `joint_centered_template_v2_v1`: one

@@ -20,6 +20,7 @@ if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
 from snake_draft_app import (
+    advance_simulation_seed,
     apply_loaded_state,
     get_prediction_options,
     get_player_data,
@@ -812,6 +813,22 @@ def test_csv_upload_keeps_saved_league_teams_and_pick_position_across_reruns():
     assert app.number_input[1].value == 4
 
 
+def test_sequential_seed_refresh_control_renders():
+    app = AppTest.from_file(
+        str(APP_DIR / "snake_draft_app.py"),
+        default_timeout=30,
+    )
+    app.run()
+
+    assert len(app.exception) == 0
+    assert any(button.label == "🚀 Run Simulation" for button in app.button)
+    assert any(button.label == "🎲 Run New Seed" for button in app.button)
+    assert any(
+        "Active simulation seed: 20,260,719" in caption.value
+        for caption in app.caption
+    )
+
+
 def test_uploaded_player_selections_survive_the_next_widget_rerun():
     app = AppTest.from_file(
         str(APP_DIR / "snake_draft_app.py"),
@@ -888,8 +905,10 @@ def test_saved_state_and_simulation_use_player_key(monkeypatch):
         applied,
         num_iters=1,
         scoring_mode="best_ball_ilp",
+        seed=20260720,
     )
     assert captured["to_add"] == ["key-1"]
+    assert captured["seed"] == 20260720
 
     with pytest.raises(ValueError, match="absent from the active player population"):
         apply_loaded_state(
@@ -902,3 +921,30 @@ def test_saved_state_and_simulation_use_player_key(monkeypatch):
                 }
             ),
         )
+
+
+def test_simulation_seed_advances_and_wraps():
+    assert advance_simulation_seed(20260719) == 20260720
+    assert advance_simulation_seed(2**31 - 1) == 1
+
+
+def test_run_sim_dispatches_seed_to_sequential_policy():
+    sim = FootballSimulation.__new__(FootballSimulation)
+    sim.league = "dk"
+    sim.validate_selection_coverage = lambda to_add, to_drop: (to_add, to_drop)
+    captured = {}
+
+    def fake_policy(to_add, to_drop, **kwargs):
+        captured.update(kwargs)
+        return pd.DataFrame()
+
+    sim.run_sim_best_ball_policy = fake_policy
+    sim.run_sim(
+        [],
+        [],
+        num_iters=24,
+        scoring_mode="best_ball_policy",
+        seed=20260720,
+    )
+
+    assert captured["seed"] == 20260720

@@ -154,11 +154,17 @@ def build_request(
     current_pick_ev=False,
     ev_shortlist_size=8,
     weekly_score_mode="residual",
+    seed=None,
 ):
     db_path = sim.get_db_path()
     if not db_path:
         raise SimulationWorkerError(
             "Simulation isolation requires a file-backed SQLite database."
+        )
+    normalized_seed = None if seed is None else int(seed)
+    if normalized_seed is not None and not 0 <= normalized_seed <= 2**32 - 1:
+        raise SimulationWorkerError(
+            "Simulation seed must be between 0 and 4,294,967,295."
         )
     request = {
         "schema_version": REQUEST_SCHEMA,
@@ -175,6 +181,7 @@ def build_request(
             "ev_shortlist_size": int(ev_shortlist_size),
             "weekly_score_mode": str(weekly_score_mode),
             "parallel_workers": 1,
+            "seed": normalized_seed,
         },
     }
     if request["run"]["scoring_mode"] not in {
@@ -214,6 +221,7 @@ def _worker_execute(request):
             ev_shortlist_size=run["ev_shortlist_size"],
             weekly_score_mode=run["weekly_score_mode"],
             parallel_workers=1,
+            seed=run.get("seed"),
         )
         worker_seconds = time.perf_counter() - started
     finally:
@@ -267,6 +275,7 @@ def run_isolated_simulation(
     current_pick_ev=False,
     ev_shortlist_size=8,
     weekly_score_mode="residual",
+    seed=None,
     timeout_seconds=DEFAULT_TIMEOUT_SECONDS,
     worker_path=None,
 ):
@@ -279,6 +288,7 @@ def run_isolated_simulation(
         current_pick_ev=current_pick_ev,
         ev_shortlist_size=ev_shortlist_size,
         weekly_score_mode=weekly_score_mode,
+        seed=seed,
     )
     worker_path = Path(worker_path or __file__).resolve()
     environment = os.environ.copy()
