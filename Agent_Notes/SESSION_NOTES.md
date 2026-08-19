@@ -1,6 +1,6 @@
 # Session Notes Landing
 
-Last updated: 2026-08-09
+Last updated: 2026-08-14
 
 ## Project Objective
 
@@ -10,6 +10,13 @@ outcomes, and solves roster recommendations with the ILP optimizer.
 
 ## Current Focus
 
+- The source database now includes auction-only managed-template center,
+  residual, and policy columns that repair fringe/backup-QB valuation in the
+  separate Auction app. Snake intentionally ignores those fields and continues
+  its validated `active_ppg_resid`/`week_*` V2 behavior. The rebuilt source copy
+  passed exact content parity, SQLite integrity, and DK/NFFC app smokes; the
+  source and Snake databases share SHA-256
+  `27ca20d41296f544932861040c2a4e10cdf7075ef583b1dc249c6f4479493be5`.
 - The modeling source audits and omits incomplete market-only players only in
   the final sixth of a draft surface, while keeping them in canonical ADP and
   preserving full-room projection coverage. Snake does not fill these rows;

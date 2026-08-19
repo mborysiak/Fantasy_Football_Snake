@@ -147,6 +147,9 @@ Expected columns include:
 - `week_1` through the league horizon (`week_16` for DK and `week_17` for NFFC)
 - `managed_week_1` through the same league horizon
 - `played_week_1` through the same league horizon
+- auction-only managed normalization fields: `managed_profile_ppg`,
+  `managed_residual_center_ppg`, `managed_active_ppg_resid`, and
+  `managed_center_policy`
 
 Because league slices share one SQLite table, the NFFC publication adds the
 `*_week_17` columns while DK rows may leave those columns null. The app removes
@@ -164,7 +167,8 @@ existing greater-than-15-play performance-profile filter remains in place.
 The `managed_week_*` fields retain those short-QB score profiles for the auction
 app. Snake must continue selecting only columns whose names begin exactly with
 `week_`, so neither `managed_week_*` nor `played_week_*` changes best-ball
-scoring.
+scoring. The managed normalization fields are likewise ignored by Snake;
+Snake continues to use the governed legacy `active_ppg_resid`.
 
 `template_eligible = 0` preserves a structurally non-transferable outcome for
 audit while preventing pool use. Le'Veon Bell's 2018 contract holdout is the
